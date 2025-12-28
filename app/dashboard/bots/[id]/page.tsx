@@ -33,6 +33,9 @@ export default function BotDetailPage({ params }: { params: { id: string } }) {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [cloning, setCloning] = useState(false)
+  const [showCloneModal, setShowCloneModal] = useState(false)
+  const [cloneName, setCloneName] = useState('')
 
   const [formData, setFormData] = useState({
     name: '',
@@ -142,6 +145,28 @@ export default function BotDetailPage({ params }: { params: { id: string } }) {
     }
   }
 
+  const handleClone = async () => {
+    setCloning(true)
+    try {
+      const response = await fetch(`/api/bots/${params.id}/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: cloneName || `Copy of ${bot?.name}` }),
+      })
+
+      if (!response.ok) throw new Error('Failed to clone bot')
+
+      const data = await response.json()
+      setShowCloneModal(false)
+      setCloneName('')
+      router.push(`/dashboard/bots/${data.bot.id}`)
+    } catch (error) {
+      console.error('Error cloning bot:', error)
+    } finally {
+      setCloning(false)
+    }
+  }
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -244,6 +269,15 @@ export default function BotDetailPage({ params }: { params: { id: string } }) {
                   className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 hover:bg-zinc-800"
                 >
                   Edit
+                </button>
+                <button
+                  onClick={() => {
+                    setCloneName(`Copy of ${bot.name}`)
+                    setShowCloneModal(true)
+                  }}
+                  className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 hover:bg-zinc-800"
+                >
+                  Clone
                 </button>
                 <button
                   onClick={handleRunBot}
@@ -368,6 +402,61 @@ export default function BotDetailPage({ params }: { params: { id: string } }) {
           {deleting ? 'Deleting...' : 'Delete This Bot'}
         </button>
       </div>
+
+      {/* Clone Modal */}
+      {showCloneModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-xl max-w-md w-full mx-4 border border-zinc-700">
+            <div className="p-6 border-b border-zinc-700">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-white">Clone Bot</h2>
+                <button
+                  onClick={() => setShowCloneModal(false)}
+                  className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p className="text-zinc-400 text-sm mt-2">
+                Create a copy of this bot with all its configuration.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">
+                  New Bot Name
+                </label>
+                <input
+                  type="text"
+                  value={cloneName}
+                  onChange={(e) => setCloneName(e.target.value)}
+                  placeholder="Enter name for the cloned bot"
+                  className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2.5 text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowCloneModal(false)}
+                  className="flex-1 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400 hover:bg-zinc-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClone}
+                  disabled={cloning}
+                  className="flex-1 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+                >
+                  {cloning ? 'Cloning...' : 'Clone Bot'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
