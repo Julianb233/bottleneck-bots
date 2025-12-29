@@ -14,8 +14,34 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bottleneck Bots",
-  description: "Automate your workflows with intelligent bots",
+  metadataBase: new URL("https://bottleneckbots.com"),
+  title: {
+    default: "Bottleneck Bots - AI-Powered Workflow Automation",
+    template: "%s | Bottleneck Bots",
+  },
+  description: "Automate your workflows with intelligent bots. Monitor websites, sync data, send notifications, and scrape web pages - all without writing code.",
+  keywords: ["workflow automation", "bot automation", "no-code", "website monitoring", "web scraping", "notifications"],
+  authors: [{ name: "Bottleneck Bots" }],
+  creator: "Bottleneck Bots",
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://bottleneckbots.com",
+    siteName: "Bottleneck Bots",
+    title: "Bottleneck Bots - AI-Powered Workflow Automation",
+    description: "Automate your workflows with intelligent bots.",
+    images: [{ url: "/og-image.png", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Bottleneck Bots",
+    description: "Automate your workflows with intelligent bots.",
+    images: ["/og-image.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
