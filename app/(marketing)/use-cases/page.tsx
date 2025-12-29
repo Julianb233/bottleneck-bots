@@ -37,6 +37,7 @@ const useCases = [
       "Monitor SSL certificate expiration",
     ],
     example: "A DevOps team uses Bottleneck Bots to monitor 50+ microservices. When any endpoint returns a non-200 status, the team gets instant Slack alerts with response details.",
+    gradient: "from-blue-500 to-cyan-500",
   },
   {
     slug: "notifications",
@@ -54,6 +55,7 @@ const useCases = [
       "Include rich data from webhook payloads",
     ],
     example: "An e-commerce business routes order notifications to their sales Slack channel, sends customer confirmations via email, and posts daily summaries to Discord.",
+    gradient: "from-amber-500 to-orange-500",
   },
   {
     slug: "data-sync",
@@ -71,6 +73,7 @@ const useCases = [
       "Transform data formats between systems",
     ],
     example: "A marketing agency syncs leads from their website forms to HubSpot CRM every 15 minutes, automatically enriching contact data along the way.",
+    gradient: "from-green-500 to-emerald-500",
   },
   {
     slug: "web-scraping",
@@ -88,6 +91,7 @@ const useCases = [
       "Handle authentication and form submission",
     ],
     example: "A research firm scrapes competitor pricing pages daily, comparing changes over time and alerting the team when significant price changes occur.",
+    gradient: "from-purple-500 to-pink-500",
   },
   {
     slug: "price-tracking",
@@ -105,6 +109,7 @@ const useCases = [
       "Build historical price databases",
     ],
     example: "An e-commerce manager tracks prices on 100+ competitor products. When any price drops 10% or more, they get instant alerts to adjust their own pricing strategy.",
+    gradient: "from-indigo-500 to-purple-500",
   },
   {
     slug: "workflow",
@@ -122,114 +127,156 @@ const useCases = [
       "Automate employee onboarding tasks",
     ],
     example: "A startup automates their entire standup process: reminders go out at 9 AM, team members submit updates via a form, and a summary is posted to Slack at 10 AM.",
+    gradient: "from-rose-500 to-pink-500",
   },
 ];
 
 export default function UseCasesPage() {
   return (
-    <>
-      {/* Hero */}
-      <section className="pt-20 pb-16 sm:pt-28">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h1 className="text-4xl sm:text-5xl font-bold text-white">
-              Automation for
-              <span className="block mt-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Every Business Need
-              </span>
-            </h1>
-            <p className="mt-6 text-lg text-zinc-400 max-w-2xl mx-auto">
-              See how teams use Bottleneck Bots to save time, reduce errors, and focus on what matters.
-            </p>
+    <div className="relative">
+      {/* Background effects */}
+      <div className="absolute inset-0 mesh-gradient" />
+      <div className="absolute inset-0 noise-overlay" />
+
+      {/* Floating orbs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-40 left-10 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl float" />
+        <div className="absolute top-80 right-20 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl float-delayed" />
+        <div className="absolute bottom-60 left-1/3 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl float" />
+      </div>
+
+      <div className="relative z-10">
+        {/* Hero */}
+        <section className="pt-20 pb-16 sm:pt-28">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white">
+                Automation for
+                <span className="block mt-2 gradient-text-animate">
+                  Every Business Need
+                </span>
+              </h1>
+              <p className="mt-6 text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto">
+                See how teams use Bottleneck Bots to save time, reduce errors, and focus on what matters.
+              </p>
+
+              {/* Use case count */}
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+                {["Monitoring", "Notifications", "Data Sync", "Scraping", "Price Tracking", "Workflows"].map((tag, i) => (
+                  <span key={i} className="glass px-4 py-2 rounded-full text-sm text-zinc-300">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Use Cases Grid */}
-      <section className="py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="space-y-16">
-            {useCases.map((useCase, idx) => (
-              <div
-                key={idx}
-                className={`grid lg:grid-cols-2 gap-12 items-center ${
-                  idx % 2 === 1 ? "lg:grid-flow-dense" : ""
-                }`}
-              >
-                <div className={idx % 2 === 1 ? "lg:col-start-2" : ""}>
-                  <div className="text-blue-400 mb-4">{useCase.icon}</div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
-                    {useCase.title}
-                  </h2>
-                  <p className="text-lg text-zinc-400 mb-6">{useCase.description}</p>
+        {/* Use Cases Grid */}
+        <section className="py-16 sm:py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="space-y-24">
+              {useCases.map((useCase, idx) => (
+                <div
+                  key={idx}
+                  className={`grid lg:grid-cols-2 gap-12 items-center ${
+                    idx % 2 === 1 ? "lg:grid-flow-dense" : ""
+                  }`}
+                >
+                  <div className={idx % 2 === 1 ? "lg:col-start-2" : ""}>
+                    {/* Icon */}
+                    <div className={`inline-flex p-4 rounded-2xl bg-gradient-to-br ${useCase.gradient} mb-6 text-white shadow-lg`}>
+                      {useCase.icon}
+                    </div>
 
-                  <ul className="space-y-3 mb-8">
-                    {useCase.benefits.map((benefit, i) => (
-                      <li key={i} className="flex items-start">
-                        <svg className="h-5 w-5 text-green-500 mr-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
+                      {useCase.title}
+                    </h2>
+                    <p className="text-lg text-zinc-400 mb-6">{useCase.description}</p>
+
+                    <ul className="space-y-3 mb-8">
+                      {useCase.benefits.map((benefit, i) => (
+                        <li key={i} className="flex items-start">
+                          <span className="w-6 h-6 rounded-full bg-green-500/10 flex items-center justify-center mr-3 flex-shrink-0 mt-0.5">
+                            <svg className="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </span>
+                          <span className="text-zinc-300">{benefit}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <Link
+                      href={`/dashboard/templates?category=${useCase.slug}`}
+                      className="inline-flex items-center glass-button px-6 py-3 rounded-full text-white font-medium hover:scale-105 transition-transform"
+                    >
+                      View templates
+                      <svg className="ml-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                    </Link>
+                  </div>
+
+                  {/* Example card */}
+                  <div className={`glass-card p-8 ${idx % 2 === 1 ? "lg:col-start-1" : ""}`}>
+                    <div className="flex items-center gap-3 mb-6">
+                      <span className={`w-10 h-10 rounded-xl bg-gradient-to-br ${useCase.gradient} flex items-center justify-center`}>
+                        <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <span className="text-zinc-300">{benefit}</span>
-                      </li>
-                    ))}
-                  </ul>
+                      </span>
+                      <span className="text-sm font-medium text-zinc-400">Real-world example</span>
+                    </div>
+                    <p className="text-zinc-300 leading-relaxed text-lg">{useCase.example}</p>
 
+                    {/* Decorative gradient line */}
+                    <div className={`mt-6 h-1 rounded-full bg-gradient-to-r ${useCase.gradient} opacity-50`} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* CTA */}
+        <section className="py-16 sm:py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="relative overflow-hidden rounded-3xl">
+              {/* Gradient background */}
+              <div className="absolute inset-0 gradient-animate opacity-90" />
+
+              {/* Glass overlay */}
+              <div className="relative glass p-12 text-center border-0">
+                <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                  Have a Different Use Case?
+                </h2>
+                <p className="text-lg text-white/80 mb-8 max-w-xl mx-auto">
+                  Bottleneck Bots is flexible enough to handle almost any automation need.
+                  Start with a template or build from scratch.
+                </p>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Link
-                    href={`/dashboard/templates?category=${useCase.slug}`}
-                    className="inline-flex items-center text-blue-400 hover:text-blue-300 font-medium"
+                    href="/auth/signup"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-white px-8 py-4 font-semibold text-blue-600 hover:bg-blue-50 transition-colors shadow-lg hover:shadow-xl hover:scale-105"
                   >
-                    View templates
+                    Start Building
                     <svg className="ml-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
                   </Link>
-                </div>
-
-                <div className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-8 ${
-                  idx % 2 === 1 ? "lg:col-start-1" : ""
-                }`}>
-                  <div className="flex items-center gap-2 text-sm text-zinc-500 mb-4">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Real-world example
-                  </div>
-                  <p className="text-zinc-300 leading-relaxed">{useCase.example}</p>
+                  <Link
+                    href="/contact"
+                    className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border border-white/30 px-8 py-4 font-medium text-white hover:bg-white/10 transition-colors"
+                  >
+                    Talk to Us
+                  </Link>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="bg-gradient-to-br from-blue-600 to-purple-700 rounded-3xl p-12 text-center">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              Have a Different Use Case?
-            </h2>
-            <p className="text-lg text-blue-100 mb-8 max-w-xl mx-auto">
-              Bottleneck Bots is flexible enough to handle almost any automation need.
-              Start with a template or build from scratch.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                href="/auth/signup"
-                className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-white px-8 py-3.5 font-semibold text-blue-600 hover:bg-blue-50 transition-colors"
-              >
-                Start Building
-              </Link>
-              <Link
-                href="/contact"
-                className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border border-white/30 px-8 py-3.5 font-medium text-white hover:bg-white/10 transition-colors"
-              >
-                Talk to Us
-              </Link>
             </div>
           </div>
-        </div>
-      </section>
-    </>
+        </section>
+      </div>
+    </div>
   );
 }

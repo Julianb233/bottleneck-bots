@@ -43,7 +43,6 @@ export const metadata: Metadata = {
   },
 };
 
-// Feature data
 const features = [
   {
     icon: (
@@ -53,7 +52,6 @@ const features = [
     ),
     title: "Lightning Fast Execution",
     description: "Bots execute in milliseconds with real-time monitoring and instant notifications.",
-    color: "blue",
   },
   {
     icon: (
@@ -63,7 +61,6 @@ const features = [
     ),
     title: "Smart Scheduling",
     description: "Run bots on custom schedules - every minute, hourly, daily, or with cron expressions.",
-    color: "purple",
   },
   {
     icon: (
@@ -73,7 +70,6 @@ const features = [
     ),
     title: "Browser Automation",
     description: "Scrape JavaScript-heavy websites with real browser rendering powered by Browserbase.",
-    color: "green",
   },
   {
     icon: (
@@ -83,7 +79,6 @@ const features = [
     ),
     title: "Multi-Channel Alerts",
     description: "Send notifications to Slack, Discord, Email, or custom webhooks simultaneously.",
-    color: "orange",
   },
   {
     icon: (
@@ -93,7 +88,6 @@ const features = [
     ),
     title: "Enterprise Security",
     description: "Row-level security with Supabase, encrypted credentials, and audit logging.",
-    color: "cyan",
   },
   {
     icon: (
@@ -102,8 +96,7 @@ const features = [
       </svg>
     ),
     title: "Template Library",
-    description: "Start fast with 15+ pre-built templates for common automation use cases.",
-    color: "pink",
+    description: "Start fast with 18+ pre-built templates for common automation use cases.",
   },
 ];
 
@@ -111,36 +104,23 @@ const useCases = [
   {
     title: "Website Monitoring",
     description: "Check if your sites are up and get instant alerts when they go down.",
-    icon: "activity",
     href: "/use-cases/monitoring",
   },
   {
     title: "Data Synchronization",
     description: "Keep your systems in sync with automated API-to-API data transfers.",
-    icon: "sync",
     href: "/use-cases/data-sync",
   },
   {
     title: "Price Tracking",
     description: "Monitor product prices and get alerts when they drop below your target.",
-    icon: "dollar",
     href: "/use-cases/price-tracking",
   },
   {
     title: "Lead Notifications",
     description: "Instantly notify your sales team when new leads come in.",
-    icon: "users",
     href: "/use-cases/notifications",
   },
-];
-
-const integrations = [
-  { name: "Slack", logo: "/integrations/slack.svg" },
-  { name: "Discord", logo: "/integrations/discord.svg" },
-  { name: "Email", logo: "/integrations/email.svg" },
-  { name: "Webhooks", logo: "/integrations/webhook.svg" },
-  { name: "REST APIs", logo: "/integrations/api.svg" },
-  { name: "Browserbase", logo: "/integrations/browserbase.svg" },
 ];
 
 const testimonials = [
@@ -166,15 +146,18 @@ const testimonials = [
 
 export default function HomePage() {
   return (
-    <>
+    <div className="mesh-gradient min-h-screen">
       {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-purple-600/10 to-transparent pointer-events-none" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent pointer-events-none" />
+      <section className="relative overflow-hidden particles">
+        {/* Animated orbs */}
+        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-500/30 rounded-full blur-[100px] float" />
+        <div className="absolute top-40 right-20 w-96 h-96 bg-purple-500/20 rounded-full blur-[120px] float-delayed" />
+        <div className="absolute bottom-20 left-1/3 w-64 h-64 bg-cyan-500/20 rounded-full blur-[80px] float" />
 
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 pb-24 sm:pt-32 sm:pb-32">
           <div className="text-center">
-            <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 border border-blue-500/20 px-4 py-1.5 text-sm text-blue-400 mb-8">
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 glass-button rounded-full px-5 py-2 text-sm text-blue-300 mb-8 shimmer">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
@@ -182,78 +165,111 @@ export default function HomePage() {
               Now with Browser Automation
             </div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white tracking-tight">
-              Automate Your Workflows
-              <span className="block mt-2 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            {/* Headline */}
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white tracking-tight">
+              <span className="block">Automate Your Workflows</span>
+              <span className="block mt-2 gradient-text-animate">
                 Without Writing Code
               </span>
             </h1>
 
-            <p className="mt-6 max-w-2xl mx-auto text-lg sm:text-xl text-zinc-400">
+            <p className="mt-8 max-w-2xl mx-auto text-lg sm:text-xl text-zinc-400">
               Build intelligent bots that monitor websites, sync data, send notifications,
               and scrape web pages. Set up in minutes, not days.
             </p>
 
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+            {/* CTA Buttons */}
+            <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
                 href="/auth/signup"
-                className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600 px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all hover:scale-105"
+                className="group relative w-full sm:w-auto inline-flex items-center justify-center rounded-full px-8 py-4 text-base font-semibold text-white overflow-hidden"
               >
-                Start Free Trial
-                <svg className="ml-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
+                <div className="absolute inset-0 gradient-animate rounded-full" />
+                <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 glow-gradient" />
+                <span className="relative flex items-center">
+                  Start Free Trial
+                  <svg className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </span>
               </Link>
               <Link
                 href="/docs"
-                className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border border-zinc-700 bg-zinc-800/50 px-8 py-3.5 text-base font-medium text-white hover:bg-zinc-800 transition-colors"
+                className="w-full sm:w-auto glass-button inline-flex items-center justify-center rounded-full px-8 py-4 text-base font-medium text-white hover-glow"
               >
                 View Documentation
               </Link>
             </div>
 
-            <p className="mt-4 text-sm text-zinc-500">
+            <p className="mt-6 text-sm text-zinc-500">
               No credit card required &bull; Free tier available &bull; Setup in 2 minutes
             </p>
+          </div>
+
+          {/* Floating 3D Cards Preview */}
+          <div className="mt-20 perspective-1000">
+            <div className="relative max-w-4xl mx-auto">
+              <div className="glass-card p-8 card-3d">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="h-3 w-3 rounded-full bg-red-500" />
+                  <div className="h-3 w-3 rounded-full bg-yellow-500" />
+                  <div className="h-3 w-3 rounded-full bg-green-500" />
+                  <span className="text-sm text-zinc-500 ml-4">bottleneck-bots dashboard</span>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="glass rounded-xl p-4 shimmer">
+                      <div className="h-4 w-20 bg-zinc-700 rounded mb-2" />
+                      <div className="h-8 w-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Social Proof Bar */}
-      <section className="border-y border-zinc-800 bg-zinc-900/50">
+      <section className="glass border-y border-zinc-800/50">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
           <p className="text-center text-sm text-zinc-500 mb-6">Trusted by teams at</p>
           <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16 opacity-60">
             {["TechCorp", "StartupXYZ", "AgencyPro", "DevStudio", "CloudOps"].map((company) => (
-              <span key={company} className="text-lg font-semibold text-zinc-400">{company}</span>
+              <span key={company} className="text-lg font-semibold text-zinc-400 hover:text-white transition-colors">
+                {company}
+              </span>
             ))}
           </div>
         </div>
       </section>
 
       {/* Features Grid */}
-      <section className="py-24 sm:py-32" id="features">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section className="py-24 sm:py-32 relative" id="features">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-950/10 to-transparent pointer-events-none" />
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-white">
-              Everything You Need to Automate
+              Everything You Need to <span className="gradient-text">Automate</span>
             </h2>
             <p className="mt-4 text-lg text-zinc-400 max-w-2xl mx-auto">
               Powerful features that make workflow automation simple and reliable.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, idx) => (
               <div
                 key={idx}
-                className="group relative rounded-2xl bg-zinc-900 border border-zinc-800 p-8 hover:border-zinc-700 transition-colors"
+                className="group glass-card p-8 hover-lift glow-border"
+                style={{ animationDelay: `${idx * 100}ms` }}
               >
-                <div className={`inline-flex h-12 w-12 items-center justify-center rounded-xl bg-${feature.color}-500/20 text-${feature.color}-400 mb-6`}>
+                <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 text-blue-400 mb-6 group-hover:scale-110 transition-transform pulse-glow">
                   {feature.icon}
                 </div>
                 <h3 className="text-xl font-semibold text-white mb-3">{feature.title}</h3>
-                <p className="text-zinc-400">{feature.description}</p>
+                <p className="text-zinc-400 leading-relaxed">{feature.description}</p>
               </div>
             ))}
           </div>
@@ -261,11 +277,13 @@ export default function HomePage() {
       </section>
 
       {/* How It Works */}
-      <section className="py-24 sm:py-32 bg-zinc-900/50">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section className="py-24 sm:py-32 relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-purple-500/10 rounded-full blur-[150px]" />
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-white">
-              How It Works
+              How It <span className="gradient-text">Works</span>
             </h2>
             <p className="mt-4 text-lg text-zinc-400">
               Get started in three simple steps
@@ -289,13 +307,17 @@ export default function HomePage() {
                 title: "Deploy & Monitor",
                 description: "Activate your bot and watch it work. Track every execution in real-time.",
               },
-            ].map((step, idx) => (
-              <div key={idx} className="relative text-center">
-                <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-2xl font-bold text-white mb-6">
-                  {step.step}
+            ].map((item, idx) => (
+              <div key={idx} className="relative text-center group">
+                {/* Connector line */}
+                {idx < 2 && (
+                  <div className="hidden md:block absolute top-8 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-blue-500/50 to-transparent" />
+                )}
+                <div className="relative inline-flex h-16 w-16 items-center justify-center rounded-2xl gradient-animate text-2xl font-bold text-white mb-6 float-3d glow-gradient">
+                  {item.step}
                 </div>
-                <h3 className="text-xl font-semibold text-white mb-3">{step.title}</h3>
-                <p className="text-zinc-400">{step.description}</p>
+                <h3 className="text-xl font-semibold text-white mb-3">{item.title}</h3>
+                <p className="text-zinc-400">{item.description}</p>
               </div>
             ))}
           </div>
@@ -307,7 +329,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-white">
-              Built for Every Use Case
+              Built for <span className="gradient-text">Every Use Case</span>
             </h2>
             <p className="mt-4 text-lg text-zinc-400 max-w-2xl mx-auto">
               From website monitoring to data synchronization, automate any workflow.
@@ -319,9 +341,9 @@ export default function HomePage() {
               <Link
                 key={idx}
                 href={useCase.href}
-                className="group flex items-start gap-6 rounded-2xl bg-zinc-900 border border-zinc-800 p-8 hover:border-blue-500/50 hover:bg-zinc-900/80 transition-all"
+                className="group glass-card flex items-start gap-6 p-8 hover-lift"
               >
-                <div className="flex-shrink-0 h-12 w-12 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-400">
+                <div className="flex-shrink-0 h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
                   <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
@@ -339,10 +361,10 @@ export default function HomePage() {
           <div className="mt-12 text-center">
             <Link
               href="/use-cases"
-              className="inline-flex items-center text-blue-400 hover:text-blue-300 font-medium"
+              className="inline-flex items-center text-blue-400 hover:text-blue-300 font-medium group"
             >
               View all use cases
-              <svg className="ml-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
             </Link>
@@ -351,11 +373,13 @@ export default function HomePage() {
       </section>
 
       {/* Testimonials */}
-      <section className="py-24 sm:py-32 bg-zinc-900/50">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section className="py-24 sm:py-32 relative">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-purple-950/10 to-transparent pointer-events-none" />
+
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-white">
-              Loved by Teams Everywhere
+              Loved by <span className="gradient-text">Teams Everywhere</span>
             </h2>
           </div>
 
@@ -363,7 +387,7 @@ export default function HomePage() {
             {testimonials.map((testimonial, idx) => (
               <div
                 key={idx}
-                className="rounded-2xl bg-zinc-900 border border-zinc-800 p-8"
+                className="glass-card p-8 hover-lift"
               >
                 <div className="flex gap-1 mb-4">
                   {[...Array(5)].map((_, i) => (
@@ -372,7 +396,7 @@ export default function HomePage() {
                     </svg>
                   ))}
                 </div>
-                <blockquote className="text-zinc-300 mb-6">
+                <blockquote className="text-zinc-300 mb-6 leading-relaxed">
                   &ldquo;{testimonial.quote}&rdquo;
                 </blockquote>
                 <div>
@@ -388,10 +412,17 @@ export default function HomePage() {
       {/* CTA Section */}
       <section className="py-24 sm:py-32">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="relative rounded-3xl bg-gradient-to-br from-blue-600 to-purple-700 p-12 sm:p-16 overflow-hidden">
+          <div className="relative rounded-3xl overflow-hidden">
+            {/* Animated gradient background */}
+            <div className="absolute inset-0 gradient-animate opacity-90" />
             <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-20" />
-            <div className="relative text-center">
-              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+
+            {/* Floating orbs */}
+            <div className="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-2xl float" />
+            <div className="absolute bottom-10 right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl float-delayed" />
+
+            <div className="relative p-12 sm:p-16 text-center">
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4 text-glow">
                 Ready to Automate Your Workflow?
               </h2>
               <p className="text-lg text-blue-100 mb-8 max-w-2xl mx-auto">
@@ -401,13 +432,13 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link
                   href="/auth/signup"
-                  className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-white px-8 py-3.5 text-base font-semibold text-blue-600 hover:bg-blue-50 transition-colors"
+                  className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-white px-8 py-4 text-base font-semibold text-blue-600 hover:bg-blue-50 transition-colors hover:scale-105 transform"
                 >
                   Start Free Trial
                 </Link>
                 <Link
                   href="/pricing"
-                  className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border border-white/30 px-8 py-3.5 text-base font-medium text-white hover:bg-white/10 transition-colors"
+                  className="w-full sm:w-auto inline-flex items-center justify-center rounded-full border-2 border-white/30 px-8 py-4 text-base font-medium text-white hover:bg-white/10 transition-colors"
                 >
                   View Pricing
                 </Link>
@@ -441,6 +472,6 @@ export default function HomePage() {
           }),
         }}
       />
-    </>
+    </div>
   );
 }

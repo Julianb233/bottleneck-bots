@@ -30,8 +30,7 @@ const featuredIntegrations = [
       </svg>
     ),
     features: ["Incoming webhooks", "Rich message formatting", "Channel overrides", "Thread replies"],
-    color: "text-[#4A154B]",
-    bgColor: "bg-[#4A154B]/10",
+    gradient: "from-[#4A154B] to-[#611f69]",
   },
   {
     name: "Discord",
@@ -42,8 +41,7 @@ const featuredIntegrations = [
       </svg>
     ),
     features: ["Webhook messages", "Rich embeds", "Custom avatars", "Mention support"],
-    color: "text-[#5865F2]",
-    bgColor: "bg-[#5865F2]/10",
+    gradient: "from-[#5865F2] to-[#7289da]",
   },
   {
     name: "Email (Resend)",
@@ -54,8 +52,7 @@ const featuredIntegrations = [
       </svg>
     ),
     features: ["HTML templates", "Plain text fallback", "Delivery tracking", "Custom from address"],
-    color: "text-emerald-500",
-    bgColor: "bg-emerald-500/10",
+    gradient: "from-emerald-500 to-teal-500",
   },
   {
     name: "Browserbase",
@@ -66,8 +63,7 @@ const featuredIntegrations = [
       </svg>
     ),
     features: ["Full JS rendering", "Screenshots", "Form automation", "Stealth mode"],
-    color: "text-orange-500",
-    bgColor: "bg-orange-500/10",
+    gradient: "from-orange-500 to-red-500",
   },
 ];
 
@@ -75,168 +71,241 @@ const otherIntegrations = [
   {
     name: "REST APIs",
     description: "Call any HTTP endpoint with custom headers, authentication, and request bodies.",
-    icon: "🔌",
+    icon: (
+      <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+      </svg>
+    ),
+    gradient: "from-blue-500 to-cyan-500",
   },
   {
     name: "Webhooks",
     description: "Receive webhooks from any service and trigger your automation workflows.",
-    icon: "🔗",
+    icon: (
+      <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+      </svg>
+    ),
+    gradient: "from-purple-500 to-pink-500",
   },
   {
     name: "Supabase",
     description: "Built on Supabase for authentication, database, and real-time capabilities.",
-    icon: "⚡",
+    icon: (
+      <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    ),
+    gradient: "from-green-500 to-emerald-500",
   },
   {
     name: "Cron Jobs",
     description: "Schedule bots with flexible cron expressions for any timing need.",
-    icon: "⏰",
+    icon: (
+      <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+    gradient: "from-amber-500 to-orange-500",
   },
 ];
 
 export default function IntegrationsPage() {
   return (
-    <>
-      {/* Hero */}
-      <section className="pt-20 pb-16 sm:pt-28">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h1 className="text-4xl sm:text-5xl font-bold text-white">
-              Connect Your
-              <span className="block mt-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                Favorite Tools
-              </span>
-            </h1>
-            <p className="mt-6 text-lg text-zinc-400 max-w-2xl mx-auto">
-              Bottleneck Bots integrates with the tools you already use.
-              Send notifications, sync data, and automate workflows seamlessly.
-            </p>
-          </div>
-        </div>
-      </section>
+    <div className="relative">
+      {/* Background effects */}
+      <div className="absolute inset-0 mesh-gradient" />
+      <div className="absolute inset-0 noise-overlay" />
 
-      {/* Featured Integrations */}
-      <section className="py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-white mb-12">Featured Integrations</h2>
+      {/* Floating orbs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-20 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl float" />
+        <div className="absolute top-60 right-10 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl float-delayed" />
+        <div className="absolute bottom-40 left-1/2 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl float" />
+      </div>
 
-          <div className="grid md:grid-cols-2 gap-8">
-            {featuredIntegrations.map((integration, idx) => (
-              <div
-                key={idx}
-                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 hover:border-zinc-700 transition-colors"
-              >
-                <div className="flex items-start gap-6">
-                  <div className={`${integration.bgColor} ${integration.color} p-4 rounded-xl`}>
-                    {integration.icon}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-white mb-2">{integration.name}</h3>
-                    <p className="text-zinc-400 mb-4">{integration.description}</p>
-                    <ul className="space-y-2">
-                      {integration.features.map((feature, i) => (
-                        <li key={i} className="flex items-center text-sm text-zinc-500">
-                          <svg className="h-4 w-4 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+      <div className="relative z-10">
+        {/* Hero */}
+        <section className="pt-20 pb-16 sm:pt-28">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white">
+                Connect Your
+                <span className="block mt-2 gradient-text-animate">
+                  Favorite Tools
+                </span>
+              </h1>
+              <p className="mt-6 text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto">
+                Bottleneck Bots integrates with the tools you already use.
+                Send notifications, sync data, and automate workflows seamlessly.
+              </p>
+
+              {/* Integration count */}
+              <div className="mt-8 flex items-center justify-center gap-8">
+                <div className="glass px-6 py-3 rounded-2xl">
+                  <div className="text-3xl font-bold gradient-text">4+</div>
+                  <div className="text-sm text-zinc-400">Native Integrations</div>
+                </div>
+                <div className="glass px-6 py-3 rounded-2xl">
+                  <div className="text-3xl font-bold gradient-text">Any</div>
+                  <div className="text-sm text-zinc-400">REST API</div>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Other Integrations */}
-      <section className="py-16 sm:py-24 bg-zinc-900/50">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-white mb-12">More Capabilities</h2>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {otherIntegrations.map((integration, idx) => (
-              <div
-                key={idx}
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-6"
-              >
-                <span className="text-4xl mb-4 block">{integration.icon}</span>
-                <h3 className="text-lg font-semibold text-white mb-2">{integration.name}</h3>
-                <p className="text-sm text-zinc-400">{integration.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How to Connect */}
-      <section className="py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-2xl font-bold text-white">Easy Setup</h2>
-            <p className="mt-2 text-zinc-400">Connect your tools in minutes</p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            {[
-              {
-                step: "1",
-                title: "Choose Integration",
-                description: "Select from our library of integrations or use the generic HTTP action.",
-              },
-              {
-                step: "2",
-                title: "Add Credentials",
-                description: "Securely store your API keys, webhooks, and authentication tokens.",
-              },
-              {
-                step: "3",
-                title: "Start Automating",
-                description: "Use the integration in your bot actions and start automating.",
-              },
-            ].map((step, idx) => (
-              <div key={idx} className="text-center">
-                <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-xl font-bold text-white mb-4">
-                  {step.step}
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">{step.title}</h3>
-                <p className="text-zinc-400">{step.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Request Integration */}
-      <section className="py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center">
-            <h2 className="text-2xl font-bold text-white mb-4">
-              Need a Different Integration?
-            </h2>
-            <p className="text-zinc-400 mb-8 max-w-xl mx-auto">
-              Don&apos;t see the tool you need? Our HTTP action works with any REST API,
-              or let us know what you&apos;d like to see next.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                href="/contact"
-                className="inline-flex items-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600 px-8 py-3.5 font-semibold text-white hover:opacity-90 transition-opacity"
-              >
-                Request Integration
-              </Link>
-              <Link
-                href="/docs"
-                className="inline-flex items-center rounded-full border border-zinc-700 px-8 py-3.5 font-medium text-white hover:bg-zinc-800 transition-colors"
-              >
-                View API Docs
-              </Link>
             </div>
           </div>
-        </div>
-      </section>
-    </>
+        </section>
+
+        {/* Featured Integrations */}
+        <section className="py-16 sm:py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3 mb-12">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
+              <h2 className="text-2xl font-bold text-white">Featured Integrations</h2>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              {featuredIntegrations.map((integration, idx) => (
+                <div
+                  key={idx}
+                  className="group glass-card p-8 hover-lift"
+                >
+                  <div className="flex items-start gap-6">
+                    <div className={`flex-shrink-0 w-20 h-20 rounded-2xl bg-gradient-to-br ${integration.gradient} flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform`}>
+                      {integration.icon}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-semibold text-white mb-2 group-hover:text-blue-400 transition-colors">
+                        {integration.name}
+                      </h3>
+                      <p className="text-zinc-400 mb-4">{integration.description}</p>
+                      <ul className="grid grid-cols-2 gap-2">
+                        {integration.features.map((feature, i) => (
+                          <li key={i} className="flex items-center text-sm text-zinc-500">
+                            <span className="w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center mr-2 flex-shrink-0">
+                              <svg className="h-3 w-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </span>
+                            {feature}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Other Integrations */}
+        <section className="py-16 sm:py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3 mb-12">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
+              <h2 className="text-2xl font-bold text-white">More Capabilities</h2>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {otherIntegrations.map((integration, idx) => (
+                <div
+                  key={idx}
+                  className="group glass p-6 rounded-2xl hover:glow-blue transition-all duration-300"
+                >
+                  <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${integration.gradient} flex items-center justify-center text-white mb-4 group-hover:scale-110 transition-transform`}>
+                    {integration.icon}
+                  </div>
+                  <h3 className="text-lg font-semibold text-white mb-2">{integration.name}</h3>
+                  <p className="text-sm text-zinc-400">{integration.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* How to Connect */}
+        <section className="py-16 sm:py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12">
+              <h2 className="text-2xl font-bold text-white">Easy Setup</h2>
+              <p className="mt-2 text-zinc-400">Connect your tools in minutes</p>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+              {[
+                {
+                  step: "1",
+                  title: "Choose Integration",
+                  description: "Select from our library of integrations or use the generic HTTP action.",
+                  gradient: "from-blue-500 to-cyan-500",
+                },
+                {
+                  step: "2",
+                  title: "Add Credentials",
+                  description: "Securely store your API keys, webhooks, and authentication tokens.",
+                  gradient: "from-purple-500 to-pink-500",
+                },
+                {
+                  step: "3",
+                  title: "Start Automating",
+                  description: "Use the integration in your bot actions and start automating.",
+                  gradient: "from-amber-500 to-orange-500",
+                },
+              ].map((step, idx) => (
+                <div key={idx} className="text-center group">
+                  <div className={`inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${step.gradient} text-2xl font-bold text-white mb-6 shadow-lg group-hover:scale-110 transition-transform`}>
+                    {step.step}
+                  </div>
+                  <h3 className="text-lg font-semibold text-white mb-2">{step.title}</h3>
+                  <p className="text-zinc-400">{step.description}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Connection line */}
+            <div className="hidden md:block relative max-w-4xl mx-auto mt-[-120px] mb-8 pointer-events-none">
+              <div className="absolute top-8 left-[20%] right-[20%] h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-orange-500 opacity-30" />
+            </div>
+          </div>
+        </section>
+
+        {/* Request Integration */}
+        <section className="py-16 sm:py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="glass-card p-12 text-center">
+              <h2 className="text-2xl font-bold text-white mb-4">
+                Need a Different Integration?
+              </h2>
+              <p className="text-zinc-400 mb-8 max-w-xl mx-auto">
+                Don&apos;t see the tool you need? Our HTTP action works with any REST API,
+                or let us know what you&apos;d like to see next.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Link
+                  href="/contact"
+                  className="inline-flex items-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600 px-8 py-4 font-semibold text-white hover:opacity-90 transition-opacity hover:scale-105 shadow-lg"
+                >
+                  Request Integration
+                  <svg className="ml-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </Link>
+                <Link
+                  href="/docs"
+                  className="inline-flex items-center rounded-full glass-button px-8 py-4 font-medium text-white hover:scale-105 transition-transform"
+                >
+                  View API Docs
+                  <svg className="ml-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
