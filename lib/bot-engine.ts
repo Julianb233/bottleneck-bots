@@ -10,7 +10,7 @@ export type BotConfig = {
 }
 
 export type BotAction = {
-  type: "http_request" | "email" | "slack" | "discord" | "scrape" | "custom"
+  type: "http_request" | "email" | "slack" | "discord" | "scrape" | "custom" | "webhook" | "delay" | "filter" | "transform"
   config: Record<string, unknown>
   order: number
 }

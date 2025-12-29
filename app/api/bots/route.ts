@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSupabase } from "@/lib/supabase"
+import { getBots, createBot, type CreateBotInput, type BotConfig } from "@/lib/db/bots"
 
 /**
  * GET /api/bots
@@ -19,20 +20,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Fetch user's bots
-    const { data: bots, error } = await supabase
-      .from("bots")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .order("created_at", { ascending: false })
+    // TODO: Replace mock DB with Supabase integration
+    // const { data: bots, error } = await supabase
+    //   .from("bots")
+    //   .select("*")
+    //   .eq("user_id", session.user.id)
+    //   .order("created_at", { ascending: false })
 
-    if (error) {
-      console.error("Error fetching bots:", error)
-      return NextResponse.json(
-        { error: "Failed to fetch bots" },
-        { status: 500 }
-      )
-    }
+    // Fetch user's bots from mock database
+    const bots = await getBots(session.user.id)
 
     return NextResponse.json({ bots }, { status: 200 })
   } catch (error) {
@@ -46,7 +42,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/bots
- * Create a new bot
+ * Create a new bot with configuration
  */
 export async function POST(request: NextRequest) {
   try {
@@ -67,16 +63,32 @@ export async function POST(request: NextRequest) {
     const { name, description, config, status = "active" } = body
 
     // Validate required fields
-    if (!name || typeof name !== "string") {
+    if (!name || typeof name !== "string" || name.trim() === "") {
       return NextResponse.json(
-        { error: "Bot name is required" },
+        { error: "Bot name is required and must be a non-empty string" },
         { status: 400 }
       )
     }
 
     if (!config || typeof config !== "object") {
       return NextResponse.json(
-        { error: "Bot configuration is required" },
+        { error: "Bot configuration is required and must be an object" },
+        { status: 400 }
+      )
+    }
+
+    // Validate config structure
+    const botConfig = config as BotConfig
+    if (!botConfig.type || !["schedule", "webhook", "manual"].includes(botConfig.type)) {
+      return NextResponse.json(
+        { error: "Bot config must have a valid type: schedule, webhook, or manual" },
+        { status: 400 }
+      )
+    }
+
+    if (!Array.isArray(botConfig.actions)) {
+      return NextResponse.json(
+        { error: "Bot config must have an actions array" },
         { status: 400 }
       )
     }
@@ -89,26 +101,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create bot
-    const { data: bot, error } = await supabase
-      .from("bots")
-      .insert({
-        user_id: session.user.id,
-        name,
-        description: description || null,
-        config,
-        status,
-      })
-      .select()
-      .single()
+    // TODO: Replace mock DB with Supabase integration
+    // const { data: bot, error } = await supabase
+    //   .from("bots")
+    //   .insert({
+    //     user_id: session.user.id,
+    //     name,
+    //     description: description || null,
+    //     config,
+    //     status,
+    //   })
+    //   .select()
+    //   .single()
 
-    if (error) {
-      console.error("Error creating bot:", error)
-      return NextResponse.json(
-        { error: "Failed to create bot" },
-        { status: 500 }
-      )
+    // Create bot in mock database
+    const botInput: CreateBotInput = {
+      name: name.trim(),
+      description: description || null,
+      config: botConfig,
+      status,
     }
+
+    const bot = await createBot(session.user.id, botInput)
 
     return NextResponse.json({ bot }, { status: 201 })
   } catch (error) {

@@ -1,8 +1,10 @@
 "use client"
 
+import { useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { NotificationsDropdown } from "@/components/notifications-dropdown"
+import { UserProfileDropdown, useAuth } from "@/components/auth"
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
@@ -16,8 +18,38 @@ const navItems = [
   { href: "/dashboard/settings", label: "Settings", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
 ]
 
+function LoadingSpinner() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+      <div className="text-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-700 border-t-blue-500 mx-auto"></div>
+        <p className="mt-4 text-zinc-400">Loading...</p>
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const { user, loading } = useAuth()
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push(`/login?redirectTo=${encodeURIComponent(pathname)}`)
+    }
+  }, [user, loading, router, pathname])
+
+  // Show loading spinner while checking auth
+  if (loading) {
+    return <LoadingSpinner />
+  }
+
+  // Don't render dashboard if not authenticated
+  if (!user) {
+    return <LoadingSpinner />
+  }
 
   return (
     <div className="flex min-h-screen bg-zinc-950">
@@ -70,15 +102,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           </div>
 
-          {/* User */}
+          {/* User Profile Dropdown */}
           <div className="border-t border-zinc-800 p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">User</p>
-                <p className="text-xs text-zinc-500 truncate">user@example.com</p>
-              </div>
-            </div>
+            <UserProfileDropdown />
           </div>
         </div>
       </aside>

@@ -1,125 +1,352 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
+import {
+  useExecutionHistory,
+  ExecutionRun,
+  getStatusConfig,
+} from "@/hooks/use-execution-history"
+import {
+  ExecutionTimeline,
+  ExecutionDetailModal,
+} from "@/components/execution-history"
+import { cn } from "@/lib/utils"
 
-interface BotRun {
+interface Bot {
   id: string
-  bot_id: string
-  status: "pending" | "running" | "completed" | "failed"
-  started_at: string
-  completed_at: string | null
-  result: Record<string, unknown> | null
-  error: string | null
-  bot?: { name: string }
+  name: string
+  status: string
 }
 
-export default function RunsPage() {
-  const [runs, setRuns] = useState<BotRun[]>([])
-  const [loading, setLoading] = useState(true)
+type StatusFilter = ExecutionRun["status"] | "all"
 
+export default function RunsPage() {
+  // Filter state
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const [botFilter, setBotFilter] = useState<string>("all")
+  const [bots, setBots] = useState<Bot[]>([])
+  const [botsLoading, setBotsLoading] = useState(true)
+
+  // Modal state
+  const [selectedRun, setSelectedRun] = useState<ExecutionRun | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  // Use the execution history hook with filters
+  const {
+    runs,
+    loading,
+    error,
+    hasMore,
+    total,
+    refresh,
+    loadMore,
+    isRefreshing,
+  } = useExecutionHistory({
+    botId: botFilter !== "all" ? botFilter : undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    limit: 20,
+    autoRefresh: true,
+    refreshInterval: 5000,
+  })
+
+  // Fetch bots for filter dropdown
   useEffect(() => {
-    fetchRuns()
-    const interval = setInterval(fetchRuns, 5000)
-    return () => clearInterval(interval)
+    async function fetchBots() {
+      setBotsLoading(true)
+      const { data, error } = await supabase
+        .from("bots")
+        .select("id, name, status")
+        .order("name", { ascending: true })
+      if (!error && data) {
+        setBots(data as Bot[])
+      }
+      setBotsLoading(false)
+    }
+    fetchBots()
   }, [])
 
-  async function fetchRuns() {
-    const { data, error } = await supabase
-      .from("bot_runs")
-      .select("*, bot:bots(name)")
-      .order("started_at", { ascending: false })
-      .limit(50)
-    if (!error && data) setRuns(data as BotRun[])
-    setLoading(false)
+  // Status options for filter
+  const statusOptions: { value: StatusFilter; label: string }[] = [
+    { value: "all", label: "All Statuses" },
+    { value: "pending", label: "Pending" },
+    { value: "running", label: "Running" },
+    { value: "completed", label: "Completed" },
+    { value: "failed", label: "Failed" },
+    { value: "cancelled", label: "Cancelled" },
+  ]
+
+  // Stats calculations
+  const stats = useMemo(() => {
+    const completedRuns = runs.filter((r) => r.status === "completed").length
+    const failedRuns = runs.filter((r) => r.status === "failed").length
+    const runningRuns = runs.filter((r) => r.status === "running").length
+    const successRate =
+      completedRuns + failedRuns > 0
+        ? Math.round((completedRuns / (completedRuns + failedRuns)) * 100)
+        : 0
+    return { completedRuns, failedRuns, runningRuns, successRate }
+  }, [runs])
+
+  // Handle run click to open modal
+  function handleRunClick(run: ExecutionRun) {
+    setSelectedRun(run)
+    setIsModalOpen(true)
   }
 
-  const statusConfig = {
-    pending: { color: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30", icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" },
-    running: { color: "bg-blue-500/20 text-blue-400 border-blue-500/30", icon: "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" },
-    completed: { color: "bg-green-500/20 text-green-400 border-green-500/30", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
-    failed: { color: "bg-red-500/20 text-red-400 border-red-500/30", icon: "M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" }
+  // Handle modal close
+  function handleCloseModal() {
+    setIsModalOpen(false)
+    setSelectedRun(null)
   }
 
-  function formatDate(date: string) {
-    return new Date(date).toLocaleString()
+  // Clear filters
+  function clearFilters() {
+    setStatusFilter("all")
+    setBotFilter("all")
   }
 
-  function formatDuration(start: string, end: string | null) {
-    if (!end) return "Running..."
-    const ms = new Date(end).getTime() - new Date(start).getTime()
-    if (ms < 1000) return ms + "ms"
-    if (ms < 60000) return (ms / 1000).toFixed(1) + "s"
-    return (ms / 60000).toFixed(1) + "m"
-  }
+  const hasActiveFilters = statusFilter !== "all" || botFilter !== "all"
 
   return (
     <div>
+      {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Bot Runs</h1>
-        <p className="text-zinc-400 mt-1">Monitor execution history and results</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Bot Runs</h1>
+            <p className="text-zinc-400 mt-1">
+              Monitor execution history and results
+            </p>
+          </div>
+          <button
+            onClick={refresh}
+            disabled={loading || isRefreshing}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+              "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            )}
+          >
+            <svg
+              className={cn("h-4 w-4", isRefreshing && "animate-spin")}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {isRefreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-700 border-t-blue-500" />
-        </div>
-      ) : runs.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-700 p-12 text-center">
-          <div className="mx-auto h-12 w-12 rounded-full bg-zinc-800 flex items-center justify-center mb-4">
-            <svg className="h-6 w-6 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-white mb-1">No runs yet</h3>
-          <p className="text-zinc-500">Bot execution history will appear here</p>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-zinc-800 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-zinc-900/50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Bot</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Started</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Duration</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Result</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800">
-              {runs.map((run) => {
-                const config = statusConfig[run.status]
-                return (
-                  <tr key={run.id} className="hover:bg-zinc-900/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <span className="font-medium text-white">{run.bot?.name || "Unknown Bot"}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium border ${config.color}`}>
-                        <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={config.icon} />
-                        </svg>
-                        {run.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-zinc-400">{formatDate(run.started_at)}</td>
-                    <td className="px-4 py-3 text-sm text-zinc-400">{formatDuration(run.started_at, run.completed_at)}</td>
-                    <td className="px-4 py-3 text-sm">
-                      {run.error ? (
-                        <span className="text-red-400">{run.error}</span>
-                      ) : run.result ? (
-                        <span className="text-green-400">Success</span>
-                      ) : (
-                        <span className="text-zinc-500">—</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+      {/* Stats Cards */}
+      {!loading && runs.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <StatCard
+            label="Total Runs"
+            value={total.toString()}
+            icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+          />
+          <StatCard
+            label="Running"
+            value={stats.runningRuns.toString()}
+            icon="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            color="text-blue-400"
+          />
+          <StatCard
+            label="Completed"
+            value={stats.completedRuns.toString()}
+            icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+            color="text-green-400"
+          />
+          <StatCard
+            label="Success Rate"
+            value={`${stats.successRate}%`}
+            icon="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+            color={stats.successRate >= 80 ? "text-green-400" : stats.successRate >= 50 ? "text-yellow-400" : "text-red-400"}
+          />
         </div>
       )}
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-4 mb-6">
+        {/* Status Filter */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-zinc-400">Status:</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            {statusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Bot Filter */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-zinc-400">Bot:</label>
+          <select
+            value={botFilter}
+            onChange={(e) => setBotFilter(e.target.value)}
+            disabled={botsLoading}
+            className="px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+          >
+            <option value="all">All Bots</option>
+            {bots.map((bot) => (
+              <option key={bot.id} value={bot.id}>
+                {bot.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Clear Filters */}
+        {hasActiveFilters && (
+          <button
+            onClick={clearFilters}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+            Clear Filters
+          </button>
+        )}
+
+        {/* Results Count */}
+        {!loading && (
+          <div className="ml-auto text-sm text-zinc-500">
+            Showing {runs.length} of {total} runs
+          </div>
+        )}
+      </div>
+
+      {/* Error State */}
+      {error && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 mb-6">
+          <div className="flex items-start gap-3">
+            <svg
+              className="h-5 w-5 text-red-400 mt-0.5 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <div>
+              <h4 className="font-medium text-red-400">
+                Failed to load execution history
+              </h4>
+              <p className="text-sm text-red-300 mt-1">{error}</p>
+              <button
+                onClick={refresh}
+                className="mt-2 text-sm text-red-400 hover:text-red-300 underline"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Timeline Component */}
+      <ExecutionTimeline
+        runs={runs}
+        loading={loading}
+        onRunClick={handleRunClick}
+        showBotName={botFilter === "all"}
+      />
+
+      {/* Load More Button */}
+      {hasMore && !loading && (
+        <div className="mt-6 text-center">
+          <button
+            onClick={loadMore}
+            disabled={isRefreshing}
+            className={cn(
+              "px-6 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            )}
+          >
+            {isRefreshing ? "Loading..." : "Load More"}
+          </button>
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      <ExecutionDetailModal
+        run={selectedRun}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+      />
+    </div>
+  )
+}
+
+// Stats Card Component
+function StatCard({
+  label,
+  value,
+  icon,
+  color = "text-white",
+}: {
+  label: string
+  value: string
+  icon: string
+  color?: string
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-800">
+          <svg
+            className={cn("h-5 w-5", color)}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d={icon}
+            />
+          </svg>
+        </div>
+        <div>
+          <p className="text-xs text-zinc-500 uppercase tracking-wider">
+            {label}
+          </p>
+          <p className={cn("text-xl font-semibold", color)}>{value}</p>
+        </div>
+      </div>
     </div>
   )
 }

@@ -521,6 +521,839 @@ const apiMonitorTemplate: BotTemplate = {
 }
 
 /**
+ * Discord Notification Bot Template
+ * Send notifications to Discord channels
+ */
+const discordNotificationTemplate: BotTemplate = {
+  id: "discord-notification",
+  name: "Discord Notification",
+  description:
+    "Send automated notifications to Discord channels with rich embeds. Great for team updates and alerts.",
+  category: "notifications",
+  icon: "message-circle",
+  tags: ["discord", "notifications", "alerts", "messaging", "gaming"],
+  config: {
+    type: "schedule",
+    schedule: "0 9 * * 1-5",
+    actions: [
+      {
+        type: "discord",
+        order: 1,
+        config: {
+          webhookUrl: "{{discord_webhook_url}}",
+          content: "{{message}}",
+          username: "{{bot_name}}",
+          embeds: [
+            {
+              title: "{{embed_title}}",
+              description: "{{embed_description}}",
+              color: 5814783,
+            },
+          ],
+        },
+      },
+    ],
+    settings: {},
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "discord_webhook_url",
+        label: "Discord Webhook URL",
+        type: "url",
+        placeholder: "https://discord.com/api/webhooks/...",
+        required: true,
+        helpText: "Create a webhook in your Discord server settings",
+      },
+      {
+        key: "bot_name",
+        label: "Bot Display Name",
+        type: "text",
+        placeholder: "Bottleneck Bot",
+        required: false,
+        default: "Bottleneck Bot",
+      },
+      {
+        key: "message",
+        label: "Message",
+        type: "textarea",
+        placeholder: "Hey team! Here's your daily update.",
+        required: false,
+      },
+      {
+        key: "embed_title",
+        label: "Embed Title",
+        type: "text",
+        placeholder: "Daily Update",
+        required: false,
+      },
+      {
+        key: "embed_description",
+        label: "Embed Description",
+        type: "textarea",
+        placeholder: "Your detailed message here...",
+        required: true,
+      },
+      {
+        key: "schedule",
+        label: "Send Schedule",
+        type: "select",
+        required: true,
+        default: "0 9 * * 1-5",
+        options: [
+          { label: "Weekdays at 9 AM", value: "0 9 * * 1-5" },
+          { label: "Daily at 9 AM", value: "0 9 * * *" },
+          { label: "Every hour", value: "0 * * * *" },
+          { label: "Custom", value: "custom" },
+        ],
+      },
+    ],
+  },
+  setupInstructions:
+    "1. Go to your Discord server settings\n2. Navigate to Integrations > Webhooks\n3. Create a new webhook and copy the URL\n4. Paste it here and customize your message",
+}
+
+/**
+ * Multi-Channel Alert Bot Template
+ * Send alerts to multiple channels simultaneously
+ */
+const multiChannelAlertTemplate: BotTemplate = {
+  id: "multi-channel-alert",
+  name: "Multi-Channel Alert",
+  description:
+    "Send critical alerts to multiple channels at once - Slack, Discord, and Email. Never miss an important notification.",
+  category: "notifications",
+  icon: "megaphone",
+  tags: ["alert", "multi-channel", "slack", "discord", "email", "critical"],
+  config: {
+    type: "webhook",
+    webhookUrl: "",
+    actions: [
+      {
+        type: "slack",
+        order: 1,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message: "🚨 ALERT: {{alert_title}}\n\n{{alert_message}}",
+          username: "Alert Bot",
+          iconEmoji: ":rotating_light:",
+        },
+      },
+      {
+        type: "discord",
+        order: 2,
+        config: {
+          webhookUrl: "{{discord_webhook_url}}",
+          content: "🚨 **ALERT**",
+          embeds: [
+            {
+              title: "{{alert_title}}",
+              description: "{{alert_message}}",
+              color: 15158332,
+            },
+          ],
+        },
+      },
+      {
+        type: "email",
+        order: 3,
+        config: {
+          to: "{{alert_email}}",
+          subject: "🚨 Alert: {{alert_title}}",
+          body: "{{alert_message}}",
+          from: "alerts@bottleneckbots.com",
+        },
+      },
+    ],
+    settings: {
+      continueOnError: true,
+    },
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "alert_title",
+        label: "Alert Title Template",
+        type: "text",
+        placeholder: "System Down",
+        required: true,
+        helpText: "Can include {{variables}} from trigger data",
+      },
+      {
+        key: "alert_message",
+        label: "Alert Message Template",
+        type: "textarea",
+        placeholder: "{{trigger.body.message}}",
+        required: true,
+      },
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook URL",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: false,
+      },
+      {
+        key: "discord_webhook_url",
+        label: "Discord Webhook URL",
+        type: "url",
+        placeholder: "https://discord.com/api/webhooks/...",
+        required: false,
+      },
+      {
+        key: "alert_email",
+        label: "Alert Email",
+        type: "email",
+        placeholder: "alerts@yourcompany.com",
+        required: false,
+      },
+    ],
+  },
+  setupInstructions:
+    "Configure at least one channel (Slack, Discord, or Email). When triggered via webhook, the bot will send alerts to all configured channels.",
+}
+
+/**
+ * Daily Standup Reminder Bot Template
+ */
+const dailyStandupTemplate: BotTemplate = {
+  id: "daily-standup",
+  name: "Daily Standup Reminder",
+  description:
+    "Remind your team to post their daily standup updates. Includes prompts for what to share.",
+  category: "productivity",
+  icon: "users",
+  tags: ["standup", "daily", "team", "agile", "scrum", "productivity"],
+  config: {
+    type: "schedule",
+    schedule: "0 9 * * 1-5",
+    actions: [
+      {
+        type: "slack",
+        order: 1,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message:
+            "☀️ Good morning team! Time for standup.\n\nPlease share:\n• What did you accomplish yesterday?\n• What are you working on today?\n• Any blockers?\n\n<{{standup_link}}|Post your update here>",
+          username: "Standup Bot",
+          iconEmoji: ":sunrise:",
+        },
+      },
+    ],
+    settings: {},
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook URL",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: true,
+      },
+      {
+        key: "standup_link",
+        label: "Standup Form/Channel Link",
+        type: "url",
+        placeholder: "https://app.example.com/standup",
+        required: false,
+        helpText: "Optional link to your standup form or channel",
+      },
+      {
+        key: "schedule",
+        label: "Reminder Time",
+        type: "select",
+        required: true,
+        default: "0 9 * * 1-5",
+        options: [
+          { label: "9:00 AM Weekdays", value: "0 9 * * 1-5" },
+          { label: "9:30 AM Weekdays", value: "30 9 * * 1-5" },
+          { label: "10:00 AM Weekdays", value: "0 10 * * 1-5" },
+          { label: "Custom", value: "custom" },
+        ],
+      },
+    ],
+  },
+  setupInstructions:
+    "Set up a Slack webhook for your team channel. The bot will send a friendly reminder every weekday morning.",
+}
+
+/**
+ * Weekly Report Digest Bot Template
+ */
+const weeklyReportTemplate: BotTemplate = {
+  id: "weekly-report",
+  name: "Weekly Report Digest",
+  description:
+    "Automatically fetch data from an API and send a weekly summary report to your team via email and Slack.",
+  category: "productivity",
+  icon: "bar-chart",
+  tags: ["report", "weekly", "digest", "summary", "analytics"],
+  config: {
+    type: "schedule",
+    schedule: "0 9 * * 1",
+    actions: [
+      {
+        type: "http_request",
+        order: 1,
+        config: {
+          url: "{{report_api_url}}",
+          method: "GET",
+          headers: {
+            Authorization: "Bearer {{api_key}}",
+          },
+        },
+      },
+      {
+        type: "email",
+        order: 2,
+        config: {
+          to: "{{report_email}}",
+          subject: "📊 Weekly Report - Week of {{date}}",
+          body: "Here's your weekly report:\n\n{{previous.data}}",
+          from: "reports@bottleneckbots.com",
+        },
+      },
+      {
+        type: "slack",
+        order: 3,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message: "📊 *Weekly Report*\n\nCheck your email for the full report, or view the highlights:\n\n{{previous.data.summary}}",
+          username: "Report Bot",
+          iconEmoji: ":chart_with_upwards_trend:",
+        },
+      },
+    ],
+    settings: {
+      continueOnError: false,
+    },
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "report_api_url",
+        label: "Report API URL",
+        type: "url",
+        placeholder: "https://api.example.com/reports/weekly",
+        required: true,
+        helpText: "API endpoint that returns your report data",
+      },
+      {
+        key: "api_key",
+        label: "API Key",
+        type: "text",
+        placeholder: "your-api-key",
+        required: false,
+      },
+      {
+        key: "report_email",
+        label: "Report Email",
+        type: "email",
+        placeholder: "team@yourcompany.com",
+        required: true,
+      },
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook (Optional)",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: false,
+      },
+      {
+        key: "schedule",
+        label: "Report Day & Time",
+        type: "select",
+        required: true,
+        default: "0 9 * * 1",
+        options: [
+          { label: "Monday 9 AM", value: "0 9 * * 1" },
+          { label: "Friday 5 PM", value: "0 17 * * 5" },
+          { label: "Sunday 6 PM", value: "0 18 * * 0" },
+          { label: "Custom", value: "custom" },
+        ],
+      },
+    ],
+  },
+  setupInstructions:
+    "Configure your report API endpoint that returns JSON data. The bot will fetch the data and send it as a formatted email and Slack message.",
+}
+
+/**
+ * New Lead Notification Bot Template
+ */
+const leadNotificationTemplate: BotTemplate = {
+  id: "lead-notification",
+  name: "New Lead Notification",
+  description:
+    "Get instant notifications when a new lead comes in. Perfect for sales teams who need quick response times.",
+  category: "notifications",
+  icon: "user-plus",
+  tags: ["leads", "sales", "crm", "notifications", "webhook"],
+  config: {
+    type: "webhook",
+    webhookUrl: "",
+    actions: [
+      {
+        type: "slack",
+        order: 1,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message:
+            "🎉 *New Lead!*\n\n*Name:* {{trigger.body.name}}\n*Email:* {{trigger.body.email}}\n*Company:* {{trigger.body.company}}\n*Source:* {{trigger.body.source}}\n\n<{{crm_link}}|View in CRM>",
+          username: "Lead Bot",
+          iconEmoji: ":tada:",
+        },
+      },
+      {
+        type: "email",
+        order: 2,
+        config: {
+          to: "{{sales_email}}",
+          subject: "🎉 New Lead: {{trigger.body.name}} from {{trigger.body.company}}",
+          body: "A new lead has come in!\n\nName: {{trigger.body.name}}\nEmail: {{trigger.body.email}}\nCompany: {{trigger.body.company}}\nSource: {{trigger.body.source}}\n\nRespond quickly for the best conversion rates!",
+          from: "leads@bottleneckbots.com",
+        },
+      },
+    ],
+    settings: {},
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook URL",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: true,
+      },
+      {
+        key: "sales_email",
+        label: "Sales Team Email",
+        type: "email",
+        placeholder: "sales@yourcompany.com",
+        required: true,
+      },
+      {
+        key: "crm_link",
+        label: "CRM Link",
+        type: "url",
+        placeholder: "https://crm.example.com/leads",
+        required: false,
+      },
+    ],
+  },
+  setupInstructions:
+    "1. Create this bot to get your webhook URL\n2. Configure your form or CRM to send lead data to this webhook\n3. Expected payload: { name, email, company, source }",
+}
+
+/**
+ * E-commerce Order Notification Bot Template
+ */
+const orderNotificationTemplate: BotTemplate = {
+  id: "order-notification",
+  name: "Order Notification",
+  description:
+    "Get notified instantly when a new order is placed. Track revenue and celebrate wins with your team!",
+  category: "notifications",
+  icon: "shopping-cart",
+  tags: ["ecommerce", "orders", "sales", "revenue", "shopify", "stripe"],
+  config: {
+    type: "webhook",
+    webhookUrl: "",
+    actions: [
+      {
+        type: "slack",
+        order: 1,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message:
+            "💰 *New Order!*\n\n*Order ID:* #{{trigger.body.order_id}}\n*Customer:* {{trigger.body.customer_name}}\n*Amount:* ${{trigger.body.total}}\n*Items:* {{trigger.body.item_count}} items\n\n<{{order_link}}|View Order>",
+          username: "Sales Bot",
+          iconEmoji: ":moneybag:",
+        },
+      },
+      {
+        type: "discord",
+        order: 2,
+        config: {
+          webhookUrl: "{{discord_webhook_url}}",
+          content: "💰 New order just came in!",
+          embeds: [
+            {
+              title: "Order #{{trigger.body.order_id}}",
+              description: "**Customer:** {{trigger.body.customer_name}}\n**Amount:** ${{trigger.body.total}}",
+              color: 3066993,
+            },
+          ],
+        },
+      },
+    ],
+    settings: {
+      continueOnError: true,
+    },
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook URL",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: false,
+      },
+      {
+        key: "discord_webhook_url",
+        label: "Discord Webhook URL",
+        type: "url",
+        placeholder: "https://discord.com/api/webhooks/...",
+        required: false,
+      },
+      {
+        key: "order_link",
+        label: "Order Dashboard Link",
+        type: "url",
+        placeholder: "https://shop.example.com/admin/orders",
+        required: false,
+      },
+    ],
+  },
+  setupInstructions:
+    "Connect this webhook to your Shopify, Stripe, or WooCommerce store. The bot expects: { order_id, customer_name, total, item_count }",
+}
+
+/**
+ * Content Change Monitor Bot Template
+ */
+const contentMonitorTemplate: BotTemplate = {
+  id: "content-monitor",
+  name: "Website Change Monitor",
+  description:
+    "Monitor a webpage for changes and get notified when content updates. Great for tracking competitors or waiting for updates.",
+  category: "monitoring",
+  icon: "eye",
+  tags: ["monitor", "website", "changes", "scraping", "competitor"],
+  config: {
+    type: "schedule",
+    schedule: "0 */4 * * *",
+    actions: [
+      {
+        type: "http_request",
+        order: 1,
+        config: {
+          url: "{{target_url}}",
+          method: "GET",
+          headers: {},
+        },
+      },
+      {
+        type: "transform",
+        order: 2,
+        config: {
+          expression: "hash(previous.body)",
+          outputKey: "content_hash",
+        },
+      },
+      {
+        type: "filter",
+        order: 3,
+        config: {
+          condition: "{{content_hash}} != {{stored_hash}}",
+          continueIf: true,
+        },
+      },
+      {
+        type: "slack",
+        order: 4,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message: "🔔 *Website Updated!*\n\nThe page at <{{target_url}}|{{page_name}}> has changed.\n\nCheck it out to see what's new!",
+          username: "Monitor Bot",
+          iconEmoji: ":eyes:",
+        },
+      },
+    ],
+    settings: {},
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "target_url",
+        label: "Page URL to Monitor",
+        type: "url",
+        placeholder: "https://example.com/pricing",
+        required: true,
+      },
+      {
+        key: "page_name",
+        label: "Page Name",
+        type: "text",
+        placeholder: "Competitor Pricing Page",
+        required: true,
+      },
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook URL",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: true,
+      },
+      {
+        key: "schedule",
+        label: "Check Frequency",
+        type: "select",
+        required: true,
+        default: "0 */4 * * *",
+        options: [
+          { label: "Every hour", value: "0 * * * *" },
+          { label: "Every 4 hours", value: "0 */4 * * *" },
+          { label: "Every 12 hours", value: "0 */12 * * *" },
+          { label: "Daily", value: "0 9 * * *" },
+          { label: "Custom", value: "custom" },
+        ],
+      },
+    ],
+  },
+  setupInstructions:
+    "Enter the URL you want to monitor. The bot will check periodically and notify you when the page content changes.",
+}
+
+/**
+ * Scheduled Database Backup Reminder
+ */
+const backupReminderTemplate: BotTemplate = {
+  id: "backup-reminder",
+  name: "Backup Reminder",
+  description:
+    "Remind yourself or your team to run database backups. Safety first!",
+  category: "productivity",
+  icon: "database",
+  tags: ["backup", "database", "reminder", "devops", "safety"],
+  config: {
+    type: "schedule",
+    schedule: "0 18 * * 5",
+    actions: [
+      {
+        type: "slack",
+        order: 1,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message: "💾 *Backup Reminder*\n\nIt's Friday! Time to ensure all database backups are running correctly.\n\n• Check backup status\n• Verify backup integrity\n• Test restore procedure (monthly)\n\n<{{runbook_link}}|View Backup Runbook>",
+          username: "Backup Bot",
+          iconEmoji: ":floppy_disk:",
+        },
+      },
+      {
+        type: "email",
+        order: 2,
+        config: {
+          to: "{{devops_email}}",
+          subject: "💾 Weekly Backup Check Reminder",
+          body: "Weekly reminder to verify database backups are running correctly.\n\nChecklist:\n- Check backup status in all environments\n- Verify backup file integrity\n- Review backup retention policies\n\nStay safe!",
+          from: "reminders@bottleneckbots.com",
+        },
+      },
+    ],
+    settings: {},
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook URL",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: false,
+      },
+      {
+        key: "devops_email",
+        label: "DevOps Team Email",
+        type: "email",
+        placeholder: "devops@yourcompany.com",
+        required: false,
+      },
+      {
+        key: "runbook_link",
+        label: "Backup Runbook Link",
+        type: "url",
+        placeholder: "https://docs.example.com/backup-runbook",
+        required: false,
+      },
+      {
+        key: "schedule",
+        label: "Reminder Schedule",
+        type: "select",
+        required: true,
+        default: "0 18 * * 5",
+        options: [
+          { label: "Friday 6 PM", value: "0 18 * * 5" },
+          { label: "Daily 5 PM", value: "0 17 * * *" },
+          { label: "Sunday 8 PM", value: "0 20 * * 0" },
+          { label: "Custom", value: "custom" },
+        ],
+      },
+    ],
+  },
+  setupInstructions:
+    "Set up reminders to ensure your backup procedures are followed. Configure at least one notification channel.",
+}
+
+/**
+ * GitHub/GitLab Deployment Notification
+ */
+const deploymentNotificationTemplate: BotTemplate = {
+  id: "deployment-notification",
+  name: "Deployment Notification",
+  description:
+    "Notify your team when a deployment starts or completes. Keep everyone in the loop about production changes.",
+  category: "integrations",
+  icon: "rocket",
+  tags: ["deployment", "devops", "github", "gitlab", "ci-cd", "release"],
+  config: {
+    type: "webhook",
+    webhookUrl: "",
+    actions: [
+      {
+        type: "slack",
+        order: 1,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message: "🚀 *Deployment {{trigger.body.status}}*\n\n*Environment:* {{trigger.body.environment}}\n*Branch:* `{{trigger.body.branch}}`\n*Commit:* `{{trigger.body.commit_sha}}`\n*Author:* {{trigger.body.author}}\n\n<{{trigger.body.url}}|View Deployment>",
+          username: "Deploy Bot",
+          iconEmoji: ":rocket:",
+        },
+      },
+      {
+        type: "discord",
+        order: 2,
+        config: {
+          webhookUrl: "{{discord_webhook_url}}",
+          content: "🚀 Deployment Update",
+          embeds: [
+            {
+              title: "Deployment {{trigger.body.status}}",
+              description: "**Environment:** {{trigger.body.environment}}\n**Branch:** {{trigger.body.branch}}\n**Author:** {{trigger.body.author}}",
+              color: 3447003,
+            },
+          ],
+        },
+      },
+    ],
+    settings: {
+      continueOnError: true,
+    },
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook URL",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: false,
+      },
+      {
+        key: "discord_webhook_url",
+        label: "Discord Webhook URL",
+        type: "url",
+        placeholder: "https://discord.com/api/webhooks/...",
+        required: false,
+      },
+    ],
+  },
+  setupInstructions:
+    "Connect this to your CI/CD pipeline. Expected payload: { status, environment, branch, commit_sha, author, url }",
+}
+
+/**
+ * Form Submission Handler
+ */
+const formSubmissionTemplate: BotTemplate = {
+  id: "form-submission",
+  name: "Form Submission Handler",
+  description:
+    "Handle form submissions from your website. Send confirmations, notify your team, and store data.",
+  category: "integrations",
+  icon: "file-text",
+  tags: ["form", "submission", "contact", "website", "webhook"],
+  config: {
+    type: "webhook",
+    webhookUrl: "",
+    actions: [
+      {
+        type: "email",
+        order: 1,
+        config: {
+          to: "{{trigger.body.email}}",
+          subject: "Thanks for reaching out!",
+          body: "Hi {{trigger.body.name}},\n\nThank you for contacting us! We've received your message and will get back to you within 24 hours.\n\nBest regards,\nThe Team",
+          from: "hello@bottleneckbots.com",
+        },
+      },
+      {
+        type: "slack",
+        order: 2,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message: "📬 *New Form Submission*\n\n*Name:* {{trigger.body.name}}\n*Email:* {{trigger.body.email}}\n*Message:*\n> {{trigger.body.message}}",
+          username: "Form Bot",
+          iconEmoji: ":incoming_envelope:",
+        },
+      },
+      {
+        type: "http_request",
+        order: 3,
+        config: {
+          url: "{{storage_api_url}}",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer {{storage_api_key}}",
+          },
+          body: {
+            name: "{{trigger.body.name}}",
+            email: "{{trigger.body.email}}",
+            message: "{{trigger.body.message}}",
+            timestamp: "{{timestamp}}",
+          },
+        },
+      },
+    ],
+    settings: {
+      continueOnError: true,
+    },
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook URL",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: true,
+      },
+      {
+        key: "storage_api_url",
+        label: "Data Storage API URL (Optional)",
+        type: "url",
+        placeholder: "https://api.example.com/submissions",
+        required: false,
+        helpText: "API endpoint to store form submissions",
+      },
+      {
+        key: "storage_api_key",
+        label: "Storage API Key",
+        type: "text",
+        placeholder: "your-api-key",
+        required: false,
+      },
+    ],
+  },
+  setupInstructions:
+    "Point your website form to this webhook URL. Expected fields: { name, email, message }",
+}
+
+/**
  * All available templates
  */
 export const templates: BotTemplate[] = [
@@ -530,6 +1363,16 @@ export const templates: BotTemplate[] = [
   dataSyncTemplate,
   webhookRelayTemplate,
   apiMonitorTemplate,
+  discordNotificationTemplate,
+  multiChannelAlertTemplate,
+  dailyStandupTemplate,
+  weeklyReportTemplate,
+  leadNotificationTemplate,
+  orderNotificationTemplate,
+  contentMonitorTemplate,
+  backupReminderTemplate,
+  deploymentNotificationTemplate,
+  formSubmissionTemplate,
 ]
 
 /**
