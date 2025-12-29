@@ -4,8 +4,14 @@ import {
   getTemplateById,
   getTemplatesByCategory,
   searchTemplates,
+  getCategoryInfo,
   TemplateCategory,
 } from "@/lib/templates"
+import {
+  getPopularTemplates,
+  getFeaturedTemplates,
+  getTemplateCategories,
+} from "@/lib/templates/service"
 
 /**
  * GET /api/templates
@@ -15,6 +21,11 @@ import {
  * - category: Filter by category (monitoring, notifications, integrations, data, productivity)
  * - search: Search templates by name, description, or tags
  * - id: Get a specific template by ID
+ * - featured: If "true", return featured templates
+ * - popular: If "true", return popular templates
+ * - categories: If "true", return category list with counts
+ * - limit: Pagination limit
+ * - offset: Pagination offset
  */
 export async function GET(request: NextRequest) {
   try {
@@ -22,8 +33,39 @@ export async function GET(request: NextRequest) {
     const id = searchParams.get("id")
     const category = searchParams.get("category")
     const search = searchParams.get("search")
+    const featured = searchParams.get("featured")
+    const popular = searchParams.get("popular")
+    const categoriesOnly = searchParams.get("categories")
+    const limit = parseInt(searchParams.get("limit") || "50", 10)
+    const offset = parseInt(searchParams.get("offset") || "0", 10)
 
-    // Get specific template by ID
+    // Return category list with counts
+    if (categoriesOnly === "true") {
+      const categories = getTemplateCategories()
+      return NextResponse.json({ categories }, { status: 200 })
+    }
+
+    // Return featured templates
+    if (featured === "true") {
+      const templates = getFeaturedTemplates()
+      return NextResponse.json({
+        templates: templates.map(formatTemplateSummary),
+        total: templates.length,
+        hasMore: false,
+      }, { status: 200 })
+    }
+
+    // Return popular templates
+    if (popular === "true") {
+      const templates = getPopularTemplates(Math.min(limit, 12))
+      return NextResponse.json({
+        templates: templates.map(formatTemplateSummary),
+        total: templates.length,
+        hasMore: false,
+      }, { status: 200 })
+    }
+
+    // Get specific template by ID (with full details)
     if (id) {
       const template = getTemplateById(id)
       if (!template) {
@@ -60,23 +102,28 @@ export async function GET(request: NextRequest) {
 
     // Search by query
     if (search) {
-      templates = searchTemplates(search)
+      const searchResults = searchTemplates(search)
+      // If category filter is also applied, intersect the results
+      if (category) {
+        templates = templates.filter(t => searchResults.some(s => s.id === t.id))
+      } else {
+        templates = searchResults
+      }
     }
 
+    // Apply pagination
+    const total = templates.length
+    const paginatedTemplates = templates.slice(offset, offset + limit)
+    const hasMore = offset + paginatedTemplates.length < total
+
     // Return templates with summary info (exclude full config for list view)
-    const templateSummaries = templates.map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      category: t.category,
-      icon: t.icon,
-      tags: t.tags,
-    }))
+    const templateSummaries = paginatedTemplates.map(formatTemplateSummary)
 
     return NextResponse.json(
       {
         templates: templateSummaries,
-        total: templateSummaries.length,
+        total,
+        hasMore,
       },
       { status: 200 }
     )
@@ -86,5 +133,18 @@ export async function GET(request: NextRequest) {
       { error: "Failed to fetch templates" },
       { status: 500 }
     )
+  }
+}
+
+function formatTemplateSummary(t: ReturnType<typeof getTemplateById>) {
+  if (!t) return null
+  return {
+    id: t.id,
+    name: t.name,
+    description: t.description,
+    category: t.category,
+    icon: t.icon,
+    tags: t.tags,
+    triggerType: t.config.type,
   }
 }
