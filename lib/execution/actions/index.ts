@@ -149,6 +149,16 @@ export {
   transformAction,
 } from "./transform";
 
+// Browser Scrape Action
+export type {
+  BrowserScrapeActionConfig,
+} from "./browser";
+
+export {
+  BrowserScrapeAction,
+  browserScrapeAction,
+} from "./browser";
+
 // ============================================================================
 // Auto-registration of all actions
 // ============================================================================
@@ -162,6 +172,7 @@ import { webhookAction } from "./webhook";
 import { delayAction } from "./delay";
 import { filterAction } from "./filter";
 import { transformAction } from "./transform";
+import { browserScrapeAction } from "./browser";
 
 /**
  * Register all built-in actions with the registry
@@ -176,6 +187,7 @@ export function registerAllActions(): void {
     delayAction,
     filterAction,
     transformAction,
+    browserScrapeAction,
   ];
 
   for (const action of actions) {
@@ -229,6 +241,11 @@ export const ActionCategories = {
     name: "HTTP Requests",
     description: "Make HTTP requests and webhooks",
     actions: ["http", "webhook"],
+  },
+  browser: {
+    name: "Browser Automation",
+    description: "Scrape web pages with a real browser",
+    actions: ["browser_scrape"],
   },
   controlFlow: {
     name: "Control Flow",

@@ -1,5 +1,6 @@
 import { getServerSupabase, Database } from "./supabase"
 import { sendSlackMessage, sendEmail, sendDiscordMessage, httpRequest, scrapeUrl } from "./integrations"
+import { browserScrape } from "./browserbase"
 
 export type BotConfig = {
   type: "schedule" | "webhook" | "manual"
@@ -10,7 +11,7 @@ export type BotConfig = {
 }
 
 export type BotAction = {
-  type: "http_request" | "email" | "slack" | "discord" | "scrape" | "custom" | "webhook" | "delay" | "filter" | "transform"
+  type: "http_request" | "email" | "slack" | "discord" | "scrape" | "browser_scrape" | "custom" | "webhook" | "delay" | "filter" | "transform"
   config: Record<string, unknown>
   order: number
 }
@@ -160,6 +161,9 @@ export class BotEngine {
       case "scrape":
         return await this.executeScrape(action.config, triggerData)
 
+      case "browser_scrape":
+        return await this.executeBrowserScrape(action.config, triggerData)
+
       case "custom":
         return await this.executeCustom(action.config, triggerData)
 
@@ -295,6 +299,39 @@ export class BotEngine {
       throw new Error(result.error || "Scrape failed")
     }
     return { status: "scraped", data: result.data }
+  }
+
+  /**
+   * Execute browser scraping action via Browserbase
+   */
+  private async executeBrowserScrape(
+    config: Record<string, unknown>,
+    triggerData?: Record<string, unknown>
+  ): Promise<unknown> {
+    const { url, selector, waitForSelector, screenshot, fullPage, timeout, extractText, extractHtml, extractLinks } = config
+    if (!url) {
+      throw new Error("Browser scrape requires 'url' field")
+    }
+
+    const result = await browserScrape(
+      {
+        url: url as string,
+        selector: selector as string | undefined,
+        waitForSelector: waitForSelector as string | undefined,
+        screenshot: screenshot as boolean | undefined,
+        fullPage: fullPage as boolean | undefined,
+        timeout: timeout as number | undefined,
+        extractText: extractText as boolean | undefined,
+        extractHtml: extractHtml as boolean | undefined,
+        extractLinks: extractLinks as boolean | undefined,
+      },
+      triggerData
+    )
+
+    if (!result.success) {
+      throw new Error(result.error || "Browser scrape failed")
+    }
+    return { status: "browser_scraped", data: result.data, sessionId: result.sessionId }
   }
 
   /**

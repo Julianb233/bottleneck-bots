@@ -19,6 +19,7 @@ export enum ActionType {
   DELAY = "delay",
   FILTER = "filter",
   TRANSFORM = "transform",
+  BROWSER_SCRAPE = "browser_scrape",
 }
 
 /**

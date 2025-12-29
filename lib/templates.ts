@@ -1119,6 +1119,230 @@ const contentMonitorTemplate: BotTemplate = {
 }
 
 /**
+ * Browser Scrape Bot Template
+ * Scrape dynamic JavaScript-rendered pages
+ */
+const browserScrapeTemplate: BotTemplate = {
+  id: "browser-scrape",
+  name: "Browser Scrape",
+  description:
+    "Scrape JavaScript-heavy websites using a real browser. Perfect for SPAs, dynamic content, and sites that require JS rendering.",
+  category: "data",
+  icon: "globe",
+  tags: ["scraping", "browser", "javascript", "spa", "data", "extraction"],
+  config: {
+    type: "schedule",
+    schedule: "0 */6 * * *", // Every 6 hours
+    actions: [
+      {
+        type: "browser_scrape",
+        order: 1,
+        config: {
+          url: "{{target_url}}",
+          selector: "{{css_selector}}",
+          waitForSelector: "{{wait_selector}}",
+          extractText: true,
+          extractLinks: true,
+          screenshot: false,
+          timeout: 30000,
+        },
+      },
+      {
+        type: "slack",
+        order: 2,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message: "🌐 *Scrape Complete*\n\nURL: {{target_url}}\n\nContent extracted successfully. Check the bot run details for the data.",
+          username: "Scraper Bot",
+          iconEmoji: ":spider_web:",
+        },
+      },
+    ],
+    settings: {
+      alertOnFailure: true,
+    },
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "target_url",
+        label: "URL to Scrape",
+        type: "url",
+        placeholder: "https://example.com/page",
+        required: true,
+        helpText: "The webpage URL to scrape",
+      },
+      {
+        key: "css_selector",
+        label: "CSS Selector (Optional)",
+        type: "text",
+        placeholder: ".content, #main-data, article",
+        required: false,
+        helpText: "Target specific elements on the page",
+      },
+      {
+        key: "wait_selector",
+        label: "Wait For Selector (Optional)",
+        type: "text",
+        placeholder: "[data-loaded], .content-loaded",
+        required: false,
+        helpText: "Wait for this element before scraping (for dynamic content)",
+      },
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook (Optional)",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: false,
+        helpText: "Get notified when scraping completes",
+      },
+      {
+        key: "schedule",
+        label: "Scrape Frequency",
+        type: "select",
+        required: true,
+        default: "0 */6 * * *",
+        options: [
+          { label: "Every hour", value: "0 * * * *" },
+          { label: "Every 6 hours", value: "0 */6 * * *" },
+          { label: "Every 12 hours", value: "0 */12 * * *" },
+          { label: "Daily at 9 AM", value: "0 9 * * *" },
+          { label: "Custom", value: "custom" },
+        ],
+      },
+    ],
+  },
+  setupInstructions:
+    "Enter the URL you want to scrape. For JavaScript-heavy sites, use the 'Wait For Selector' option to ensure the content loads before scraping. This uses a real browser engine for accurate results.",
+}
+
+/**
+ * Price Monitoring Bot Template
+ * Monitor product prices using browser scraping
+ */
+const priceMonitorTemplate: BotTemplate = {
+  id: "price-monitor",
+  name: "Price Monitor",
+  description:
+    "Track product prices on e-commerce sites. Get alerts when prices drop below your target. Uses browser automation for accurate scraping.",
+  category: "monitoring",
+  icon: "dollar-sign",
+  tags: ["price", "ecommerce", "monitor", "scraping", "deals", "shopping"],
+  config: {
+    type: "schedule",
+    schedule: "0 */4 * * *", // Every 4 hours
+    actions: [
+      {
+        type: "browser_scrape",
+        order: 1,
+        config: {
+          url: "{{product_url}}",
+          selector: "{{price_selector}}",
+          waitForSelector: "{{price_selector}}",
+          extractText: true,
+          screenshot: true,
+          timeout: 45000,
+        },
+      },
+      {
+        type: "filter",
+        order: 2,
+        config: {
+          condition: "{{previous.text}} < {{target_price}}",
+          continueIf: true,
+        },
+      },
+      {
+        type: "slack",
+        order: 3,
+        config: {
+          webhookUrl: "{{slack_webhook_url}}",
+          message: "💰 *Price Alert!*\n\n*Product:* {{product_name}}\n*Current Price:* {{previous.text}}\n*Target:* ${{target_price}}\n\n<{{product_url}}|Buy Now!>",
+          username: "Price Bot",
+          iconEmoji: ":money_with_wings:",
+        },
+      },
+      {
+        type: "email",
+        order: 4,
+        config: {
+          to: "{{alert_email}}",
+          subject: "💰 Price Drop: {{product_name}} is now {{previous.text}}",
+          body: "Good news! The price for {{product_name}} dropped to {{previous.text}}, which is below your target of ${{target_price}}.\n\nBuy now: {{product_url}}",
+          from: "alerts@bottleneckbots.com",
+        },
+      },
+    ],
+    settings: {
+      continueOnError: true,
+    },
+  },
+  configSchema: {
+    fields: [
+      {
+        key: "product_url",
+        label: "Product Page URL",
+        type: "url",
+        placeholder: "https://amazon.com/dp/...",
+        required: true,
+      },
+      {
+        key: "product_name",
+        label: "Product Name",
+        type: "text",
+        placeholder: "MacBook Pro 16",
+        required: true,
+      },
+      {
+        key: "price_selector",
+        label: "Price CSS Selector",
+        type: "text",
+        placeholder: ".price, span[data-price], #product-price",
+        required: true,
+        helpText: "CSS selector that targets the price element",
+      },
+      {
+        key: "target_price",
+        label: "Target Price",
+        type: "number",
+        placeholder: "1500",
+        required: true,
+        helpText: "Alert when price drops below this amount",
+      },
+      {
+        key: "slack_webhook_url",
+        label: "Slack Webhook URL",
+        type: "url",
+        placeholder: "https://hooks.slack.com/services/...",
+        required: false,
+      },
+      {
+        key: "alert_email",
+        label: "Alert Email",
+        type: "email",
+        placeholder: "you@example.com",
+        required: false,
+      },
+      {
+        key: "schedule",
+        label: "Check Frequency",
+        type: "select",
+        required: true,
+        default: "0 */4 * * *",
+        options: [
+          { label: "Every 2 hours", value: "0 */2 * * *" },
+          { label: "Every 4 hours", value: "0 */4 * * *" },
+          { label: "Every 8 hours", value: "0 */8 * * *" },
+          { label: "Daily", value: "0 9 * * *" },
+        ],
+      },
+    ],
+  },
+  setupInstructions:
+    "1. Find the product page URL\n2. Inspect the page to find the CSS selector for the price element\n3. Set your target price\n4. Add notification channels to get alerts when the price drops",
+}
+
+/**
  * Scheduled Database Backup Reminder
  */
 const backupReminderTemplate: BotTemplate = {
@@ -1370,6 +1594,8 @@ export const templates: BotTemplate[] = [
   leadNotificationTemplate,
   orderNotificationTemplate,
   contentMonitorTemplate,
+  browserScrapeTemplate,
+  priceMonitorTemplate,
   backupReminderTemplate,
   deploymentNotificationTemplate,
   formSubmissionTemplate,

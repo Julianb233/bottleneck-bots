@@ -18,7 +18,7 @@ export type ScheduleType = 'cron' | 'one-time'
 
 export interface BotAction {
   id: string
-  type: 'http_request' | 'email' | 'slack' | 'discord' | 'scrape' | 'custom' | 'webhook' | 'delay' | 'filter' | 'transform'
+  type: 'http_request' | 'email' | 'slack' | 'discord' | 'scrape' | 'browser_scrape' | 'custom' | 'webhook' | 'delay' | 'filter' | 'transform'
   config: Record<string, unknown>
   order: number
 }
