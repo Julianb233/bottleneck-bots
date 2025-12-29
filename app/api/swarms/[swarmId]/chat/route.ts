@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerComponentClient } from "@/lib/supabase-server";
+import { executeAgent, type AgentConfig, type AgentMessage } from "@/lib/agent-engine";
+import { expandCapabilities } from "@/lib/agent-tools";
 
 export const runtime = "nodejs";
+export const maxDuration = 60; // Allow up to 60 seconds for LLM processing
 
 // GET /api/swarms/[swarmId]/chat - Get chat history
 export async function GET(
@@ -161,7 +164,7 @@ export async function POST(
       });
     }
 
-    // For now, simulate an agent response
+    // Select responding agent
     const respondingAgent = targetAgents[0];
 
     // Update agent status to active
@@ -170,8 +173,92 @@ export async function POST(
       .update({ status: "active", current_task: message.substring(0, 100) })
       .eq("id", respondingAgent.id);
 
-    // Simulate agent processing
-    const agentResponse = generateAgentResponse(message, respondingAgent);
+    // Fetch recent conversation history for context
+    const { data: history } = await (supabase as any)
+      .from("swarm_messages")
+      .select("role, content, agent_id")
+      .eq("swarm_id", swarmId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    // Build conversation messages for LLM
+    const conversationMessages: AgentMessage[] = (history || [])
+      .reverse()
+      .filter((msg: any) => msg.role === "user" || (msg.role === "agent" && msg.agent_id === respondingAgent.id))
+      .map((msg: any) => ({
+        role: msg.role === "user" ? "user" as const : "assistant" as const,
+        content: msg.content,
+      }));
+
+    // Add current message
+    conversationMessages.push({
+      role: "user",
+      content: message,
+    });
+
+    // Build agent configuration for real LLM execution
+    const agentConfig: AgentConfig = {
+      id: respondingAgent.id,
+      name: respondingAgent.name,
+      role: respondingAgent.role,
+      systemPrompt: respondingAgent.system_prompt || undefined,
+      capabilities: expandCapabilities(respondingAgent.capabilities || []),
+      integrationExpertise: respondingAgent.integration_expertise || [],
+      knowledgeSources: respondingAgent.knowledge_sources || undefined,
+      maxIterations: 5,
+      temperature: 0.7,
+    };
+
+    let agentResponseContent = "";
+    let responseType = "text";
+    let toolsUsed: any[] = [];
+
+    try {
+      // Execute agent with real LLM
+      const llmResponse = await executeAgent(
+        agentConfig,
+        conversationMessages,
+        (toolCall) => {
+          toolsUsed.push({
+            name: toolCall.name,
+            input: toolCall.input,
+          });
+        }
+      );
+
+      agentResponseContent = llmResponse.content;
+
+      // Determine response type based on tool usage
+      if (llmResponse.toolCalls && llmResponse.toolCalls.length > 0) {
+        responseType = "task";
+      }
+
+      // Save tool executions if any
+      if (llmResponse.toolCalls && llmResponse.toolResults) {
+        for (let i = 0; i < llmResponse.toolCalls.length; i++) {
+          const toolCall = llmResponse.toolCalls[i];
+          const toolResult = llmResponse.toolResults[i];
+
+          await (supabase as any)
+            .from("swarm_tool_executions")
+            .insert({
+              swarm_id: swarmId,
+              agent_id: respondingAgent.id,
+              tool_name: toolCall.name,
+              input: toolCall.input,
+              output: toolResult?.result || null,
+              error: toolResult?.error || null,
+              duration_ms: 0, // Would need to track timing
+            });
+        }
+      }
+
+    } catch (llmError) {
+      console.error("LLM execution error:", llmError);
+      // Fallback to simulated response if LLM fails
+      agentResponseContent = `I apologize, but I encountered an issue processing your request. Error: ${llmError instanceof Error ? llmError.message : "Unknown error"}. Please try again or check the API configuration.`;
+      responseType = "error";
+    }
 
     // Save agent response
     const { data: agentMessage, error: agentMsgError } = await (supabase as any)
@@ -179,9 +266,10 @@ export async function POST(
       .insert({
         swarm_id: swarmId,
         role: "agent",
-        content: agentResponse.content,
+        content: agentResponseContent,
         agent_id: respondingAgent.id,
-        type: agentResponse.type,
+        type: responseType,
+        metadata: toolsUsed.length > 0 ? { tools: toolsUsed } : null,
       })
       .select()
       .single();
@@ -217,44 +305,11 @@ export async function POST(
         agentName: respondingAgent.name,
         timestamp: agentMessage.created_at,
         type: agentMessage.type,
+        toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
       } : null,
     });
   } catch (error) {
     console.error("Error in POST /api/swarms/[swarmId]/chat:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-}
-
-// Helper function to generate agent responses
-function generateAgentResponse(
-  message: string,
-  agent: { name: string; role: string; capabilities: string[] }
-): { content: string; type: string } {
-  const lowerMessage = message.toLowerCase();
-
-  if (lowerMessage.includes("scrape") || lowerMessage.includes("extract")) {
-    return {
-      content: `I'll help you extract data from that source. As a ${agent.role}, I can use my browser capabilities to navigate and scrape the content. Let me initialize a Browserbase session and get started...`,
-      type: "task",
-    };
-  }
-
-  if (lowerMessage.includes("monitor") || lowerMessage.includes("watch")) {
-    return {
-      content: `Setting up monitoring for your specified target. I'll check at regular intervals and alert you when changes are detected.`,
-      type: "task",
-    };
-  }
-
-  if (lowerMessage.includes("search") || lowerMessage.includes("find") || lowerMessage.includes("research")) {
-    return {
-      content: `I'm researching that topic now. I'll gather relevant information from multiple sources and compile a summary for you.`,
-      type: "task",
-    };
-  }
-
-  return {
-    content: `Understood! I'm ${agent.name}, your ${agent.role} agent. I've received your message and I'm ready to help. What specific task would you like me to work on?`,
-    type: "text",
-  };
 }

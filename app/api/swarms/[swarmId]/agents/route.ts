@@ -54,6 +54,9 @@ export async function GET(
         tasksCompleted: agent.tasks_completed || 0,
         hasBrowser: agent.has_browser || false,
         capabilities: agent.capabilities || [],
+        systemPrompt: agent.system_prompt,
+        integrationExpertise: agent.integration_expertise || [],
+        knowledgeSources: agent.knowledge_sources || [],
         lastActivity: agent.last_activity,
         browserSessionId: agent.browser_session_id,
       })) || [],
@@ -94,7 +97,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { name, role, capabilities, useBrowser } = body;
+    const { name, role, capabilities, useBrowser, systemPrompt, integrationExpertise, knowledgeSources } = body;
 
     if (!name || typeof name !== "string") {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -104,7 +107,7 @@ export async function POST(
       return NextResponse.json({ error: "Role is required" }, { status: 400 });
     }
 
-    // Create the agent
+    // Create the agent with all configuration
     const { data: agent, error } = await (supabase as any)
       .from("swarm_agents")
       .insert({
@@ -113,6 +116,9 @@ export async function POST(
         role: role,
         capabilities: capabilities || [],
         has_browser: useBrowser || false,
+        system_prompt: systemPrompt || null,
+        integration_expertise: integrationExpertise || [],
+        knowledge_sources: knowledgeSources || [],
         status: "idle",
         tasks_completed: 0,
       })
@@ -144,6 +150,9 @@ export async function POST(
         tasksCompleted: 0,
         hasBrowser: agentData.has_browser,
         capabilities: agentData.capabilities,
+        systemPrompt: agentData.system_prompt,
+        integrationExpertise: agentData.integration_expertise || [],
+        knowledgeSources: agentData.knowledge_sources || [],
         lastActivity: null,
         browserSessionId,
       },
