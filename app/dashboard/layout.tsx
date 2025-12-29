@@ -9,6 +9,7 @@ import { UserProfileDropdown, useAuth } from "@/components/auth"
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
   { href: "/dashboard/bots", label: "Bots", icon: "M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
+  { href: "/dashboard/swarms", label: "Swarms", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z", badge: "NEW" },
   { href: "/dashboard/templates", label: "Templates", icon: "M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" },
   { href: "/dashboard/monitoring", label: "Monitoring", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
   { href: "/dashboard/runs", label: "Run History", icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" },
@@ -20,9 +21,13 @@ const navItems = [
 
 function LoadingSpinner() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-      <div className="text-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-700 border-t-blue-500 mx-auto"></div>
+    <div className="relative flex min-h-screen items-center justify-center">
+      {/* Background */}
+      <div className="absolute inset-0 mesh-gradient" />
+      <div className="absolute inset-0 noise-overlay" />
+
+      <div className="relative z-10 text-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/10 border-t-blue-500 mx-auto"></div>
         <p className="mt-4 text-zinc-400">Loading...</p>
       </div>
     </div>
@@ -52,13 +57,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-950">
+    <div className="relative flex min-h-screen">
+      {/* Global Background */}
+      <div className="fixed inset-0 mesh-gradient" />
+      <div className="fixed inset-0 noise-overlay" />
+
+      {/* Floating orbs */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 right-1/4 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-cyan-500/3 rounded-full blur-3xl" />
+      </div>
+
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-zinc-800 bg-zinc-900">
+      <aside className="fixed left-0 top-0 z-40 h-screen w-64 glass border-r border-white/10">
         <div className="flex h-full flex-col">
           {/* Logo */}
-          <div className="flex h-16 items-center gap-2 border-b border-zinc-800 px-6">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+          <div className="flex h-16 items-center gap-2 border-b border-white/10 px-6">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/25">
               <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
@@ -74,16 +90,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
                     isActive
-                      ? "bg-zinc-800 text-white"
-                      : "text-zinc-400 hover:bg-zinc-800/50 hover:text-white"
+                      ? "glass-button text-white shadow-lg shadow-blue-500/10"
+                      : "text-zinc-400 hover:bg-white/5 hover:text-white"
                   }`}
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
                   </svg>
                   {item.label}
+                  {item.badge && (
+                    <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold rounded bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
+                      {item.badge}
+                    </span>
+                  )}
                 </Link>
               )
             })}
@@ -93,7 +114,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="px-3 pb-4">
             <Link
               href="/dashboard/bots/new"
-              className="flex items-center justify-center gap-2 w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              className="flex items-center justify-center gap-2 w-full rounded-xl px-3 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-blue-500/25"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -103,16 +124,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           {/* User Profile Dropdown */}
-          <div className="border-t border-zinc-800 p-4">
+          <div className="border-t border-white/10 p-4">
             <UserProfileDropdown />
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <div className="ml-64 flex-1 flex flex-col">
+      <div className="relative z-10 ml-64 flex-1 flex flex-col">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 h-16 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-900/60">
+        <header className="sticky top-0 z-30 h-16 glass border-b border-white/10 backdrop-blur-xl">
           <div className="flex h-full items-center justify-between px-6">
             {/* Search */}
             <div className="relative w-64">
@@ -122,7 +143,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <input
                 type="text"
                 placeholder="Search bots..."
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 pl-10 pr-4 py-2 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded-xl glass pl-10 pr-4 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 border border-white/10"
               />
             </div>
 
@@ -131,7 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <NotificationsDropdown />
               <Link
                 href="/docs"
-                className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
                 title="Documentation"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -143,7 +164,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-8">{children}</main>
+        <main className="flex-1">{children}</main>
       </div>
     </div>
   )
