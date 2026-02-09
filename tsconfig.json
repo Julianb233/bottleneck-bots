@@ -1,0 +1,82 @@
+{
+  "include": [
+    "client/src/**/*",
+    "shared/**/*",
+    "server/**/*",
+    "api/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist",
+    "**/*.test.ts",
+    "**/*.example.ts",
+    "server/templates/**/*"
+  ],
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "noEmit": true,
+    "module": "ESNext",
+
+    // Strict Type Checking Options
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+
+    // Additional Checks
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": false,
+
+    "lib": [
+      "esnext",
+      "dom",
+      "dom.iterable"
+    ],
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "types": [
+      "node",
+      "vite/client",
+      "vitest/globals",
+      "@testing-library/jest-dom"
+    ],
+    "paths": {
+      // Client aliases
+      "@/*": ["./client/src/*"],
+
+      // Shared package aliases
+      "@shared": ["./shared/_core/index.ts"],
+      "@shared/*": ["./shared/*"],
+      "@shared/const": ["./shared/const.ts"],
+      "@shared/types": ["./shared/types.ts"],
+
+      // Server package aliases
+      "@server": ["./server/_core/index.ts"],
+      "@server/*": ["./server/*"],
+      "@server/api/*": ["./server/api/*"],
+      "@server/auth/*": ["./server/auth/*"],
+      "@server/lib/*": ["./server/lib/*"],
+      "@server/services/*": ["./server/services/*"],
+
+      // Workspace package aliases (for imports like @bottleneck-bots/shared)
+      "@bottleneck-bots/shared": ["./shared/_core/index.ts"],
+      "@bottleneck-bots/server": ["./server/_core/index.ts"],
+      "@bottleneck-bots/client": ["./client/src/main.tsx"]
+    }
+  }
+}

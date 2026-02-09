@@ -1,0 +1,981 @@
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { publicProcedure, protectedProcedure, router } from "../../_core/trpc";
+import { getDb } from "../../db";
+import { lead_lists, enrichedLeads as leads } from "../../../drizzle/schema";
+import { eq, and, desc, sql, count, inArray } from "drizzle-orm";
+import { AppifyService } from "../../services/appify.service";
+import { CreditService } from "../../services/credit.service";
+
+/**
+ * Lead Enrichment Router
+ * Handles CSV upload, lead enrichment via Appify, and lead management
+ *
+ * Features:
+ * - Upload CSV files with leads
+ * - Batch enrichment with credit tracking
+ * - Lead list management
+ * - Individual lead enrichment
+ * - Export enriched data
+ *
+ * All procedures require authentication via protectedProcedure
+ */
+
+// ========================================
+// VALIDATION SCHEMAS
+// ========================================
+
+const createLeadListSchema = z.object({
+  name: z.string().min(1).max(500),
+  description: z.string().optional(),
+  fileName: z.string().optional(),
+  fileSize: z.number().int().positive().optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
+});
+
+const uploadLeadsSchema = z.object({
+  listId: z.number().int(),
+  leads: z.array(
+    z.object({
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+      company: z.string().optional(),
+      website: z.string().url().optional(),
+      linkedIn: z.string().url().optional(),
+      jobTitle: z.string().optional(),
+      // Any additional fields
+    }).passthrough()
+  ),
+});
+
+const enrichLeadSchema = z.object({
+  leadId: z.number().int(),
+});
+
+const enrichListSchema = z.object({
+  listId: z.number().int(),
+  batchSize: z.number().int().positive().default(5),
+});
+
+// ========================================
+// LEAD ENRICHMENT ROUTER
+// ========================================
+
+export const leadEnrichmentRouter = router({
+  /**
+   * Create a new lead list
+   */
+  createList: protectedProcedure
+    .input(createLeadListSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      const result = await db
+        .insert(lead_lists)
+        .values({
+          userId,
+          name: input.name,
+          description: input.description,
+          fileName: input.fileName,
+          fileSize: input.fileSize,
+          status: "uploading",
+          totalLeads: 0,
+          enrichedLeads: 0,
+          failedLeads: 0,
+          costInCredits: 0,
+          metadata: input.metadata,
+          uploadedAt: new Date(),
+        })
+        .returning();
+
+      return result[0];
+    }),
+
+  /**
+   * Get all lead lists for user
+   */
+  getLists: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().int().positive().default(50),
+        offset: z.number().int().nonnegative().default(0),
+        status: z.enum(["uploading", "processing", "completed", "failed"]).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      let query = db
+        .select()
+        .from(lead_lists)
+        .where(eq(lead_lists.userId, userId))
+        .orderBy(desc(lead_lists.uploadedAt))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      if (input.status) {
+        query = db
+          .select()
+          .from(lead_lists)
+          .where(and(eq(lead_lists.userId, userId), eq(lead_lists.status, input.status)))
+          .orderBy(desc(lead_lists.uploadedAt))
+          .limit(input.limit)
+          .offset(input.offset);
+      }
+
+      const lists = await query;
+
+      // Get total count
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(lead_lists)
+        .where(eq(lead_lists.userId, userId));
+
+      return {
+        lists,
+        total,
+        hasMore: input.offset + input.limit < total,
+      };
+    }),
+
+  /**
+   * Get a single lead list by ID
+   */
+  getList: protectedProcedure
+    .input(z.object({ listId: z.number().int() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      const result = await db
+        .select()
+        .from(lead_lists)
+        .where(and(eq(lead_lists.id, input.listId), eq(lead_lists.userId, userId)))
+        .limit(1);
+
+      if (result.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Lead list not found",
+        });
+      }
+
+      return result[0];
+    }),
+
+  /**
+   * Upload leads to a list
+   */
+  uploadLeads: protectedProcedure
+    .input(uploadLeadsSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Verify list exists and belongs to user
+      const listResult = await db
+        .select()
+        .from(lead_lists)
+        .where(and(eq(lead_lists.id, input.listId), eq(lead_lists.userId, userId)))
+        .limit(1);
+
+      if (listResult.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Lead list not found",
+        });
+      }
+
+      // Insert leads
+      const leadValues = input.leads.map((lead) => ({
+        listId: input.listId,
+        userId,
+        rawData: lead,
+        enrichmentStatus: "pending" as const,
+        creditsUsed: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+
+      await db.insert(leads).values(leadValues);
+
+      // Update list total
+      await db
+        .update(lead_lists)
+        .set({
+          totalLeads: sql`${lead_lists.totalLeads} + ${input.leads.length}`,
+          status: "processing",
+        })
+        .where(eq(lead_lists.id, input.listId));
+
+      return {
+        success: true,
+        count: input.leads.length,
+      };
+    }),
+
+  /**
+   * Get leads in a list
+   */
+  getLeads: protectedProcedure
+    .input(
+      z.object({
+        listId: z.number().int(),
+        limit: z.number().int().positive().default(50),
+        offset: z.number().int().nonnegative().default(0),
+        enrichmentStatus: z.enum(["pending", "enriched", "failed", "skipped"]).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Verify list exists and belongs to user
+      const listResult = await db
+        .select()
+        .from(lead_lists)
+        .where(and(eq(lead_lists.id, input.listId), eq(lead_lists.userId, userId)))
+        .limit(1);
+
+      if (listResult.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Lead list not found",
+        });
+      }
+
+      let query = db
+        .select()
+        .from(leads)
+        .where(eq(leads.listId, input.listId))
+        .orderBy(desc(leads.createdAt))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      if (input.enrichmentStatus) {
+        query = db
+          .select()
+          .from(leads)
+          .where(
+            and(eq(leads.listId, input.listId), eq(leads.enrichmentStatus, input.enrichmentStatus))
+          )
+          .orderBy(desc(leads.createdAt))
+          .limit(input.limit)
+          .offset(input.offset);
+      }
+
+      const leadList = await query;
+
+      // Get total count
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(leads)
+        .where(eq(leads.listId, input.listId));
+
+      return {
+        leads: leadList,
+        total,
+        hasMore: input.offset + input.limit < total,
+      };
+    }),
+
+  /**
+   * Enrich a single lead
+   */
+  enrichLead: protectedProcedure
+    .input(enrichLeadSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Get lead
+      const leadResult = await db
+        .select()
+        .from(leads)
+        .where(and(eq(leads.id, input.leadId), eq(leads.userId, userId)))
+        .limit(1);
+
+      if (leadResult.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Lead not found",
+        });
+      }
+
+      const lead = leadResult[0];
+
+      // Check if already enriched
+      if (lead.enrichmentStatus === "enriched") {
+        return {
+          success: true,
+          message: "Lead already enriched",
+          data: lead.enrichedData,
+        };
+      }
+
+      // Check credits
+      const creditService = new CreditService();
+      const hasCredits = await creditService.checkBalance(userId, "enrichment", 1);
+
+      if (!hasCredits) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Insufficient enrichment credits",
+        });
+      }
+
+      // Enrich lead
+      const appifyService = new AppifyService();
+
+      try {
+        const enrichedData = await appifyService.enrichLead(lead.rawData as any);
+
+        // Deduct credits
+        await creditService.deductCredits(
+          userId,
+          1,
+          "enrichment",
+          `Lead enrichment for lead ${input.leadId}`,
+          input.leadId.toString(),
+          "lead"
+        );
+
+        // Update lead
+        await db
+          .update(leads)
+          .set({
+            enrichedData,
+            enrichmentStatus: "enriched",
+            creditsUsed: 1,
+            enrichedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(leads.id, input.leadId));
+
+        // Update list stats
+        await db
+          .update(lead_lists)
+          .set({
+            enrichedLeads: sql`${lead_lists.enrichedLeads} + 1`,
+            costInCredits: sql`${lead_lists.costInCredits} + 1`,
+          })
+          .where(eq(lead_lists.id, lead.listId));
+
+        return {
+          success: true,
+          data: enrichedData,
+        };
+      } catch (error: any) {
+        // Mark as failed
+        await db
+          .update(leads)
+          .set({
+            enrichmentStatus: "failed",
+            error: error.message,
+            updatedAt: new Date(),
+          })
+          .where(eq(leads.id, input.leadId));
+
+        // Update list stats
+        await db
+          .update(lead_lists)
+          .set({
+            failedLeads: sql`${lead_lists.failedLeads} + 1`,
+          })
+          .where(eq(lead_lists.id, lead.listId));
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Enrichment failed: ${error.message}`,
+        });
+      }
+    }),
+
+  /**
+   * Batch enrich all pending leads in a list
+   */
+  enrichList: protectedProcedure
+    .input(enrichListSchema)
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Verify list exists
+      const listResult = await db
+        .select()
+        .from(lead_lists)
+        .where(and(eq(lead_lists.id, input.listId), eq(lead_lists.userId, userId)))
+        .limit(1);
+
+      if (listResult.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Lead list not found",
+        });
+      }
+
+      // Get pending leads
+      const pendingLeads = await db
+        .select()
+        .from(leads)
+        .where(and(eq(leads.listId, input.listId), eq(leads.enrichmentStatus, "pending")));
+
+      if (pendingLeads.length === 0) {
+        return {
+          success: true,
+          message: "No pending leads to enrich",
+          enriched: 0,
+          failed: 0,
+        };
+      }
+
+      // Check credits
+      const creditService = new CreditService();
+      const hasCredits = await creditService.checkBalance(userId, "enrichment", pendingLeads.length);
+
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(userId, "enrichment");
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Insufficient credits. Need ${pendingLeads.length}, have ${balance}`,
+        });
+      }
+
+      // Update list status
+      await db
+        .update(lead_lists)
+        .set({
+          status: "processing",
+          processingStartedAt: new Date(),
+        })
+        .where(eq(lead_lists.id, input.listId));
+
+      // Enrich leads in batches
+      const appifyService = new AppifyService();
+      const results = await appifyService.batchEnrichLeads(
+        pendingLeads.map((l) => l.rawData as any),
+        {
+          concurrency: input.batchSize,
+          delay: 2000, // 2 second delay between batches
+        }
+      );
+
+      let enrichedCount = 0;
+      let failedCount = 0;
+
+      // Process results
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        const lead = pendingLeads[i];
+
+        if (result.success && result.data) {
+          // Update lead
+          await db
+            .update(leads)
+            .set({
+              enrichedData: result.data,
+              enrichmentStatus: "enriched",
+              creditsUsed: 1,
+              enrichedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(leads.id, lead.id));
+
+          // Deduct credits
+          await creditService.deductCredits(
+            userId,
+            1,
+            "enrichment",
+            `Lead enrichment for lead ${lead.id}`,
+            lead.id.toString(),
+            "lead"
+          );
+
+          enrichedCount++;
+        } else {
+          // Mark as failed
+          await db
+            .update(leads)
+            .set({
+              enrichmentStatus: "failed",
+              error: result.error || "Unknown error",
+              updatedAt: new Date(),
+            })
+            .where(eq(leads.id, lead.id));
+
+          failedCount++;
+        }
+      }
+
+      // Update list stats
+      await db
+        .update(lead_lists)
+        .set({
+          enrichedLeads: sql`${lead_lists.enrichedLeads} + ${enrichedCount}`,
+          failedLeads: sql`${lead_lists.failedLeads} + ${failedCount}`,
+          costInCredits: sql`${lead_lists.costInCredits} + ${enrichedCount}`,
+          status: "completed",
+          processedAt: new Date(),
+        })
+        .where(eq(lead_lists.id, input.listId));
+
+      return {
+        success: true,
+        enriched: enrichedCount,
+        failed: failedCount,
+        total: pendingLeads.length,
+      };
+    }),
+
+  /**
+   * Delete a lead list
+   */
+  deleteList: protectedProcedure
+    .input(z.object({ listId: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Verify ownership
+      const listResult = await db
+        .select()
+        .from(lead_lists)
+        .where(and(eq(lead_lists.id, input.listId), eq(lead_lists.userId, userId)))
+        .limit(1);
+
+      if (listResult.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Lead list not found",
+        });
+      }
+
+      // Delete list (cascade will delete leads)
+      await db.delete(lead_lists).where(eq(lead_lists.id, input.listId));
+
+      return { success: true };
+    }),
+
+  /**
+   * Export enriched leads as JSON
+   */
+  exportLeads: protectedProcedure
+    .input(z.object({ listId: z.number().int() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Verify list exists
+      const listResult = await db
+        .select()
+        .from(lead_lists)
+        .where(and(eq(lead_lists.id, input.listId), eq(lead_lists.userId, userId)))
+        .limit(1);
+
+      if (listResult.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Lead list not found",
+        });
+      }
+
+      // Get all enriched leads
+      const enrichedLeads = await db
+        .select()
+        .from(leads)
+        .where(and(eq(leads.listId, input.listId), eq(leads.enrichmentStatus, "enriched")));
+
+      return {
+        list: listResult[0],
+        leads: enrichedLeads.map((lead) => ({
+          id: lead.id,
+          rawData: lead.rawData,
+          enrichedData: lead.enrichedData,
+          enrichedAt: lead.enrichedAt,
+        })),
+      };
+    }),
+
+  /**
+   * Get batch enrichment status for a list
+   */
+  getEnrichmentStatus: protectedProcedure
+    .input(z.object({ listId: z.number().int() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Get list
+      const listResult = await db
+        .select()
+        .from(lead_lists)
+        .where(and(eq(lead_lists.id, input.listId), eq(lead_lists.userId, userId)))
+        .limit(1);
+
+      if (listResult.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Lead list not found",
+        });
+      }
+
+      const list = listResult[0];
+
+      // Get lead counts by status
+      const statusCounts = await db
+        .select({
+          enrichmentStatus: leads.enrichmentStatus,
+          count: count(),
+        })
+        .from(leads)
+        .where(eq(leads.listId, input.listId))
+        .groupBy(leads.enrichmentStatus);
+
+      const statusMap = statusCounts.reduce((acc, row) => {
+        acc[row.enrichmentStatus] = row.count;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Calculate progress percentage
+      const total = list.totalLeads;
+      const enriched = list.enrichedLeads;
+      const progress = total > 0 ? Math.round((enriched / total) * 100) : 0;
+
+      return {
+        listId: list.id,
+        listName: list.name,
+        status: list.status,
+        totalLeads: total,
+        enrichedLeads: enriched,
+        failedLeads: list.failedLeads,
+        pendingLeads: statusMap.pending || 0,
+        skippedLeads: statusMap.skipped || 0,
+        progress,
+        costInCredits: list.costInCredits,
+        uploadedAt: list.uploadedAt,
+        processingStartedAt: list.processingStartedAt,
+        processedAt: list.processedAt,
+      };
+    }),
+
+  /**
+   * Get enrichment history for all lists
+   */
+  getEnrichmentHistory: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().int().positive().default(20),
+        offset: z.number().int().nonnegative().default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Get all lists with enrichment data
+      const lists = await db
+        .select({
+          id: lead_lists.id,
+          name: lead_lists.name,
+          totalLeads: lead_lists.totalLeads,
+          enrichedLeads: lead_lists.enrichedLeads,
+          failedLeads: lead_lists.failedLeads,
+          costInCredits: lead_lists.costInCredits,
+          status: lead_lists.status,
+          uploadedAt: lead_lists.uploadedAt,
+          processedAt: lead_lists.processedAt,
+        })
+        .from(lead_lists)
+        .where(eq(lead_lists.userId, userId))
+        .orderBy(desc(lead_lists.uploadedAt))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      // Get total count
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(lead_lists)
+        .where(eq(lead_lists.userId, userId));
+
+      // Calculate summary stats
+      const summary = lists.reduce(
+        (acc, list) => {
+          acc.totalLeads += list.totalLeads;
+          acc.totalEnriched += list.enrichedLeads;
+          acc.totalFailed += list.failedLeads;
+          acc.totalCreditsUsed += list.costInCredits;
+          return acc;
+        },
+        {
+          totalLeads: 0,
+          totalEnriched: 0,
+          totalFailed: 0,
+          totalCreditsUsed: 0,
+        }
+      );
+
+      return {
+        history: lists,
+        summary,
+        total,
+        hasMore: input.offset + input.limit < total,
+      };
+    }),
+
+  /**
+   * Re-enrich failed leads in a list
+   */
+  reEnrichFailed: protectedProcedure
+    .input(z.object({ listId: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Get failed leads
+      const failedLeads = await db
+        .select()
+        .from(leads)
+        .where(and(eq(leads.listId, input.listId), eq(leads.enrichmentStatus, "failed")));
+
+      if (failedLeads.length === 0) {
+        return {
+          success: true,
+          message: "No failed leads to re-enrich",
+          count: 0,
+        };
+      }
+
+      // Check credits
+      const creditService = new CreditService();
+      const hasCredits = await creditService.checkBalance(userId, "enrichment", failedLeads.length);
+
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(userId, "enrichment");
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Insufficient credits. Need ${failedLeads.length}, have ${balance}`,
+        });
+      }
+
+      // Reset failed leads to pending
+      const leadIds = failedLeads.map(l => l.id);
+      await db
+        .update(leads)
+        .set({
+          enrichmentStatus: "pending",
+          error: null,
+          updatedAt: new Date(),
+        })
+        .where(inArray(leads.id, leadIds));
+
+      // Update list counts
+      await db
+        .update(lead_lists)
+        .set({
+          failedLeads: 0,
+        })
+        .where(eq(lead_lists.id, input.listId));
+
+      return {
+        success: true,
+        message: `Reset ${failedLeads.length} failed leads to pending`,
+        count: failedLeads.length,
+      };
+    }),
+
+  /**
+   * Get enrichment statistics
+   */
+  getEnrichmentStats: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.user.id;
+
+    const db = await getDb();
+    if (!db) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Database not available",
+      });
+    }
+
+    const creditService = new CreditService();
+
+    // Get credit balance
+    const balance = await creditService.getBalance(userId, "enrichment");
+
+    // Get total stats from all lists
+    const [stats] = await db
+      .select({
+        totalLists: count(),
+        totalLeads: sql<number>`COALESCE(SUM(${lead_lists.totalLeads}), 0)`,
+        totalEnriched: sql<number>`COALESCE(SUM(${lead_lists.enrichedLeads}), 0)`,
+        totalFailed: sql<number>`COALESCE(SUM(${lead_lists.failedLeads}), 0)`,
+        totalCreditsUsed: sql<number>`COALESCE(SUM(${lead_lists.costInCredits}), 0)`,
+      })
+      .from(lead_lists)
+      .where(eq(lead_lists.userId, userId));
+
+    // Get active enrichment jobs
+    const activeJobs = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(lead_lists)
+      .where(and(eq(lead_lists.userId, userId), eq(lead_lists.status, "processing")));
+
+    return {
+      creditsAvailable: balance,
+      totalLists: stats.totalLists,
+      totalLeads: Number(stats.totalLeads),
+      totalEnriched: Number(stats.totalEnriched),
+      totalFailed: Number(stats.totalFailed),
+      totalCreditsUsed: Number(stats.totalCreditsUsed),
+      activeEnrichmentJobs: activeJobs[0].count,
+      successRate:
+        Number(stats.totalLeads) > 0
+          ? Math.round((Number(stats.totalEnriched) / Number(stats.totalLeads)) * 100)
+          : 0,
+    };
+  }),
+
+  /**
+   * Estimate enrichment cost
+   */
+  estimateEnrichmentCost: publicProcedure
+    .input(z.object({ leadCount: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const appifyService = new AppifyService();
+      const estimatedCost = await appifyService.estimateEnrichmentCost(input.leadCount);
+
+      return {
+        leadCount: input.leadCount,
+        estimatedCredits: estimatedCost,
+        costPerLead: estimatedCost / input.leadCount,
+      };
+    }),
+
+  /**
+   * Validate Apify configuration
+   */
+  validateApifyConfig: publicProcedure.query(async () => {
+    const appifyService = new AppifyService();
+
+    try {
+      const isValid = await appifyService.validateApiKey();
+
+      if (!isValid) {
+        return {
+          configured: false,
+          valid: false,
+          message: "Apify API key is not configured or invalid",
+        };
+      }
+
+      // Try to get credits balance
+      let creditsBalance = 0;
+      try {
+        creditsBalance = await appifyService.getCreditsBalance();
+      } catch (error) {
+        // Ignore errors for credits balance
+      }
+
+      return {
+        configured: true,
+        valid: true,
+        message: "Apify API is configured and valid",
+        creditsBalance,
+      };
+    } catch (error: any) {
+      return {
+        configured: false,
+        valid: false,
+        message: error.message,
+      };
+    }
+  }),
+});
