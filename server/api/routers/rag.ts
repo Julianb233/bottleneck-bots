@@ -122,16 +122,10 @@ export const ragRouter = router({
         // Use the title from input, parsed metadata, or filename
         const title = input.title || parsed.metadata.title || input.filename;
 
-        // Use SOP-detected category if the user chose 'training' or 'general'
-        const effectiveCategory = (input.category === 'training' || input.category === 'general')
-          && parsed.metadata.detectedCategory && parsed.metadata.detectedCategory !== 'general'
-          ? parsed.metadata.detectedCategory
-          : input.category;
-
         // Ingest the parsed content into RAG system
         const result = await ragService.ingest({
           platform: input.platform,
-          category: effectiveCategory,
+          category: input.category,
           title,
           content: parsed.text,
           sourceType: parsed.metadata.format as "markdown" | "html" | "pdf" | "docx",
@@ -140,11 +134,6 @@ export const ragRouter = router({
             maxTokens: input.maxTokens,
             overlapTokens: input.overlapTokens,
           },
-          sopMetadata: parsed.metadata.isSOP ? {
-            detectedCategory: parsed.metadata.detectedCategory,
-            isSOP: parsed.metadata.isSOP,
-            sopSteps: parsed.metadata.sopSteps,
-          } : undefined,
         });
 
         console.log(
@@ -312,11 +301,8 @@ export const ragRouter = router({
             category: documentationSources.category,
             title: documentationSources.title,
             sourceUrl: documentationSources.sourceUrl,
-            sourceType: documentationSources.sourceType,
             version: documentationSources.version,
             isActive: documentationSources.isActive,
-            metadata: documentationSources.metadata,
-            tags: documentationSources.tags,
             createdAt: documentationSources.createdAt,
             updatedAt: documentationSources.updatedAt,
           })
@@ -356,41 +342,9 @@ export const ragRouter = router({
 
         const countMap = new Map(chunkCounts.map((c: any) => [c.sourceId, Number(c.count)]));
 
-        // Get knowledge category info from first chunk metadata for each source
-        const categoryInfo = sourceIds.length > 0 ? await database
-          .select({
-            sourceId: documentationChunks.sourceId,
-            metadata: documentationChunks.metadata,
-          })
-          .from(documentationChunks)
-          .where(
-            and(
-              sql`${documentationChunks.sourceId} = ANY(${sourceIds})`,
-              eq(documentationChunks.chunkIndex, 0)
-            )
-          ) : [];
-
-        const categoryMap = new Map(
-          categoryInfo.map((c: any) => [
-            c.sourceId,
-            {
-              knowledgeCategory: c.metadata?.knowledgeCategory || "general",
-              sopDocument: c.metadata?.sopDocument || false,
-              sopTotalSteps: c.metadata?.sopTotalSteps || 0,
-              priority: c.metadata?.priority || 50,
-            },
-          ])
-        );
-
         const sourcesWithCounts = sources.map((s: any) => ({
           ...s,
           chunkCount: countMap.get(s.id) || 0,
-          ...(categoryMap.get(s.id) || {
-            knowledgeCategory: "general",
-            sopDocument: false,
-            sopTotalSteps: 0,
-            priority: 50,
-          }),
         }));
 
         return {
@@ -552,54 +506,6 @@ export const ragRouter = router({
     }),
 
   /**
-   * Re-process a document (re-chunk, re-embed, re-detect SOP)
-   */
-  reprocessDocument: protectedProcedure
-    .input(z.object({ sourceId: z.number() }))
-    .mutation(async ({ input }) => {
-      try {
-        const result = await ragService.reprocessDocument(input.sourceId);
-
-        return {
-          success: true,
-          sourceId: result.sourceId,
-          chunkCount: result.chunkCount,
-          totalTokens: result.totalTokens,
-          message: `Re-processed document: ${result.chunkCount} chunks`,
-        };
-      } catch (error) {
-        console.error("[RAG Router] Reprocess failed:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to reprocess: ${error instanceof Error ? error.message : "Unknown error"}`,
-        });
-      }
-    }),
-
-  /**
-   * Get chunks for a specific document
-   */
-  getDocumentChunks: protectedProcedure
-    .input(z.object({ sourceId: z.number() }))
-    .query(async ({ input }) => {
-      try {
-        const chunks = await ragService.getChunks(input.sourceId);
-
-        return {
-          success: true,
-          chunks,
-          count: chunks.length,
-        };
-      } catch (error) {
-        console.error("[RAG Router] Get chunks failed:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to get chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
-        });
-      }
-    }),
-
-  /**
    * Search similar documents using RAG
    */
   searchSimilar: publicProcedure
@@ -669,84 +575,138 @@ export const ragRouter = router({
     }),
 
   /**
-   * Re-process a document source (re-chunk and re-embed with latest SOP processing)
+   * Upload and ingest a document with SOP-aware processing
+   * Detects document category, extracts SOP steps, and assigns priority
    */
-  reprocessSource: protectedProcedure
-    .input(z.object({ sourceId: z.number() }))
-    .mutation(async ({ input }) => {
+  uploadDocumentWithSOPProcessing: protectedProcedure
+    .input(
+      z.object({
+        fileContent: z.string().min(1),
+        filename: z.string().min(1),
+        mimeType: z.string().optional(),
+        platform: z.string().min(1).max(50).default("general"),
+        category: z.string().min(1).max(50).default("training"),
+        title: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
       try {
-        const result = await ragService.reprocessSource(input.sourceId);
+        const buffer = Buffer.from(input.fileContent, "base64");
+        const maxSize = 10 * 1024 * 1024;
+        if (buffer.length > maxSize) {
+          throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "File size exceeds maximum of 10MB" });
+        }
+
+        const parsed = await documentParserService.parse(buffer, input.mimeType, input.filename);
+        if (!parsed.text || parsed.text.length < 10) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Could not extract text from document." });
+        }
+
+        const title = input.title || parsed.metadata.title || input.filename;
+
+        const result = await ragService.ingestWithSOPProcessing({
+          platform: input.platform,
+          category: input.category,
+          title,
+          content: parsed.text,
+          sourceType: parsed.metadata.format as "markdown" | "html" | "pdf" | "docx",
+          userId: ctx.user.id,
+        });
 
         return {
           success: true,
           sourceId: result.sourceId,
           chunkCount: result.chunkCount,
           totalTokens: result.totalTokens,
-          message: `Re-processed document with ${result.chunkCount} chunks`,
+          detectedCategory: result.detectedCategory,
+          sopSteps: result.sopSteps,
+          metadata: parsed.metadata,
+          message: `Processed "${title}" as ${result.detectedCategory}: ${result.chunkCount} chunks${result.sopSteps ? `, ${result.sopSteps.length} SOP steps` : ""}`,
         };
       } catch (error) {
-        console.error("[RAG Router] Reprocess failed:", error);
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to reprocess document: ${error instanceof Error ? error.message : "Unknown error"}`,
+          message: `Failed to upload document: ${error instanceof Error ? error.message : "Unknown error"}`,
         });
       }
     }),
 
   /**
-   * Get chunks for a source (for knowledge base browser preview)
+   * Get chunks for a specific source (for chunk preview in knowledge browser)
    */
   getSourceChunks: protectedProcedure
     .input(z.object({ sourceId: z.number() }))
     .query(async ({ input }) => {
       try {
-        const result = await ragService.getSourceChunks(input.sourceId);
-
+        const chunks = await ragService.getSourceChunks(input.sourceId);
         return {
           success: true,
-          chunks: result.chunks,
-          chunkCount: result.chunks.length,
-          sopMetadata: result.sopMetadata || null,
+          chunks,
+          count: chunks.length,
         };
       } catch (error) {
-        console.error("[RAG Router] Get source chunks failed:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to get source chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
+          message: `Failed to get chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
         });
       }
     }),
 
   /**
-   * Retrieve knowledge for agent task execution (structured SOP + reference context)
+   * Re-process a document with SOP-aware processing
+   * Deletes existing chunks and re-ingests with category detection and step extraction
    */
-  retrieveForTask: publicProcedure
+  reprocessDocument: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .mutation(async ({ input }) => {
+      try {
+        const result = await ragService.reprocessDocument(input.sourceId);
+        return {
+          success: true,
+          sourceId: result.sourceId,
+          chunkCount: result.chunkCount,
+          totalTokens: result.totalTokens,
+          detectedCategory: result.detectedCategory,
+          sopSteps: result.sopSteps,
+          message: `Re-processed document as ${result.detectedCategory}: ${result.chunkCount} chunks${result.sopSteps ? `, ${result.sopSteps.length} SOP steps` : ""}`,
+        };
+      } catch (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to re-process document: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
+   * Retrieve with priority-weighted scoring (SOPs boosted)
+   */
+  retrieveWithPriority: publicProcedure
     .input(
       z.object({
-        taskDescription: z.string().min(1),
+        query: z.string().min(1),
+        topK: z.number().min(1).max(20).optional(),
         platforms: z.array(z.string()).optional(),
-        maxTokens: z.number().min(100).max(10000).optional(),
+        categories: z.array(z.string()).optional(),
+        minSimilarity: z.number().min(0).max(1).optional(),
+        prioritizeSOPs: z.boolean().optional(),
       })
     )
     .query(async ({ input }) => {
       try {
-        const result = await ragService.retrieveForTask(input.taskDescription, {
+        const chunks = await ragService.retrieveWithPriority(input.query, {
+          topK: input.topK,
           platforms: input.platforms,
-          maxTokens: input.maxTokens,
+          categories: input.categories,
+          minSimilarity: input.minSimilarity,
+          prioritizeSOPs: input.prioritizeSOPs,
         });
-
-        return {
-          success: true,
-          sopContext: result.sopContext,
-          referenceContext: result.referenceContext,
-          sopSteps: result.sopSteps,
-          chunkCount: result.allChunks.length,
-        };
+        return { success: true, chunks, count: chunks.length };
       } catch (error) {
-        console.error("[RAG Router] Retrieve for task failed:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to retrieve task knowledge: ${error instanceof Error ? error.message : "Unknown error"}`,
+          message: `Failed to retrieve: ${error instanceof Error ? error.message : "Unknown error"}`,
         });
       }
     }),

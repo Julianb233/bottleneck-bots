@@ -35,7 +35,6 @@ import {
   getAgentPermissionsService,
   PermissionDeniedError,
 } from "./agentPermissions.service";
-import { getAgentSkillConfigService } from "./agentSkillConfig.service";
 import { getSelfCorrectionService, type FailureAttempt } from "./browser/selfCorrection.service";
 import { getConfidenceService } from "./agentConfidence.service";
 import { getStrategyService, type ExecutionStrategy } from "./agentStrategy.service";
@@ -393,19 +392,21 @@ export class AgentOrchestratorService {
       }
     });
 
-    // Tool: Retrieve documentation from knowledge base (RAG)
+    // Tool: Retrieve documentation from knowledge base (RAG) with SOP priority
     this.toolRegistry.set("retrieve_documentation", async (params: {
       query: string;
       topK?: number;
       platforms?: string[];
       categories?: string[];
+      prioritizeSOPs?: boolean;
     }) => {
       try {
-        const chunks = await ragService.retrieve(params.query, {
+        const chunks = await ragService.retrieveWithPriority(params.query, {
           topK: params.topK || 5,
           platforms: params.platforms,
           categories: params.categories,
           minSimilarity: 0.5,
+          prioritizeSOPs: params.prioritizeSOPs !== false, // default true
         });
 
         if (chunks.length === 0) {
@@ -417,11 +418,13 @@ export class AgentOrchestratorService {
           };
         }
 
-        // Format chunks for agent consumption
+        // Format chunks for agent consumption with category and priority info
         const formattedChunks = chunks.slice(0, params.topK || 5).map((chunk, index) => ({
           index: index + 1,
           content: chunk.content,
           relevance: chunk.similarity ? `${(chunk.similarity * 100).toFixed(1)}%` : 'N/A',
+          category: (chunk.metadata as any)?.documentCategory || 'general',
+          priority: (chunk.metadata as any)?.priority || 0,
           metadata: chunk.metadata,
         }));
 
@@ -900,15 +903,6 @@ export class AgentOrchestratorService {
         throw error;
       }
 
-      // SKILL CONFIG: Check if the tool's skill is enabled and permitted
-      const skillConfigService = getAgentSkillConfigService();
-      const skillCheck = await skillConfigService.checkSkillPermission(state.userId, toolName);
-      if (!skillCheck.allowed) {
-        throw new Error(
-          `Skill blocked: ${skillCheck.reason} (Tool: ${toolName}, Skill: ${skillCheck.skillName})`
-        );
-      }
-
       // Special handling for certain tools that need state
       let result: unknown;
       if (toolName === "browser_create_session") {
@@ -1022,9 +1016,6 @@ export class AgentOrchestratorService {
 
       const duration = Date.now() - startTime;
 
-      // Track skill usage (async, non-blocking)
-      skillConfigService.recordSkillUsage(state.userId, toolName, true, duration).catch(() => {});
-
       // Emit tool complete event
       if (emitter) {
         emitter.toolComplete({
@@ -1041,10 +1032,6 @@ export class AgentOrchestratorService {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
-
-      // Track failed skill usage (async, non-blocking)
-      const skillSvc = getAgentSkillConfigService();
-      skillSvc.recordSkillUsage(state.userId, toolName, false, duration).catch(() => {});
 
       // Emit tool complete event with error
       if (emitter) {
@@ -1292,45 +1279,45 @@ export class AgentOrchestratorService {
         content: currentPrompt,
       });
 
-      // Fetch RAG context on first iteration
+      // Fetch RAG context on first iteration with SOP-priority retrieval
       let ragContext: RAGContext | undefined;
       if (state.iterations === 0) {
         try {
+          // Use priority-weighted retrieval to boost SOPs and process docs
+          const priorityChunks = await ragService.retrieveWithPriority(state.taskDescription, {
+            topK: 10,
+            minSimilarity: 0.5,
+            prioritizeSOPs: true,
+          });
+
           const ragResult = await ragService.buildSystemPrompt(state.taskDescription, {
-            maxDocumentationTokens: 3000,
+            maxDocumentationTokens: 4000,
             includeExamples: true,
           });
 
-          // Also retrieve SOP-specific chunks for procedural guidance
-          const sopChunks = await ragService.retrieve(state.taskDescription, {
-            topK: 5,
-            categories: ['sop', 'process'],
-            minSimilarity: 0.5,
-          });
-
-          // Build action sequences from SOP chunks
-          const actionSequences = sopChunks
-            .filter(chunk => {
-              const meta = chunk.metadata as Record<string, any> | undefined;
-              return meta?.isSOP || meta?.documentCategory === 'sop';
-            })
-            .map((chunk, index) => ({
-              sequenceId: `sop-${chunk.sourceId}-${chunk.chunkIndex}`,
-              name: (chunk.metadata as Record<string, any>)?.title || `SOP Procedure ${index + 1}`,
-              successRate: chunk.similarity || 0.7,
-              steps: chunk.content.split('\n').filter((l: string) => l.trim().match(/^\d+[.):\-]/)).map((l: string) => l.trim()),
-            }))
-            .filter(seq => seq.steps.length > 0);
-
+          // Build enhanced RAG context with document knowledge
           ragContext = {
             relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
               elementName: 'document',
               selector: chunk.content.substring(0, 100),
               reliability: chunk.similarity || 0,
             })),
-            ...(actionSequences.length > 0 && { actionSequences }),
           };
-          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks, ${sopChunks.length} SOP chunks, ${actionSequences.length} action sequences, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+
+          // Add action sequences from SOP chunks
+          const sopChunks = priorityChunks.filter(c =>
+            (c.metadata as any)?.documentCategory === 'sop' || (c.metadata as any)?.documentCategory === 'process'
+          );
+          if (sopChunks.length > 0) {
+            ragContext.actionSequences = sopChunks.map((chunk, idx) => ({
+              sequenceId: `sop-${chunk.sourceId}-${chunk.chunkIndex}`,
+              name: (chunk.metadata as any)?.title || `SOP Document ${idx + 1}`,
+              successRate: (chunk.metadata as any)?.priority || 0.8,
+              steps: chunk.content.split('\n').filter((l: string) => l.trim()).slice(0, 10),
+            }));
+          }
+
+          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks (${sopChunks.length} SOPs), platforms: ${ragResult.detectedPlatforms.join(', ')}`);
         } catch (ragError) {
           console.warn('[Agent] Failed to load RAG context:', ragError);
           // Continue without RAG context
