@@ -47,7 +47,7 @@ function CompactMessage({ message }: { message: OperatorMessage }) {
       )}
     >
       <div className={cn(
-        'flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px]',
+        'flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[11px]',
         isUser ? 'bg-purple-600 text-white' : isError ? 'bg-red-100 text-red-600' : 'bg-slate-200 text-slate-600'
       )}>
         {isUser ? <User className="h-3 w-3" /> : isError ? <AlertCircle className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
@@ -56,7 +56,7 @@ function CompactMessage({ message }: { message: OperatorMessage }) {
         {isAction && message.actionStatus && (
           <Badge
             variant={message.actionStatus === 'completed' ? 'default' : message.actionStatus === 'failed' ? 'destructive' : 'secondary'}
-            className="text-[10px] h-4 mb-1"
+            className="text-[11px] h-4 mb-1"
           >
             {message.actionType}
           </Badge>

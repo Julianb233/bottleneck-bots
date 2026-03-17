@@ -614,7 +614,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userTier, credits: initial
             </div>
             <div className="min-w-0">
               <h1 className="font-bold text-slate-800 leading-tight text-sm sm:text-base truncate">GHL Agent <span className="text-emerald-600">Command</span></h1>
-              <div className="flex items-center gap-2 text-[9px] sm:text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-[11px] sm:text-xs font-mono text-slate-500 uppercase tracking-wider">
                 <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${status === AgentStatus.EXECUTING ? 'bg-amber-400 animate-pulse' : status === AgentStatus.COMPLETED ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
                 <span className="hidden sm:inline">Status: </span>{status}
               </div>
@@ -654,7 +654,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userTier, credits: initial
             <div className="flex items-center gap-1.5 sm:gap-3 pl-2 sm:pl-4 border-l border-slate-200">
               <div className="text-right hidden md:block">
                 <p className="text-xs font-bold text-slate-700">{currentUser.name}</p>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wide">{currentUser.role} Account</p>
+                <p className="text-[11px] text-slate-500 uppercase tracking-wide">{currentUser.role} Account</p>
               </div>
               <button
                 onClick={() => handleOpenSettings('GENERAL')}
@@ -878,7 +878,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userTier, credits: initial
                       <div className="p-4 space-y-4">
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase">Select Client Profile</label>
+                            <label className="block text-[11px] font-bold text-slate-400 uppercase">Select Client Profile</label>
                             <button
                               onClick={() => {
                                 setEditingClient(null);

@@ -56,12 +56,12 @@ export const TicketQueue: React.FC<TicketQueueProps> = ({ tickets, onResolve }) 
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
       );
       case 'SLACK': return (
-        <span className="font-bold text-[8px]">#</span>
+        <span className="font-bold text-[11px]">#</span>
       );
       case 'WHATSAPP': return (
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
       );
-      default: return <span className="text-[8px]">?</span>;
+      default: return <span className="text-[11px]">?</span>;
     }
   };
 
@@ -111,14 +111,14 @@ export const TicketQueue: React.FC<TicketQueueProps> = ({ tickets, onResolve }) 
                   }`}>
                     {getSourceIcon(ticket.source)}
                   </div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">{ticket.timestamp}</span>
+                  <span className="text-[11px] font-bold text-slate-400 uppercase">{ticket.timestamp}</span>
                 </div>
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${getPriorityColor(ticket.priority)}`}>
+                <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded border ${getPriorityColor(ticket.priority)}`}>
                   {ticket.priority}
                 </span>
               </div>
               <h4 className="text-xs font-bold text-slate-800 mb-1 line-clamp-1">{ticket.subject}</h4>
-              <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">{ticket.description}</p>
+              <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">{ticket.description}</p>
             </button>
           ))}
         </div>
@@ -126,7 +126,7 @@ export const TicketQueue: React.FC<TicketQueueProps> = ({ tickets, onResolve }) 
         {/* Triage Panel (Bottom overlay or embedded) */}
         {selectedTicket && activeTab === 'QUEUE' && (
           <div className="p-3 border-t border-slate-100 bg-slate-50/50">
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
+            <h4 className="text-[11px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
               AI Receptionist Triage
               {isAnalyzing && <span className="loading loading-dots loading-xs text-indigo-500"></span>}
             </h4>
@@ -139,7 +139,7 @@ export const TicketQueue: React.FC<TicketQueueProps> = ({ tickets, onResolve }) 
             ) : aiRecommendation ? (
               <div className="space-y-3 animate-slide-in-bottom">
                 <div className="bg-white p-2 rounded border border-slate-200">
-                   <p className="text-[10px] text-slate-600 leading-relaxed">
+                   <p className="text-[11px] text-slate-600 leading-relaxed">
                      <span className="font-bold text-indigo-600">Analysis:</span> {aiRecommendation.analysis}
                    </p>
                 </div>
@@ -152,7 +152,7 @@ export const TicketQueue: React.FC<TicketQueueProps> = ({ tickets, onResolve }) 
                 </button>
               </div>
             ) : (
-              <div className="text-[10px] text-slate-400 italic">
+              <div className="text-[11px] text-slate-400 italic">
                 Select a ticket to run diagnostics.
               </div>
             )}
