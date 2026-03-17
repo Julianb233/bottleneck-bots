@@ -1180,15 +1180,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigateToF
             <div>
               <h3 className="font-bold text-gray-900 text-sm sm:text-base mb-3 sm:mb-4">Legal</h3>
               <ul className="space-y-2 text-xs sm:text-sm">
-                <li><a href="#" className="hover:text-emerald-600 transition-colors">Privacy</a></li>
-                <li><a href="#" className="hover:text-emerald-600 transition-colors">Terms</a></li>
+                <li><a href="/privacy" className="hover:text-emerald-600 transition-colors">Privacy</a></li>
+                <li><a href="/terms" className="hover:text-emerald-600 transition-colors">Terms</a></li>
                 <li><a href="#" className="hover:text-emerald-600 transition-colors">Security</a></li>
                 <li><a href="#" className="hover:text-emerald-600 transition-colors">Compliance</a></li>
               </ul>
             </div>
           </div>
           <div className="border-t border-gray-300 pt-6 sm:pt-8 text-center text-xs sm:text-sm">
-            <p>&copy; 2025 Bottleneck Bots. All rights reserved. Built for agency owners who refuse to sacrifice their lives for their business.</p>
+            <p>&copy; 2026 Bottleneck Bots. All rights reserved. Built for agency owners who refuse to sacrifice their lives for their business.</p>
           </div>
         </div>
       </footer>

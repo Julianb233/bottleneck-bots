@@ -74,7 +74,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, onBac
       }
 
 // Success - determine tier and onboarding status
-      const tier = 'WHITELABEL'; // Default tier, could be from response in the future
+      // Tier defaults to STARTER; actual tier is resolved from subscription data after login
+      const tier = (data.user?.tier?.toUpperCase() as 'STARTER' | 'GROWTH' | 'WHITELABEL') || 'STARTER';
       const needsOnboarding = isSignUp || data.user?.onboardingCompleted === false;
 
       // Track conversion if this is a signup
@@ -233,8 +234,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, onBac
             </button>
             {!isSignUp && (
               <p className="text-xs text-slate-400 mt-3">
-                Protected by Enterprise Encryption. <br />
-                <a href="#" className="text-emerald-500 hover:underline p-2 min-h-[44px] inline-flex items-center">Forgot Password?</a>
+                Protected by Enterprise Encryption.
               </p>
             )}
           </div>

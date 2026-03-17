@@ -30,8 +30,7 @@ const commands = [
   { icon: Users, label: 'Lead Lists', path: '/lead-lists', keywords: ['leads', 'contacts', 'crm'] },
   { icon: Megaphone, label: 'AI Campaigns', path: '/ai-campaigns', keywords: ['campaign', 'marketing', 'ai'] },
   { icon: CreditCard, label: 'Credits', path: '/credits', keywords: ['billing', 'credits', 'usage'] },
-  { icon: Settings, label: 'Settings', path: '/settings', keywords: ['preferences', 'config'] },
-  { icon: LifeBuoy, label: 'Support', path: '/support', keywords: ['help', 'support', 'docs'] },
+  { icon: Settings, label: 'Settings', path: '/settings', keywords: ['preferences', 'config', 'help', 'support'] },
 ];
 
 interface CommandPaletteProps {

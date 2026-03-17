@@ -53,11 +53,11 @@ const getViewFromHash = (): ViewMode => {
 };
 
 interface DashboardProps {
-  userTier: string; // 'STARTER' | 'GROWTH' | 'WHITELABEL'
-  credits: number;
+  userTier?: string; // Now fetched from subscription data; prop is fallback only
+  credits?: number;  // Now fetched from subscription data; prop is fallback only
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ userTier, credits: initialCredits }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ userTier: propTier, credits: propCredits }) => {
   // Demo mode disabled by default for production (set VITE_DEMO_MODE=1 to enable)
   const isDemo = import.meta.env.VITE_DEMO_MODE === '1';
 
@@ -100,16 +100,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ userTier, credits: initial
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [screenshot, setScreenshot] = useState<string | undefined>(undefined);
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
-  const [availableCredits, setAvailableCredits] = useState(initialCredits);
-
   // Subscription State
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showPacksModal, setShowPacksModal] = useState(false);
 
-  // Fetch subscription data
+  // Fetch subscription data — source of truth for tier and credits
   const subscriptionQuery = trpc.subscription.getMySubscription.useQuery(undefined, {
     refetchOnWindowFocus: false,
   });
+
+  // Derive tier from subscription data, falling back to prop or default
+  const userTier = subscriptionQuery.data?.tier?.slug?.toUpperCase() || propTier || 'STARTER';
+
+  // Derive credits from subscription, falling back to prop or default
+  const subscriptionCredits = subscriptionQuery.data?.usage?.executionsRemaining ?? propCredits ?? 100;
+  const [availableCredits, setAvailableCredits] = useState(subscriptionCredits);
+
+  // Update credits when subscription data loads
+  useEffect(() => {
+    if (subscriptionQuery.data?.usage?.executionsRemaining !== undefined) {
+      setAvailableCredits(subscriptionQuery.data.usage.executionsRemaining);
+    } else if (propCredits !== undefined) {
+      setAvailableCredits(propCredits);
+    }
+  }, [subscriptionQuery.data?.usage?.executionsRemaining, propCredits]);
 
   // Context & Resources State
   const [contextSource, setContextSource] = useState<'NOTION' | 'PDF' | 'G_DRIVE'>('NOTION');

@@ -18,6 +18,9 @@ const OnboardingFlow = lazy(() => import('./components/OnboardingFlow').then(m =
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
 const TermsOfService = lazy(() => import('./pages/TermsOfService').then(m => ({ default: m.TermsOfService })));
 const OAuthCallback = lazy(() => import('./components/OAuthPopup').then(m => ({ default: m.OAuthCallback })));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 // Loading spinner component
 const LoadingSpinner = () => (
@@ -29,7 +32,7 @@ const LoadingSpinner = () => (
   </div>
 );
 
-type ViewState = 'LANDING' | 'LOGIN' | 'ONBOARDING' | 'DASHBOARD' | 'ALEX_RAMOZY' | 'PRIVACY' | 'TERMS' | 'FEATURES' | 'OAUTH_CALLBACK';
+type ViewState = 'LANDING' | 'LOGIN' | 'ONBOARDING' | 'DASHBOARD' | 'ALEX_RAMOZY' | 'PRIVACY' | 'TERMS' | 'FEATURES' | 'OAUTH_CALLBACK' | 'FORGOT_PASSWORD' | 'RESET_PASSWORD' | 'NOT_FOUND';
 type UserTier = 'STARTER' | 'GROWTH' | 'WHITELABEL';
 
 // Admin email for preview access
@@ -98,6 +101,18 @@ function App() {
       setCurrentView('LOGIN');
       return;
     }
+    if (path === '/signup') {
+      setCurrentView('LOGIN');
+      return;
+    }
+    if (path === '/forgot-password') {
+      setCurrentView('FORGOT_PASSWORD');
+      return;
+    }
+    if (path === '/reset-password') {
+      setCurrentView('RESET_PASSWORD');
+      return;
+    }
 
     // Legacy support: Handle /auth/callback route (if still used)
     // The server now sets cookies directly, but this handles any edge cases
@@ -113,6 +128,12 @@ function App() {
         window.history.replaceState({}, '', '/');
         refetchUser();
       }
+      return;
+    }
+
+    // 404 catch-all for unknown routes
+    if (path !== '/' && !isProtectedPath) {
+      setCurrentView('NOT_FOUND');
     }
   }, [refetchUser, isAuthLoading, user]);
 
@@ -141,10 +162,8 @@ function App() {
 
   const handleLogin = (tier: UserTier, needsOnboarding?: boolean) => {
     setUserTier(tier);
-    // Set credits based on tier
-    if (tier === 'STARTER') setCredits(500);
-    if (tier === 'GROWTH') setCredits(1500);
-    if (tier === 'WHITELABEL') setCredits(5000);
+    // Credits are now fetched from subscription data in Dashboard via tRPC
+    // No hardcoded credit values - Dashboard queries getMySubscription for actual usage
 
     // Route to onboarding if needed, otherwise go to dashboard
     if (needsOnboarding) {
@@ -253,6 +272,18 @@ function App() {
 
               {currentView === 'TERMS' && (
                 <TermsOfService onBack={() => setCurrentView('LANDING')} />
+              )}
+
+              {currentView === 'FORGOT_PASSWORD' && (
+                <ForgotPassword />
+              )}
+
+              {currentView === 'RESET_PASSWORD' && (
+                <ResetPassword />
+              )}
+
+              {currentView === 'NOT_FOUND' && (
+                <NotFound />
               )}
             </Suspense>
             </TourProvider>
