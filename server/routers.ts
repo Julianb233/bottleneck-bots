@@ -42,6 +42,7 @@ import { agentMemoryRouter } from "./api/routers/agentMemory";
 import { agentTrainingRouter } from "./api/routers/agentTraining";
 import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
+import { ghlRouter } from "./api/routers/ghl";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -138,6 +139,9 @@ export const appRouter = router({
 
   // Multi-Step Workflow Pipelines
   pipelines: pipelinesRouter,
+
+  // GHL OAuth & Connection Management (AI-2877)
+  ghl: ghlRouter,
 });
 
 export type AppRouter = typeof appRouter;

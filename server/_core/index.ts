@@ -27,6 +27,7 @@ import {
   sentryErrorHandler
 } from "../lib/sentry";
 import { createRestApi } from "../api/rest";
+import ghlOAuthRouter from "../api/routes/ghl-oauth";
 
 // Initialize Sentry as early as possible
 initSentry();
@@ -134,6 +135,8 @@ export async function createApp() {
   app.use("/api/webhooks", webhookEndpointsRouter);
   // Stripe webhook route
   app.use("/api/webhooks/stripe", stripeWebhookRouter);
+  // GHL OAuth routes (AI-2877)
+  app.use("/api/ghl/oauth", ghlOAuthRouter);
 
   // Mount REST API v1 routes (includes /api/v1/health, /api/v1/tasks, etc.)
   const restApi = createRestApi();

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useOAuthPopup } from '@/components/OAuthPopup';
+import { GHLConnectionCard } from '@/components/GHLConnectionCard';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import {
   Dialog,
@@ -663,6 +664,9 @@ export const Settings: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* GHL Connection Card (AI-2877) */}
+            <GHLConnectionCard />
           </TabsContent>
 
           {/* Webhooks Tab */}
