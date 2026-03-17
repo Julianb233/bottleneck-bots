@@ -108,6 +108,10 @@ export async function createApp() {
   // We need to skip express.json() parsing to avoid "Bad Request" errors
   const isVercel = process.env.VERCEL === "1";
 
+  // Stripe webhook route MUST be registered BEFORE body parsers.
+  // Stripe signature verification requires the raw (unparsed) request body.
+  app.use("/api/webhooks/stripe", stripeWebhookRouter);
+
   if (isVercel) {
     // For Vercel: body is already parsed, just ensure it's available
     app.use((req, _res, next) => {
@@ -133,8 +137,6 @@ export async function createApp() {
   registerSSERoutes(app);
   // Webhook endpoints (public, token-authenticated)
   app.use("/api/webhooks", webhookEndpointsRouter);
-  // Stripe webhook route
-  app.use("/api/webhooks/stripe", stripeWebhookRouter);
   // GHL OAuth routes (AI-2877)
   app.use("/api/ghl/oauth", ghlOAuthRouter);
 

@@ -1,0 +1,58 @@
+{
+  "task": "1-03-build",
+  "title": "Stripe Billing End-to-End",
+  "status": "completed",
+  "completedAt": "2026-03-17T00:00:00Z",
+  "worker": "bussit-13",
+  "changes": [
+    {
+      "file": "server/services/subscription.service.ts",
+      "action": "fix",
+      "description": "Merged duplicate cancelSubscription methods (was at lines 490 and 731). Unified into single method supporting both immediate and period-end cancellation with Stripe API integration."
+    },
+    {
+      "file": "server/_core/index.ts",
+      "action": "fix",
+      "description": "Moved Stripe webhook route registration BEFORE express.json() body parser. Stripe signature verification requires raw (unparsed) request body — the previous ordering would have broken signature verification in non-Vercel environments."
+    }
+  ],
+  "verification": {
+    "build": "PASS — pnpm build succeeds with no errors",
+    "duplicateMethod": "FIXED — only one cancelSubscription method exists now",
+    "webhookRouteOrder": "FIXED — stripe webhook registered before body parsers"
+  },
+  "auditFindings": {
+    "webhookEndpoint": {
+      "status": "OK",
+      "route": "/api/webhooks/stripe (POST)",
+      "rawBodyParsing": "FIXED — route now registered before express.json()",
+      "signatureVerification": "OK — uses stripe.webhooks.constructEvent with STRIPE_WEBHOOK_SECRET",
+      "idempotency": "OK — SQL-backed via stripe_processed_events table"
+    },
+    "subscriptionCreationFlow": {
+      "status": "OK",
+      "checkoutSession": "Creates Stripe Checkout Session via subscription.router createCheckoutSession",
+      "priceCalculation": "Supports weekly/monthly/6-month/annual with tier-specific pricing",
+      "redirectUrls": "success → /settings/billing?success=true, cancel → /settings/billing?canceled=true"
+    },
+    "creditAllocation": {
+      "status": "OK",
+      "checkoutCompleted": "Handles credit package purchases (metadata.packageId) and subscription checkout (metadata.subscriptionTierSlug)",
+      "invoicePaid": "Resets usage counters for new billing period, updates period dates from Stripe invoice",
+      "creditsPerTier": "Determined by tier.monthlyExecutionLimit — no hardcoded values"
+    },
+    "creditDeduction": {
+      "status": "OK",
+      "executionCheck": "subscriptionService.canExecuteTask() checks status, period, and remaining executions",
+      "incrementUsage": "subscriptionService.incrementExecutionUsage() uses SQL increment",
+      "costTracking": "costTracking.service.ts tracks per-API-call costs with daily summaries and budget alerts"
+    },
+    "subscriptionManagement": {
+      "upgrade": "OK — updateTier updates local tier + Stripe metadata",
+      "downgrade": "OK — same flow as upgrade",
+      "cancellation": "FIXED — unified cancelSubscription supports immediate + period-end + Stripe API",
+      "resume": "OK — subscription.router resume endpoint undoes cancel_at_period_end",
+      "billingPortal": "OK — getBillingPortalUrl creates Stripe Billing Portal session"
+    }
+  }
+}
