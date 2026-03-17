@@ -1419,12 +1419,93 @@ export class AgentOrchestratorService {
 
       state.toolHistory.push(historyEntry);
 
-      // Update error counters
+      // Update error counters and attempt per-step recovery
       if (!toolResult.success) {
         state.errorCount++;
         state.consecutiveErrors++;
+
+        // Attempt recovery using failure recovery service
+        if (state.consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+          try {
+            const failureRecovery = getFailureRecoveryService();
+            const errorType = failureRecovery.analyzeFailure(
+              toolResult.error || "Unknown tool error",
+              {
+                executionId: state.executionId.toString(),
+                sessionId: state.executionId.toString(),
+                action: toolName,
+              }
+            );
+
+            // Map state.failureAttempts to the format expected by failureRecovery
+            const previousAttempts = state.failureAttempts.map(fa => ({
+              action: fa.action,
+              strategy: String(fa.strategy),
+              error: fa.error,
+              timestamp: fa.timestamp,
+              duration: 0,
+            }));
+
+            const recoveryResult = await failureRecovery.recover({
+              executionId: state.executionId.toString(),
+              sessionId: state.executionId.toString(),
+              action: toolName,
+              selector: toolParams.selector as string | undefined,
+              url: toolParams.url as string | undefined,
+              errorMessage: toolResult.error || "Unknown error",
+              errorType,
+              timestamp: new Date(),
+              attemptNumber: state.consecutiveErrors,
+              previousAttempts,
+              pageState: undefined,
+            });
+
+            // Record the recovery attempt
+            state.failureAttempts.push({
+              action: toolName,
+              parameters: toolParams,
+              strategy: RecoveryStrategy.RETRY_SAME,
+              error: toolResult.error || "Unknown error",
+              timestamp: new Date(),
+            });
+            state.recoveryAttempts++;
+            state.recoveryStrategiesUsed?.push(recoveryResult.strategyUsed);
+
+            if (recoveryResult.success || recoveryResult.shouldRetry) {
+              console.log(
+                `[Agent] Recovery strategy "${recoveryResult.strategyUsed}" suggests retry. ` +
+                `Wait: ${recoveryResult.waitBeforeRetry || 0}ms`
+              );
+
+              // Wait if the strategy suggests it
+              if (recoveryResult.waitBeforeRetry) {
+                await new Promise(resolve =>
+                  setTimeout(resolve, recoveryResult.waitBeforeRetry)
+                );
+              }
+
+              // Reset consecutive errors on successful recovery
+              if (recoveryResult.success) {
+                state.consecutiveErrors = Math.max(0, state.consecutiveErrors - 1);
+              }
+
+              if (emitter) {
+                emitter.thinking({
+                  thought: `Recovering from error: ${recoveryResult.details}`,
+                  iteration: state.iterations,
+                });
+              }
+            }
+          } catch (recoveryError) {
+            console.warn("[Agent] Recovery attempt failed:", recoveryError);
+          }
+        }
       } else {
         state.consecutiveErrors = 0;
+        // Clear failure attempts on success
+        if (state.failureAttempts.length > 0) {
+          state.failureAttempts = [];
+        }
       }
 
       // Check if we should stop due to errors
@@ -1447,10 +1528,32 @@ export class AgentOrchestratorService {
       state.errorCount++;
       state.consecutiveErrors++;
 
+      // Record the failure attempt for tracking
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      state.failureAttempts.push({
+        action: "agent_loop_iteration",
+        parameters: {},
+        strategy: RecoveryStrategy.RETRY_SAME,
+        error: errorMessage,
+        timestamp: new Date(),
+      });
+
       if (state.consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
         state.status = 'failed';
+
+        if (emitter) {
+          emitter.thinking({
+            thought: `Execution failed after ${MAX_CONSECUTIVE_ERRORS} consecutive errors. Last error: ${errorMessage}`,
+            iteration: state.iterations,
+          });
+        }
+
         return false;
       }
+
+      // Brief backoff before retrying the loop iteration
+      const backoffMs = Math.min(1000 * Math.pow(2, state.consecutiveErrors - 1), 10000);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
 
       return true; // Try to continue
     }
