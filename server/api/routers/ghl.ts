@@ -119,4 +119,21 @@ export const ghlRouter = router({
       hasClientSecret: !!process.env.GHL_CLIENT_SECRET,
     };
   }),
+
+  /**
+   * Get circuit breaker status for the GHL service.
+   * Used by the UI to show warning banners when the API is unavailable.
+   */
+  circuitBreakerStatus: protectedProcedure.query(async () => {
+    // The GHLService circuit breaker is per-instance and in-memory.
+    // For now, return a default "closed" status. In production with
+    // multiple instances, this would query Redis.
+    // TODO: Expose actual circuit breaker state from GHLService singleton
+    return {
+      state: "closed" as "closed" | "open" | "half-open",
+      failureCount: 0,
+      lastFailure: null as number | null,
+      nextRetryAt: null as number | null,
+    };
+  }),
 });

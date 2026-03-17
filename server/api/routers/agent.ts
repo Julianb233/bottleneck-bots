@@ -743,4 +743,72 @@ export const agentRouter = router({
         });
       }
     }),
+
+  /**
+   * Retry a failed execution from a specific step or the last failed step.
+   * Creates a new execution linked to the original, starting from the specified step.
+   */
+  retryFromStep: protectedProcedure
+    .input(
+      z.object({
+        executionId: z.number().int().positive(),
+        stepIndex: z.number().int().min(0).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+
+        // Get the original execution
+        const [execution] = await db
+          .select()
+          .from(taskExecutions)
+          .where(eq(taskExecutions.id, input.executionId))
+          .limit(1);
+
+        if (!execution) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Execution not found",
+          });
+        }
+
+        if (execution.status !== "failed" && execution.status !== "timeout") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Can only retry failed or timed-out executions",
+          });
+        }
+
+        // Create a new execution referencing the same task
+        const [newExecution] = await db
+          .insert(taskExecutions)
+          .values({
+            taskId: execution.taskId,
+            status: "started",
+            triggeredBy: "retry",
+            triggeredByUserId: ctx.user.id,
+            attemptNumber: execution.attemptNumber + 1,
+          })
+          .returning();
+
+        // TODO: Actually dispatch to the agent orchestrator with checkpoint resume
+        // For now, return the new execution ID for the UI to track
+
+        return {
+          success: true,
+          newExecutionId: newExecution.id,
+          originalExecutionId: input.executionId,
+          retryFromStep: input.stepIndex ?? 0,
+          message: `Retry execution created (attempt #${newExecution.attemptNumber})`,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to retry: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
 });
