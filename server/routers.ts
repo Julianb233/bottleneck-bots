@@ -39,6 +39,7 @@ import { toolsRouter } from "./api/routers/tools";
 import { subAccountsRouter } from "./api/routers/subAccounts";
 import { agentPermissionsRouter } from "./api/routers/agentPermissions";
 import { agentMemoryRouter } from "./api/routers/agentMemory";
+import { agentTrainingRouter } from "./api/routers/agentTraining";
 import { costsRouter } from "./api/routers/costs";
 import { publicProcedure, router } from "./_core/trpc";
 
@@ -130,6 +131,9 @@ export const appRouter = router({
 
   // Agent Memory (Browser Agent Training & Learning)
   agentMemory: agentMemoryRouter,
+
+  // Agent Training Configuration (Workflows, Skills, Behavior)
+  agentTraining: agentTrainingRouter,
 });
 
 export type AppRouter = typeof appRouter;
