@@ -6,6 +6,7 @@ import {
   ExecutionHistory,
   TaskInput,
   TaskTemplates,
+  ExecutionErrorDisplay,
 } from '@/components/agent';
 import type { TaskTemplate } from '@/components/agent';
 import { LiveBrowserView } from '@/components/browser/LiveBrowserView';
@@ -300,6 +301,23 @@ export function AgentDashboard() {
             onShowTemplates={() => setShowTemplates(true)}
           />
         </div>
+
+        {/* Error display for failed executions */}
+        {currentExecution?.error && (currentExecution.status === 'failed' || currentExecution.status === 'timeout') && (
+          <div className="px-4 pt-4">
+            <ExecutionErrorDisplay
+              error={currentExecution.error}
+              executionId={currentExecution.id}
+              taskDescription={currentExecution.taskDescription}
+              onRetry={() => {
+                if (currentExecution.taskDescription) {
+                  handleSubmitTask(currentExecution.taskDescription);
+                }
+              }}
+              onDismiss={() => clearCurrentExecution()}
+            />
+          </div>
+        )}
 
         {/* Thinking visualization */}
         <div className="flex-1 overflow-hidden">
