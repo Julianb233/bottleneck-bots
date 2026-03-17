@@ -2146,10 +2146,54 @@ export class AgentOrchestratorService {
       } else if (currentStatus === 'failed') {
         resultStatus = 'failed';
         progressTracker.complete(false);
-        // Emit error event
+
+        // ========================================
+        // ERROR REPORTING: User-friendly error with explanation
+        // ========================================
+        const lastFailedTool = [...state.toolHistory].reverse().find(t => !t.success);
+        const failureErrorMsg = lastFailedTool?.error || 'Execution failed after multiple errors';
+        const explained = explainError(failureErrorMsg);
+
+        // Emit enhanced error event with user-friendly explanation
         emitter.executionError({
-          error: state.errorCount > 0 ? 'Execution failed after multiple errors' : 'Execution failed',
+          error: `${explained.title}: ${explained.explanation}`,
         });
+
+        // Emit detailed explained error via SSE for client-side display
+        emitExplainedError(
+          userId,
+          execution.id.toString(),
+          failureErrorMsg
+        );
+
+        // ========================================
+        // ALERTS: Notify on repeated failures
+        // ========================================
+        try {
+          const { alertingService } = await import('./alerting.service');
+          await alertingService.createNotification({
+            userId,
+            title: `Task Execution Failed: ${explained.title}`,
+            message: `${explained.explanation} (${state.errorCount} errors in ${state.iterations} iterations). ${explained.suggestedActions[0] || 'Please retry or check configuration.'}`,
+            type: 'error',
+            priority: state.errorCount >= 3 ? 9 : 5,
+            metadata: {
+              executionId: execution.id,
+              taskId,
+              errorCount: state.errorCount,
+              consecutiveErrors: state.consecutiveErrors,
+              lastError: failureErrorMsg,
+              errorType: lastFailedTool ? classifyError(failureErrorMsg) : 'UNKNOWN',
+              severity: explained.severity,
+              recoverable: explained.recoverable,
+              suggestedActions: explained.suggestedActions,
+              recoveryStrategiesUsed: state.recoveryStrategiesUsed || [],
+            },
+          });
+          console.log(`[Alerts] Created failure notification for user ${userId}, execution ${execution.id}`);
+        } catch (alertError) {
+          console.warn('[Alerts] Failed to create failure notification:', alertError);
+        }
 
         // ========================================
         // MEMORY & LEARNING: Record failure feedback

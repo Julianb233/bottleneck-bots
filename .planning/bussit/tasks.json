@@ -154,7 +154,7 @@
       "phase": "02",
       "plan": "03",
       "priority": 221,
-      "status": "claimed",
+      "status": "completed",
       "dependencies": [
         "01-03-build"
       ],
@@ -163,9 +163,9 @@
       "linearIdentifier": "AI-2874",
       "assignedTo": "worker-3b",
       "claimedAt": "2026-03-17T11:03:59Z",
-      "completedAt": null,
+      "completedAt": "2026-03-17T11:05:24Z",
       "createdAt": "2026-03-16T20:00:00Z",
-      "result": null,
+      "result": "ALREADY DONE",
       "executionTime": 0,
       "retries": 0,
       "failureHistory": []
@@ -304,7 +304,7 @@
       "phase": "03",
       "plan": "05",
       "priority": 341,
-      "status": "pending",
+      "status": "claimed",
       "dependencies": [
         "03-02-build",
         "03-03-build",
@@ -313,8 +313,8 @@
       "source": "gsd",
       "linearId": null,
       "linearIdentifier": "AI-2882",
-      "assignedTo": null,
-      "claimedAt": null,
+      "assignedTo": "worker-2",
+      "claimedAt": "2026-03-17T11:05:21.439488Z",
       "completedAt": null,
       "createdAt": "2026-03-16T20:00:00Z",
       "result": null,
@@ -481,7 +481,7 @@
       "phase": "05",
       "plan": "03",
       "priority": 521,
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "02-01-build",
         "03-01-build"
@@ -491,9 +491,9 @@
       "linearIdentifier": "AI-2893",
       "assignedTo": null,
       "claimedAt": null,
-      "completedAt": null,
+      "completedAt": "2026-03-17T11:05:26.381973Z",
       "createdAt": "2026-03-16T20:00:00Z",
-      "result": null,
+      "result": "Added HelpDrawer with quickstart guide and how-to articles, help button in header, support sidebar link, Help page, PageEmptyState component. Onboarding wizard already existed. Commit 21dfb20.",
       "executionTime": 0,
       "retries": 0,
       "failureHistory": []
