@@ -40,15 +40,17 @@ import { subAccountsRouter } from "./api/routers/subAccounts";
 import { agentPermissionsRouter } from "./api/routers/agentPermissions";
 import { agentMemoryRouter } from "./api/routers/agentMemory";
 import { agentTrainingRouter } from "./api/routers/agentTraining";
+import { agentSkillConfigRouter } from "./api/routers/agentSkillConfig";
 import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
 import { ghlRouter } from "./api/routers/ghl";
-import { ghlAppointmentsRouter } from "./api/routers/ghlAppointments";
+import { ghlContactsRouter } from "./api/routers/ghlContacts";
+import { taskTemplatesRouter } from "./api/routers/taskTemplates";
+import { executionHistoryRouter } from "./api/routers/executionHistory";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
-  // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   ai: aiRouter,
   auth: router({
@@ -61,8 +63,6 @@ export const appRouter = router({
       } as const;
     }),
   }),
-
-  // Feature routers
   email: emailRouter,
   voice: voiceRouter,
   seo: seoRouter,
@@ -74,82 +74,41 @@ export const appRouter = router({
   quiz: quizRouter,
   browser: browserRouter,
   onboarding: onboardingRouter,
-
-  // AI & Lead Management
   aiCalling: aiCallingRouter,
   credits: creditsRouter,
   leadEnrichment: leadEnrichmentRouter,
-
-  // Automation & Scheduling
   scheduledTasks: scheduledTasksRouter,
-
-  // RAG & Documentation
   rag: ragRouter,
-
-  // Monitoring & Analytics
   alerts: alertsRouter,
   analytics: analyticsRouter,
   costs: costsRouter,
   health: healthRouter,
-
-  // Settings & Configuration
   apiKeys: apiKeysRouter,
   settings: settingsRouter,
-
-  // Webhooks & Communication
   webhooks: webhooksRouter,
   agencyTasks: agencyTasksRouter,
-
-  // Client Management
   clientProfiles: clientProfilesRouter,
   subAccounts: subAccountsRouter,
-
-  // Admin Dashboard
   admin: adminRouter,
-
-  // Autonomous Agent
   agent: agentRouter,
   agentPermissions: agentPermissionsRouter,
-
-  // Webdev Projects
   webdev: webdevRouter,
   deployment: deploymentRouter,
-
-  // MCP (Model Context Protocol)
   mcp: mcpRouter,
-
-  // Tools Execution Engine
   tools: toolsRouter,
-
-  // Swarm Coordination (Multi-Agent System)
   swarm: swarmRouter,
-
-  // Knowledge & Training System
   knowledge: knowledgeRouter,
-
-  // Subscription & Billing
   subscription: subscriptionRouter,
-
-  // Memory Management System
   memory: memoryRouter,
-
-  // Agent Memory (Browser Agent Training & Learning)
   agentMemory: agentMemoryRouter,
-
-  // Agent Training Configuration (Workflows, Skills, Behavior)
   agentTraining: agentTrainingRouter,
-
-  // Multi-Step Workflow Pipelines
+  agentSkillConfig: agentSkillConfigRouter,
   pipelines: pipelinesRouter,
-
-  // GHL Automation (48 GoHighLevel browser automation functions)
-  ghlAutomation: ghlAutomationRouter,
-
-  // GHL OAuth & Connection Management
   ghl: ghlRouter,
-
-  // GHL Appointments & Webhook Events
-  ghlAppointments: ghlAppointmentsRouter,
+  ghlContacts: ghlContactsRouter,
+  ghlAutomation: ghlAutomationRouter,
+  taskTemplates: taskTemplatesRouter,
+  executionHistory: executionHistoryRouter,
 });
 
 export type AppRouter = typeof appRouter;
