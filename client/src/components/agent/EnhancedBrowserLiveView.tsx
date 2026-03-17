@@ -563,7 +563,7 @@ export function useBrowserActions(executionId: string): {
   useEffect(() => {
     if (!executionId) return;
 
-    const eventSource = new EventSource(`/api/agent/executions/${executionId}/events`);
+    const eventSource = new EventSource(`/api/agent/stream/${executionId}`);
 
     eventSource.onopen = () => {
       setIsConnected(true);

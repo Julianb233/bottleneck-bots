@@ -30,7 +30,7 @@ import {
   UpgradeModal,
   ExecutionPacksModal,
 } from '@/components/subscription';
-import { BrowserLiveView } from './BrowserLiveView';
+import { EnhancedBrowserLiveView } from './EnhancedBrowserLiveView';
 import { ReasoningChain } from './ReasoningChain';
 import {
   Bot,
@@ -283,6 +283,8 @@ export function AgentDashboard() {
     connectedAgents,
     setStatus,
     activeBrowserSession,
+    currentBrowserAction,
+    browserActions,
     progress,
     reasoningSteps,
   } = useAgentStore();
@@ -655,6 +657,17 @@ export function AgentDashboard() {
                 </Card>
               )}
 
+            {/* Browser Live View — shown prominently during execution */}
+            {(isExecuting || activeBrowserSession) && (
+              <EnhancedBrowserLiveView
+                debugUrl={activeBrowserSession?.debugUrl}
+                sessionId={activeBrowserSession?.sessionId}
+                isActive={isExecuting}
+                currentAction={currentBrowserAction ?? undefined}
+                actionHistory={browserActions}
+              />
+            )}
+
             {/* Recent Executions */}
             <Card>
               <CardHeader>
@@ -694,15 +707,6 @@ export function AgentDashboard() {
                 </ScrollArea>
               </CardContent>
             </Card>
-
-            {/* Browser Live View */}
-            {activeBrowserSession && (
-              <BrowserLiveView
-                debugUrl={activeBrowserSession.debugUrl}
-                sessionId={activeBrowserSession.sessionId}
-                isActive={isExecuting}
-              />
-            )}
 
             {/* Reasoning Chain */}
             {reasoningSteps.length > 0 && (
