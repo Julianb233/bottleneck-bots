@@ -13,6 +13,7 @@ export default defineConfig({
     "./drizzle/schema-rag.ts",
     "./drizzle/schema-webhooks.ts",
     "./drizzle/schema-support.ts",
+    "./drizzle/schema-task-templates.ts",
     "./drizzle/relations.ts",
     "./server/rag/schema.ts",
   ],

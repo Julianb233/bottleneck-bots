@@ -36,6 +36,7 @@ import { knowledgeRouter } from "./api/routers/knowledge";
 import { subscriptionRouter } from "./api/routers/subscription";
 import { memoryRouter } from "./api/routers/memory";
 import { toolsRouter } from "./api/routers/tools";
+import { taskTemplatesRouter } from "./api/routers/taskTemplates";
 import { subAccountsRouter } from "./api/routers/subAccounts";
 import { agentPermissionsRouter } from "./api/routers/agentPermissions";
 import { agentMemoryRouter } from "./api/routers/agentMemory";
@@ -130,6 +131,9 @@ export const appRouter = router({
 
   // Agent Memory (Browser Agent Training & Learning)
   agentMemory: agentMemoryRouter,
+
+  // Task Templates (pre-built agency workflow templates)
+  taskTemplates: taskTemplatesRouter,
 });
 
 export type AppRouter = typeof appRouter;
