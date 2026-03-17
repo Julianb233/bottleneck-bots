@@ -39,12 +39,14 @@ import {
   FileStack,
   Sparkles,
   History,
+  HelpCircle,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { CommandPalette } from './CommandPalette';
+import { HelpDrawer } from './help/HelpDrawer';
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -60,6 +62,7 @@ const menuItems = [
   { icon: Megaphone, label: "AI Campaigns", path: "/ai-campaigns" },
   { icon: CreditCard, label: "Credits", path: "/credits" },
   { icon: Settings, label: "Settings", path: "/settings" },
+  { icon: LifeBuoy, label: "Support", path: "/support" },
 ];
 
 const adminOnlyItems = [
@@ -155,6 +158,7 @@ function DashboardLayoutContent({
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const allMenuItems = [...menuItems, ...adminOnlyItems];
   const activeMenuItem = allMenuItems.find(item => item.path === location);
@@ -357,6 +361,18 @@ function DashboardLayoutContent({
         )}
         <main className="flex-1 p-4 bg-muted/30">{children}</main>
       </SidebarInset>
+
+      {/* Floating Help Button */}
+      <button
+        onClick={() => setHelpOpen(true)}
+        className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
+        aria-label="Open help"
+      >
+        <HelpCircle className="w-5 h-5" />
+      </button>
+
+      {/* Help Drawer */}
+      <HelpDrawer open={helpOpen} onOpenChange={setHelpOpen} />
     </>
   );
 }

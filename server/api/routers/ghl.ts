@@ -19,21 +19,36 @@ import { getGHLService } from "../../services/ghl.service";
 
 export const ghlRouter = router({
   /**
-   * Initiate GHL OAuth flow — returns the authorization URL
+   * Initiate GHL OAuth authorization flow.
+   * Accepts optional scopes array; defaults to standard set if omitted.
+   * Returns the authorization URL to redirect the user to.
    */
-  connect: protectedProcedure.mutation(async ({ ctx }) => {
-    try {
-      const service = getGHLService();
-      const result = await service.initiateAuthorization(ctx.user.id);
-      return result;
-    } catch (err) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message:
-          err instanceof Error ? err.message : "Failed to initiate GHL OAuth",
-      });
-    }
-  }),
+  connect: protectedProcedure
+    .input(
+      z
+        .object({
+          scopes: z.array(z.string()).optional(),
+        })
+        .optional()
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = getGHLService();
+        const result = await service.initiateAuthorization(
+          ctx.user.id,
+          input?.scopes
+        );
+        return result;
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Failed to initiate GHL OAuth",
+        });
+      }
+    }),
 
   /**
    * Disconnect a GHL location (revoke tokens and mark inactive).
@@ -72,7 +87,7 @@ export const ghlRouter = router({
       const connections = await service.getConnectionStatus(ctx.user.id);
       return {
         connected: connections.some((c) => c.status === "connected"),
-        locations: connections,
+        connections,
       };
     } catch (err) {
       throw new TRPCError({

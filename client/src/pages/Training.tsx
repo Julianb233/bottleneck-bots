@@ -10,6 +10,7 @@ import WorkflowsTab from '@/components/training/WorkflowsTab';
 import SkillsTab from '@/components/training/SkillsTab';
 import BehaviorTab from '@/components/training/BehaviorTab';
 import KnowledgeBaseBrowser from '@/components/training/KnowledgeBaseBrowser';
+import { PageEmptyState } from '@/components/onboarding/PageEmptyState';
 import { DocumentsTab } from '@/components/training/DocumentsTab';
 
 export default function Training() {

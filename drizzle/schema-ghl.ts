@@ -110,3 +110,45 @@ export const ghlSyncLog = pgTable("ghl_sync_log", {
 
 export type GhlSyncLog = typeof ghlSyncLog.$inferSelect;
 export type InsertGhlSyncLog = typeof ghlSyncLog.$inferInsert;
+
+/**
+ * GHL Webhook Events
+ * Stores incoming webhook events from GoHighLevel for processing and audit
+ */
+export const ghlWebhookEvents = pgTable("ghl_webhook_events", {
+  id: serial("id").primaryKey(),
+
+  /** GHL event ID for deduplication */
+  eventId: varchar("eventId", { length: 255 }),
+
+  /** Event type (e.g. 'ContactCreate', 'OpportunityStageUpdate') */
+  eventType: varchar("eventType", { length: 255 }).notNull(),
+
+  /** GHL location ID the event belongs to */
+  locationId: varchar("locationId", { length: 255 }),
+
+  /** Raw event payload */
+  payload: jsonb("payload").notNull(),
+
+  /** Processing status */
+  status: varchar("status", { length: 50 }).notNull().default("pending"),
+  // 'pending' | 'processed' | 'failed' | 'dead_letter'
+
+  /** Error message if processing failed */
+  errorMessage: text("errorMessage"),
+
+  /** Number of processing attempts */
+  retryCount: integer("retryCount").default(0),
+
+  /** When the event was received */
+  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+
+  /** When the event was processed */
+  processedAt: timestamp("processedAt"),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type GhlWebhookEvent = typeof ghlWebhookEvents.$inferSelect;
+export type InsertGhlWebhookEvent = typeof ghlWebhookEvents.$inferInsert;
+

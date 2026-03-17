@@ -374,3 +374,6 @@ export function getAgentSkillConfigService(): AgentSkillConfigService {
   }
   return skillConfigServiceInstance;
 }
+
+// Alias for backward compatibility
+export const getSkillConfigService = getAgentSkillConfigService;

@@ -14,7 +14,6 @@ import {
   ghlConnections,
   ghlSyncLog,
   type InsertGhlConnection,
-  type InsertGhlSyncLog,
 } from "../../drizzle/schema-ghl";
 
 // ========================================
@@ -851,14 +850,49 @@ export class GHLService {
   // ========================================
 
   /**
-   * Log a sync operation
+   * Log a sync operation.
+   * Accepts a simplified interface and maps to the ghlSyncLog schema.
    */
-  async logSync(params: Omit<InsertGhlSyncLog, "id" | "createdAt">): Promise<void> {
+  async logSync(params: {
+    userId: number;
+    locationId: string;
+    operation: string;
+    entityType: string;
+    entityId?: string | null;
+    direction: string;
+    status: string;
+    error?: string;
+  }): Promise<void> {
     const db = await getDb();
     if (!db) return;
 
     try {
-      await db.insert(ghlSyncLog).values(params);
+      // Look up the connectionId for this user+location
+      const [connection] = await db
+        .select({ id: ghlConnections.id })
+        .from(ghlConnections)
+        .where(
+          and(
+            eq(ghlConnections.userId, params.userId),
+            eq(ghlConnections.locationId, params.locationId)
+          )
+        )
+        .limit(1);
+
+      if (!connection) {
+        console.warn(`[GHL] No connection found for sync log: user=${params.userId}, location=${params.locationId}`);
+        return;
+      }
+
+      await db.insert(ghlSyncLog).values({
+        connectionId: connection.id,
+        userId: params.userId,
+        syncType: `${params.operation}:${params.entityType}`,
+        direction: params.direction === "outbound" ? "push" : "pull",
+        status: params.status,
+        errorMessage: params.error || null,
+        metadata: params.entityId ? { entityId: params.entityId } : null,
+      });
     } catch (error) {
       console.error("[GHL] Failed to log sync:", error);
     }

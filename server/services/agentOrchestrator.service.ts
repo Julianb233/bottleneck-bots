@@ -38,7 +38,7 @@ import {
 import { getSelfCorrectionService, type FailureAttempt } from "./browser/selfCorrection.service";
 import { getConfidenceService } from "./agentConfidence.service";
 import { getStrategyService, type ExecutionStrategy } from "./agentStrategy.service";
-import { ErrorType, RecoveryStrategy, classifyError } from "../lib/errorTypes";
+import { ErrorType, RecoveryStrategy, classifyError, getErrorMetadata, isErrorRetryable, ErrorSeverity } from "../lib/errorTypes";
 import {
   AgentProgressTracker,
   createProgressTracker,
@@ -1043,19 +1043,53 @@ export class AgentOrchestratorService {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      // Emit tool complete event with error
+      // ========================================
+      // ERROR HANDLING: Classify error and capture debug info
+      // ========================================
+      const errorType = classifyError(errorMessage);
+      const errorMeta = getErrorMetadata(errorType);
+
+      // Capture screenshot on error for browser tools (for debugging)
+      let errorScreenshot: string | undefined;
+      if (toolName.startsWith('browser_') || toolName.startsWith('ghl_')) {
+        try {
+          const sessionId = (parameters.sessionId as string) || (state.context.sessionId as string);
+          if (sessionId) {
+            const { stagehandService } = await import('./stagehand.service');
+            const screenshotResult = await stagehandService.screenshot(sessionId, {
+              fullPage: false,
+              returnBase64: true,
+            });
+            if (screenshotResult.success && screenshotResult.base64) {
+              errorScreenshot = screenshotResult.base64;
+              console.log(`[ErrorCapture] Screenshot captured on error for tool ${toolName}`);
+            }
+          }
+        } catch (screenshotError) {
+          console.warn(`[ErrorCapture] Failed to capture error screenshot:`, screenshotError);
+        }
+      }
+
+      // Emit tool complete event with error classification
       if (emitter) {
         emitter.toolComplete({
           toolName,
-          result: { error: error instanceof Error ? error.message : 'Unknown error' },
+          result: {
+            error: errorMessage,
+            errorType: errorType,
+            severity: errorMeta.severity,
+            retryable: errorMeta.retryable,
+            screenshot: errorScreenshot,
+          },
           duration,
         });
       }
 
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
         duration,
       };
     }
