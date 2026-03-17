@@ -27,6 +27,7 @@ import {
   sentryErrorHandler
 } from "../lib/sentry";
 import { createRestApi } from "../api/rest";
+import { registerGHLOAuthRoutes } from "./ghl-oauth-routes";
 
 // Initialize Sentry as early as possible
 initSentry();
@@ -130,6 +131,8 @@ export async function createApp() {
   app.use("/api/onboarding", onboardingRouter);
   // SSE routes for real-time streaming
   registerSSERoutes(app);
+  // GHL OAuth callback route
+  registerGHLOAuthRoutes(app);
   // Webhook endpoints (public, token-authenticated)
   app.use("/api/webhooks", webhookEndpointsRouter);
   // Stripe webhook route
