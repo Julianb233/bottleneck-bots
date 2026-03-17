@@ -432,7 +432,15 @@ export default function SkillsTab() {
     if (configQuery.data) {
       const fetched = configQuery.data.skills;
       if (Array.isArray(fetched) && fetched.length > 0) {
-        setSkills(fetched as Skill[]);
+        // Merge sub-permissions from defaults for skills that support them
+        const merged = (fetched as Skill[]).map((skill) => {
+          const defaultSkill = DEFAULT_SKILLS.find((d) => d.id === skill.id);
+          if (defaultSkill?.subPermissions && !skill.subPermissions) {
+            return { ...skill, subPermissions: defaultSkill.subPermissions };
+          }
+          return skill;
+        });
+        setSkills(merged);
       } else {
         setSkills(DEFAULT_SKILLS);
       }

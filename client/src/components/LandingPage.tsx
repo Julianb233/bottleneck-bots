@@ -241,9 +241,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigateToF
             <div className="relative rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl border border-gray-200 bg-white">
               <OptimizedImage
                 src="/assets/demo/global_ops_view_1763563925931.png"
-                alt="Live AI Agent Dashboard - Real-time operations view"
+                alt="Live AI Agent Dashboard - Real-time operations view showing automated GHL tasks, lead follow-up, and campaign management"
                 className="w-full"
                 priority
+                width={1920}
+                height={1080}
               />
             </div>
           </div>
