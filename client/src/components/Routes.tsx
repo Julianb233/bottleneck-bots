@@ -18,8 +18,6 @@ import CampaignDetails from '@/pages/CampaignDetails';
 import CreditPurchase from '@/pages/CreditPurchase';
 import Training from '@/pages/Training';
 import TaskTemplates from '@/pages/TaskTemplates';
-import AgentSkills from '@/pages/AgentSkills';
-import Help from '@/pages/Help';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { UserManagement } from '@/pages/admin/UserManagement';
 import { SystemHealth } from '@/pages/admin/SystemHealth';
@@ -28,6 +26,7 @@ import { ConfigCenter } from '@/pages/admin/ConfigCenter';
 import { CostsPage } from '@/pages/admin/CostsPage';
 import DashboardLayout from './DashboardLayout';
 import { Toaster } from '@/components/ui/sonner';
+import { FeaturesPage } from '@/components/FeaturesPage';
 
 export function Routes() {
   return (
@@ -54,8 +53,6 @@ export function Routes() {
           <Route path="/credits" component={CreditPurchase} />
           <Route path="/training" component={Training} />
           <Route path="/templates" component={TaskTemplates} />
-          <Route path="/agent-skills" component={AgentSkills} />
-          <Route path="/support" component={Help} />
           {/* Admin routes */}
           <Route path="/admin" component={AdminDashboard} />
           <Route path="/admin/users" component={UserManagement} />
@@ -63,20 +60,12 @@ export function Routes() {
           <Route path="/admin/system" component={SystemHealth} />
           <Route path="/admin/audit" component={AuditLog} />
           <Route path="/admin/config" component={ConfigCenter} />
-          {/* Catch-all 404 */}
+{/* Team management route - redirects to settings for now */}
           <Route>
             {() => (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100 p-5 mb-5">
-                  <svg className="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                </div>
-                <h1 className="text-2xl font-bold text-gray-900 mb-2">Page Not Found</h1>
-                <p className="text-gray-500 text-sm mb-6">This page does not exist or has been moved.</p>
-                <a href="/dashboard" className="text-sm font-medium text-emerald-600 hover:text-emerald-700 hover:underline">
-                  Back to Dashboard
-                </a>
+              <div className="space-y-6">
+                <h1 className="text-3xl font-bold">404</h1>
+                <p className="text-muted-foreground">Page not found</p>
               </div>
             )}
           </Route>

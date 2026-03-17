@@ -1,15 +1,10 @@
-/**
- * TaskTemplates - Template Browser & Runner
- * Browse pre-built task templates, fill in inputs, and create tasks from them
- */
-
-import React, { useState, useMemo } from 'react';
-import { trpc } from '@/lib/trpc';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import {
   Dialog,
@@ -20,656 +15,490 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
   Search,
-  Play,
   Clock,
   Zap,
-  Star,
-  Grid3X3,
+  Play,
+  LayoutGrid,
   List,
-  ChevronRight,
+  Filter,
   Loader2,
-  CheckCircle,
-  UserPlus,
+  Globe,
   Mail,
-  Workflow,
-  Tags,
-  FileSpreadsheet,
+  Tag,
+  FileText,
+  Users,
   BarChart3,
-  PenTool,
   Sparkles,
-  ArrowRight,
-  Shield,
-  LayoutTemplate,
+  Wrench,
+  Store,
 } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { useLocation } from 'wouter';
 
-// Map icon names to lucide components
-const ICON_MAP: Record<string, React.ElementType> = {
-  UserPlus,
-  Mail,
-  Workflow,
-  Tags,
-  FileSpreadsheet,
-  Search,
-  BarChart3,
-  PenTool,
-  Zap,
+type TemplateInput = {
+  label: string;
+  placeholder: string;
+  required: boolean;
 };
 
-// Category icon map
-const CATEGORY_ICON_MAP: Record<string, React.ElementType> = {
-  Zap,
-  Search,
-  PenTool,
+type TemplateStep = {
+  action: string;
+  description: string;
 };
 
-// Difficulty colors
-const DIFFICULTY_COLORS: Record<string, string> = {
-  beginner: "bg-green-100 text-green-700",
-  intermediate: "bg-amber-100 text-amber-700",
-  advanced: "bg-red-100 text-red-700",
+const CATEGORY_CONFIG: Record<string, { label: string; color: string; icon: typeof Globe }> = {
+  ghl: { label: 'GoHighLevel', color: 'bg-blue-500/10 text-blue-700 border-blue-200', icon: Globe },
+  marketing: { label: 'Marketing', color: 'bg-purple-500/10 text-purple-700 border-purple-200', icon: Mail },
+  research: { label: 'Research', color: 'bg-amber-500/10 text-amber-700 border-amber-200', icon: BarChart3 },
+  content: { label: 'Content', color: 'bg-green-500/10 text-green-700 border-green-200', icon: FileText },
+  ops: { label: 'Operations', color: 'bg-slate-500/10 text-slate-700 border-slate-200', icon: Wrench },
 };
 
-type ViewMode = "grid" | "list";
+const CATEGORY_TABS = [
+  { key: 'all', label: 'All Templates' },
+  { key: 'ghl', label: 'GoHighLevel' },
+  { key: 'marketing', label: 'Marketing' },
+  { key: 'research', label: 'Research' },
+  { key: 'content', label: 'Content' },
+  { key: 'ops', label: 'Operations' },
+];
 
 export default function TaskTemplates() {
   const [, setLocation] = useLocation();
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [formInputs, setFormInputs] = useState<Record<string, any>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [isExecuting, setIsExecuting] = useState(false);
 
-  // Queries
-  const templatesQuery = trpc.templates.getAll.useQuery({
-    category: selectedCategory === "all" ? undefined : selectedCategory,
-    search: searchQuery || undefined,
-  });
-  const categoriesQuery = trpc.templates.getCategories.useQuery();
+  const { data: templates, isLoading } = trpc.templates.getAll.useQuery(
+    activeCategory !== 'all' ? { category: activeCategory } : undefined,
+    { refetchOnWindowFocus: false }
+  );
 
-  // Mutations
-  const executeMutation = trpc.templates.execute.useMutation({
-    onSuccess: (result) => {
-      toast.success("Task Created", {
-        description: result.message,
-      });
-      setIsDetailOpen(false);
-      setSelectedTemplate(null);
-      setFormInputs({});
-      // Navigate to task board to see the new task
-      setLocation("/scheduled-tasks");
-    },
-    onError: (error) => {
-      toast.error("Failed to create task", {
-        description: error.message,
-      });
-    },
-  });
+  const executeMutation = trpc.templates.execute.useMutation();
+  const seedMutation = trpc.templates.seed.useMutation();
 
-  const templates = templatesQuery.data ?? [];
-  const categories = categoriesQuery.data ?? [];
-
-  const openTemplate = (template: any) => {
-    setSelectedTemplate(template);
-    // Initialize form with default values
-    const defaults: Record<string, any> = {};
-    for (const input of template.inputs) {
-      if (input.defaultValue !== undefined) {
-        defaults[input.key] = input.defaultValue;
-      }
-    }
-    setFormInputs(defaults);
-    setIsDetailOpen(true);
-  };
-
-  const handleSubmit = () => {
-    if (!selectedTemplate) return;
-    setIsSubmitting(true);
-    executeMutation.mutate(
-      { templateId: selectedTemplate.id, inputs: formInputs },
-      { onSettled: () => setIsSubmitting(false) }
+  const filteredTemplates = (templates ?? []).filter(t => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      t.name.toLowerCase().includes(q) ||
+      t.description?.toLowerCase().includes(q) ||
+      t.category?.toLowerCase().includes(q) ||
+      (t.platform as string | null)?.toLowerCase().includes(q)
     );
+  });
+
+  const handleOpenDetail = (template: any) => {
+    setSelectedTemplate(template);
+    // Initialize input values with empty strings
+    const inputs = (template.inputs as TemplateInput[]) ?? [];
+    const initial: Record<string, string> = {};
+    inputs.forEach(inp => {
+      initial[inp.label] = '';
+    });
+    setInputValues(initial);
   };
 
-  const updateInput = (key: string, value: any) => {
-    setFormInputs(prev => ({ ...prev, [key]: value }));
+  const handleCloseDetail = () => {
+    setSelectedTemplate(null);
+    setInputValues({});
+  };
+
+  const handleExecute = async () => {
+    if (!selectedTemplate) return;
+
+    // Validate required fields
+    const inputs = (selectedTemplate.inputs as TemplateInput[]) ?? [];
+    const missing = inputs.filter(inp => inp.required && !inputValues[inp.label]?.trim());
+    if (missing.length > 0) {
+      toast.error(`Please fill in required fields: ${missing.map(m => m.label).join(', ')}`);
+      return;
+    }
+
+    setIsExecuting(true);
+    try {
+      const result = await executeMutation.mutateAsync({
+        id: selectedTemplate.id,
+        inputValues,
+      });
+      toast.success(result.message);
+      handleCloseDetail();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to execute template');
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleSeed = async () => {
+    try {
+      const result = await seedMutation.mutateAsync();
+      toast.success(`Seeded templates: ${result.inserted} added, ${result.skipped} already existed`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to seed templates');
+    }
+  };
+
+  const getCategoryBadge = (category: string | null) => {
+    const cat = category ?? 'General';
+    const config = CATEGORY_CONFIG[cat];
+    if (!config) {
+      return <Badge variant="outline">{cat}</Badge>;
+    }
+    const Icon = config.icon;
+    return (
+      <Badge className={`${config.color} border`}>
+        <Icon className="h-3 w-3 mr-1" />
+        {config.label}
+      </Badge>
+    );
   };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Breadcrumb items={[{ label: "Dashboard", href: "/" }, { label: "Task Templates" }]} />
+        <Breadcrumb
+          items={[
+            { label: 'Dashboard', href: '/' },
+            { label: 'Task Templates' },
+          ]}
+        />
         <div className="flex items-center justify-between mt-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Task Templates</h1>
             <p className="text-muted-foreground mt-1">
-              Pre-built templates for common agency tasks. Select a template, fill in the details, and let your AI agent handle the rest.
+              Pre-built automation templates ready to run. Choose a template, fill in the details, and let the AI agent handle the rest.
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleSeed} disabled={seedMutation.isPending}>
+              {seedMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              Seed Templates
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* Filters Bar */}
+      {/* Filters bar */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+        <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search templates..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={e => setSearchQuery(e.target.value)}
             className="pl-9"
           />
         </div>
-        <div className="flex gap-2">
-          {/* Category pills */}
-          <div className="flex gap-1.5 flex-wrap">
-            <Button
-              variant={selectedCategory === "all" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedCategory("all")}
-              className="h-9"
-            >
-              All
-              <Badge variant="secondary" className="ml-1.5 text-xs">
-                {SEEDED_TEMPLATE_COUNT}
-              </Badge>
-            </Button>
-            {categories.map(cat => {
-              const CatIcon = CATEGORY_ICON_MAP[cat.icon] || Zap;
-              return (
-                <Button
-                  key={cat.id}
-                  variant={selectedCategory === cat.id ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className="h-9"
-                >
-                  <CatIcon className="h-3.5 w-3.5 mr-1" />
-                  {cat.name}
-                  <Badge variant="secondary" className="ml-1.5 text-xs">
-                    {cat.count}
-                  </Badge>
-                </Button>
-              );
-            })}
-          </div>
-          {/* View toggle */}
-          <div className="flex border rounded-md">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("h-9 px-2.5 rounded-r-none", viewMode === "grid" && "bg-muted")}
-              onClick={() => setViewMode("grid")}
-            >
-              <Grid3X3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("h-9 px-2.5 rounded-l-none", viewMode === "list" && "bg-muted")}
-              onClick={() => setViewMode("list")}
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant={viewMode === 'grid' ? 'default' : 'outline'}
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => setViewMode('grid')}
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'outline'}
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => setViewMode('list')}
+          >
+            <List className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Loading State */}
-      {templatesQuery.isLoading && (
-        <div className={cn(
-          viewMode === "grid" ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"
-        )}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-5 w-2/3" />
-                <Skeleton className="h-4 w-full mt-2" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-4 w-1/2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* Category tabs */}
+      <div className="flex gap-1 flex-wrap border-b pb-1">
+        {CATEGORY_TABS.map(tab => (
+          <Button
+            key={tab.key}
+            variant={activeCategory === tab.key ? 'default' : 'ghost'}
+            size="sm"
+            className={activeCategory === tab.key ? '' : 'text-muted-foreground'}
+            onClick={() => setActiveCategory(tab.key)}
+          >
+            {tab.label}
+            {tab.key !== 'all' && templates && (
+              <span className="ml-1 text-xs opacity-70">
+                ({(templates ?? []).filter(t => tab.key === 'all' || t.category === tab.key).length})
+              </span>
+            )}
+          </Button>
+        ))}
+      </div>
 
-      {/* Empty State */}
-      {!templatesQuery.isLoading && templates.length === 0 && (
-        <Card className="flex flex-col items-center justify-center py-16">
-          <LayoutTemplate className="h-12 w-12 text-muted-foreground/50 mb-4" />
-          <h3 className="text-lg font-medium">No templates found</h3>
-          <p className="text-muted-foreground text-sm mt-1">
-            {searchQuery ? "Try a different search term" : "No templates available in this category"}
-          </p>
-          {searchQuery && (
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => setSearchQuery("")}>
-              Clear Search
-            </Button>
-          )}
-        </Card>
-      )}
-
-      {/* Grid View */}
-      {viewMode === "grid" && templates.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {templates.map(template => (
-            <TemplateCard
-              key={template.id}
-              template={template}
-              onClick={() => openTemplate(template)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* List View */}
-      {viewMode === "list" && templates.length > 0 && (
-        <div className="space-y-2">
-          {templates.map(template => (
-            <TemplateListItem
-              key={template.id}
-              template={template}
-              onClick={() => openTemplate(template)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Marketplace Coming Soon */}
-      <Card className="border-dashed border-2 bg-muted/30">
-        <CardContent className="flex items-center justify-between py-6">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
-              <Sparkles className="h-5 w-5 text-purple-600" />
-            </div>
-            <div>
-              <h3 className="font-medium">Template Marketplace</h3>
-              <p className="text-sm text-muted-foreground">Community templates and premium automation packs coming soon</p>
-            </div>
+      {/* Marketplace teaser */}
+      <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
+        <CardContent className="flex items-center gap-4 py-4">
+          <Store className="h-8 w-8 text-emerald-600 shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium text-emerald-800">Template Marketplace Coming Soon</p>
+            <p className="text-sm text-emerald-600">
+              Share your custom templates with the community and discover templates built by other agencies.
+            </p>
           </div>
-          <Badge variant="outline" className="text-purple-600 border-purple-200">Coming Soon</Badge>
+          <Badge variant="outline" className="border-emerald-300 text-emerald-700 shrink-0">
+            Coming Soon
+          </Badge>
         </CardContent>
       </Card>
 
-      {/* Template Detail Modal */}
-      <TemplateDetailDialog
-        template={selectedTemplate}
-        isOpen={isDetailOpen}
-        onClose={() => { setIsDetailOpen(false); setSelectedTemplate(null); }}
-        formInputs={formInputs}
-        onUpdateInput={updateInput}
-        onSubmit={handleSubmit}
-        isSubmitting={isSubmitting}
-      />
+      {/* Template grid/list */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : filteredTemplates.length === 0 ? (
+        <div className="text-center py-20">
+          <Filter className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-medium">No templates found</h3>
+          <p className="text-muted-foreground mt-1">
+            {searchQuery
+              ? 'Try adjusting your search or category filter.'
+              : 'Click "Seed Templates" to load the default templates.'}
+          </p>
+        </div>
+      ) : viewMode === 'grid' ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredTemplates.map(template => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              getCategoryBadge={getCategoryBadge}
+              onSelect={() => handleOpenDetail(template)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredTemplates.map(template => (
+            <TemplateListItem
+              key={template.id}
+              template={template}
+              getCategoryBadge={getCategoryBadge}
+              onSelect={() => handleOpenDetail(template)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Template detail modal */}
+      <Dialog open={!!selectedTemplate} onOpenChange={open => !open && handleCloseDetail()}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {selectedTemplate && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-2 mb-1">
+                  {getCategoryBadge(selectedTemplate.category)}
+                  {selectedTemplate.platform && selectedTemplate.platform !== 'General' && (
+                    <Badge variant="outline">{selectedTemplate.platform as string}</Badge>
+                  )}
+                </div>
+                <DialogTitle className="text-xl">{selectedTemplate.name}</DialogTitle>
+                <DialogDescription>{selectedTemplate.description}</DialogDescription>
+              </DialogHeader>
+
+              {/* Meta info */}
+              <div className="flex gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Clock className="h-4 w-4" />
+                  ~{selectedTemplate.estimatedMinutes ?? 5} min
+                </div>
+                <div className="flex items-center gap-1">
+                  <Zap className="h-4 w-4" />
+                  {selectedTemplate.estimatedCredits ?? 1} credits
+                </div>
+                {(selectedTemplate.usageCount ?? 0) > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Play className="h-4 w-4" />
+                    {selectedTemplate.usageCount} runs
+                  </div>
+                )}
+              </div>
+
+              {/* Steps preview */}
+              <div>
+                <h4 className="text-sm font-medium mb-2">Steps</h4>
+                <div className="space-y-1">
+                  {((selectedTemplate.steps as TemplateStep[]) ?? []).map((step: TemplateStep, i: number) => (
+                    <div key={i} className="flex items-start gap-2 text-sm">
+                      <span className="bg-muted text-muted-foreground rounded-full h-5 w-5 flex items-center justify-center text-xs shrink-0 mt-0.5">
+                        {i + 1}
+                      </span>
+                      <div>
+                        <span className="font-medium text-xs uppercase tracking-wide text-muted-foreground">
+                          {step.action}
+                        </span>
+                        <span className="mx-1 text-muted-foreground">-</span>
+                        <span>{step.description}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Required skills */}
+              {((selectedTemplate.requiredSkills as string[]) ?? []).length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Required Capabilities</h4>
+                  <div className="flex flex-wrap gap-1">
+                    {((selectedTemplate.requiredSkills as string[]) ?? []).map((skill: string) => (
+                      <Badge key={skill} variant="secondary" className="text-xs">
+                        {skill.replace(/_/g, ' ')}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Dynamic input form */}
+              {((selectedTemplate.inputs as TemplateInput[]) ?? []).length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium">Inputs</h4>
+                  {((selectedTemplate.inputs as TemplateInput[]) ?? []).map((inp: TemplateInput) => (
+                    <div key={inp.label}>
+                      <Label className="text-sm">
+                        {inp.label}
+                        {inp.required && <span className="text-red-500 ml-0.5">*</span>}
+                      </Label>
+                      <Input
+                        className="mt-1"
+                        placeholder={inp.placeholder}
+                        value={inputValues[inp.label] ?? ''}
+                        onChange={e =>
+                          setInputValues(prev => ({ ...prev, [inp.label]: e.target.value }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={handleCloseDetail}>
+                  Cancel
+                </Button>
+                <Button onClick={handleExecute} disabled={isExecuting}>
+                  {isExecuting ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Play className="h-4 w-4 mr-2" />
+                  )}
+                  Use Template
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-// Use a constant for the total count
-const SEEDED_TEMPLATE_COUNT = 8;
+// --- Sub-components ---
 
-// ========================================
-// TEMPLATE CARD (Grid View)
-// ========================================
-
-function TemplateCard({ template, onClick }: { template: any; onClick: () => void }) {
-  const IconComponent = ICON_MAP[template.icon] || Zap;
-
+function TemplateCard({
+  template,
+  getCategoryBadge,
+  onSelect,
+}: {
+  template: any;
+  getCategoryBadge: (cat: string | null) => React.ReactNode;
+  onSelect: () => void;
+}) {
+  const steps = (template.steps as TemplateStep[]) ?? [];
   return (
     <Card
-      className="cursor-pointer hover:shadow-md hover:border-emerald-200 transition-all group"
-      onClick={onClick}
+      className="cursor-pointer hover:shadow-md transition-shadow group"
+      onClick={onSelect}
     >
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-2">
         <div className="flex items-start justify-between">
-          <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
-            <IconComponent className="h-5 w-5 text-emerald-600" />
-          </div>
-          <div className="flex items-center gap-1.5">
-            {template.isNew && (
-              <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">New</Badge>
-            )}
-            <Badge variant="outline" className={DIFFICULTY_COLORS[template.difficulty]}>
-              {template.difficulty}
-            </Badge>
+          {getCategoryBadge(template.category)}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-0.5">
+              <Clock className="h-3 w-3" />
+              {template.estimatedMinutes ?? 5}m
+            </span>
+            <span className="flex items-center gap-0.5">
+              <Zap className="h-3 w-3" />
+              {template.estimatedCredits ?? 1}cr
+            </span>
           </div>
         </div>
-        <CardTitle className="text-base mt-3">{template.name}</CardTitle>
-        <CardDescription className="line-clamp-2 text-sm">
+        <CardTitle className="text-base mt-2 group-hover:text-emerald-700 transition-colors">
+          {template.name}
+        </CardTitle>
+        <CardDescription className="line-clamp-2 text-xs">
           {template.description}
         </CardDescription>
       </CardHeader>
-      <CardContent className="pt-0">
-        <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5" />
-              {template.estimatedDuration}m
-            </span>
-            <span className="flex items-center gap-1">
-              <Zap className="h-3.5 w-3.5" />
-              {template.creditCost} {template.creditCost === 1 ? "credit" : "credits"}
-            </span>
-          </div>
-          <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-emerald-600 transition-colors" />
-        </div>
-        {template.platformRequirements.length > 0 && (
-          <div className="flex items-center gap-1 mt-2">
-            <Shield className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              Requires: {template.platformRequirements.join(", ")}
-            </span>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ========================================
-// TEMPLATE LIST ITEM (List View)
-// ========================================
-
-function TemplateListItem({ template, onClick }: { template: any; onClick: () => void }) {
-  const IconComponent = ICON_MAP[template.icon] || Zap;
-
-  return (
-    <Card
-      className="cursor-pointer hover:shadow-sm hover:border-emerald-200 transition-all"
-      onClick={onClick}
-    >
-      <CardContent className="flex items-center gap-4 py-4">
-        <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-          <IconComponent className="h-5 w-5 text-emerald-600" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="font-medium truncate">{template.name}</h3>
-            {template.isNew && (
-              <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 text-xs">New</Badge>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground truncate">{template.description}</p>
-        </div>
-        <div className="flex items-center gap-4 shrink-0 text-sm text-muted-foreground">
-          <Badge variant="outline" className={DIFFICULTY_COLORS[template.difficulty]}>
-            {template.difficulty}
-          </Badge>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" />
-            {template.estimatedDuration}m
+      <CardContent>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {steps.length} steps
           </span>
-          <span className="flex items-center gap-1">
-            <Zap className="h-3.5 w-3.5" />
-            {template.creditCost}
-          </span>
-          <ChevronRight className="h-4 w-4" />
+          {template.platform && template.platform !== 'General' && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              {template.platform as string}
+            </Badge>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// ========================================
-// TEMPLATE DETAIL DIALOG
-// ========================================
-
-function TemplateDetailDialog({
+function TemplateListItem({
   template,
-  isOpen,
-  onClose,
-  formInputs,
-  onUpdateInput,
-  onSubmit,
-  isSubmitting,
+  getCategoryBadge,
+  onSelect,
 }: {
   template: any;
-  isOpen: boolean;
-  onClose: () => void;
-  formInputs: Record<string, any>;
-  onUpdateInput: (key: string, value: any) => void;
-  onSubmit: () => void;
-  isSubmitting: boolean;
+  getCategoryBadge: (cat: string | null) => React.ReactNode;
+  onSelect: () => void;
 }) {
-  if (!template) return null;
-
-  const IconComponent = ICON_MAP[template.icon] || Zap;
-  const allRequiredFilled = template.inputs
-    .filter((f: any) => f.required)
-    .every((f: any) => formInputs[f.key] && String(formInputs[f.key]).trim() !== "");
-
+  const steps = (template.steps as TemplateStep[]) ?? [];
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center">
-              <IconComponent className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div>
-              <DialogTitle>{template.name}</DialogTitle>
-              <DialogDescription>{template.description}</DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <ScrollArea className="flex-1 -mx-6 px-6">
-          <div className="space-y-6 py-2">
-            {/* Template Info */}
-            <div className="flex flex-wrap gap-3">
-              <Badge variant="outline" className={DIFFICULTY_COLORS[template.difficulty]}>
-                {template.difficulty}
-              </Badge>
-              <Badge variant="outline" className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                ~{template.estimatedDuration} min
-              </Badge>
-              <Badge variant="outline" className="flex items-center gap-1">
-                <Zap className="h-3 w-3" />
-                {template.creditCost} {template.creditCost === 1 ? "credit" : "credits"}
-              </Badge>
-              {template.platformRequirements.map((req: string) => (
-                <Badge key={req} variant="outline" className="flex items-center gap-1 text-amber-700 border-amber-200">
-                  <Shield className="h-3 w-3" />
-                  {req}
-                </Badge>
-              ))}
-            </div>
-
-            {/* Steps Preview */}
-            <div>
-              <h4 className="text-sm font-medium mb-2">What the agent will do:</h4>
-              <div className="space-y-1.5">
-                {template.steps.map((step: any, idx: number) => (
-                  <div key={idx} className="flex items-start gap-2 text-sm">
-                    <div className="h-5 w-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 text-xs font-medium mt-0.5">
-                      {step.order}
-                    </div>
-                    <div>
-                      <span className="font-medium">{step.name}</span>
-                      <span className="text-muted-foreground"> — {step.description}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Input Form */}
-            <div>
-              <h4 className="text-sm font-medium mb-3">Configure task inputs:</h4>
-              <div className="space-y-4">
-                {template.inputs.map((field: any) => (
-                  <TemplateInputField
-                    key={field.key}
-                    field={field}
-                    value={formInputs[field.key]}
-                    onChange={(val) => onUpdateInput(field.key, val)}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </ScrollArea>
-
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button
-            onClick={onSubmit}
-            disabled={!allRequiredFilled || isSubmitting}
-            className="bg-emerald-600 hover:bg-emerald-700"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating Task...
-              </>
-            ) : (
-              <>
-                <Play className="mr-2 h-4 w-4" />
-                Run from Template
-              </>
+    <Card
+      className="cursor-pointer hover:shadow-md transition-shadow"
+      onClick={onSelect}
+    >
+      <CardContent className="flex items-center gap-4 py-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            {getCategoryBadge(template.category)}
+            {template.platform && template.platform !== 'General' && (
+              <Badge variant="outline" className="text-[10px]">{template.platform as string}</Badge>
             )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ========================================
-// TEMPLATE INPUT FIELD
-// ========================================
-
-function TemplateInputField({
-  field,
-  value,
-  onChange,
-}: {
-  field: any;
-  value: any;
-  onChange: (value: any) => void;
-}) {
-  switch (field.type) {
-    case "textarea":
-      return (
-        <div className="space-y-1.5">
-          <Label>
-            {field.label}
-            {field.required && <span className="text-red-500 ml-0.5">*</span>}
-          </Label>
-          <Textarea
-            placeholder={field.placeholder}
-            value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
-            rows={3}
-          />
-          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
-        </div>
-      );
-
-    case "select":
-      return (
-        <div className="space-y-1.5">
-          <Label>
-            {field.label}
-            {field.required && <span className="text-red-500 ml-0.5">*</span>}
-          </Label>
-          <Select value={value || ""} onValueChange={onChange}>
-            <SelectTrigger>
-              <SelectValue placeholder={`Select ${field.label.toLowerCase()}...`} />
-            </SelectTrigger>
-            <SelectContent>
-              {field.options?.map((opt: any) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
-        </div>
-      );
-
-    case "multi-select":
-      return (
-        <div className="space-y-1.5">
-          <Label>
-            {field.label}
-            {field.required && <span className="text-red-500 ml-0.5">*</span>}
-          </Label>
-          <div className="flex flex-wrap gap-2">
-            {field.options?.map((opt: any) => {
-              const selected = Array.isArray(value) && value.includes(opt.value);
-              return (
-                <Button
-                  key={opt.value}
-                  type="button"
-                  variant={selected ? "default" : "outline"}
-                  size="sm"
-                  className={cn("h-8", selected && "bg-emerald-600 hover:bg-emerald-700")}
-                  onClick={() => {
-                    const current = Array.isArray(value) ? value : [];
-                    if (selected) {
-                      onChange(current.filter((v: string) => v !== opt.value));
-                    } else {
-                      onChange([...current, opt.value]);
-                    }
-                  }}
-                >
-                  {opt.label}
-                </Button>
-              );
-            })}
           </div>
-          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          <h3 className="font-medium text-sm truncate">{template.name}</h3>
+          <p className="text-xs text-muted-foreground truncate">{template.description}</p>
         </div>
-      );
-
-    case "boolean":
-      return (
-        <div className="flex items-center gap-2">
-          <Checkbox
-            checked={!!value}
-            onCheckedChange={(checked) => onChange(checked)}
-          />
-          <Label className="cursor-pointer" onClick={() => onChange(!value)}>
-            {field.label}
-          </Label>
-          {field.helpText && <p className="text-xs text-muted-foreground ml-1">({field.helpText})</p>}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
+          <span className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            {template.estimatedMinutes ?? 5}m
+          </span>
+          <span className="flex items-center gap-1">
+            <Zap className="h-3 w-3" />
+            {template.estimatedCredits ?? 1}cr
+          </span>
+          <span>{steps.length} steps</span>
         </div>
-      );
-
-    default:
-      return (
-        <div className="space-y-1.5">
-          <Label>
-            {field.label}
-            {field.required && <span className="text-red-500 ml-0.5">*</span>}
-          </Label>
-          <Input
-            type={field.type === "email" ? "email" : field.type === "url" ? "url" : field.type === "number" ? "number" : "text"}
-            placeholder={field.placeholder}
-            value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
-          />
-          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
-        </div>
-      );
-  }
+        <Button variant="outline" size="sm" className="shrink-0">
+          <Play className="h-3 w-3 mr-1" />
+          Use
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }

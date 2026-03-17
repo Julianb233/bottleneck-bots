@@ -36,22 +36,19 @@ import {
   Shield,
   Bot,
   GraduationCap,
-  LayoutTemplate,
-  Sparkles,
+  FileStack
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { CommandPalette } from './CommandPalette';
-import { HelpDrawer } from './help/HelpDrawer';
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Bot, label: "AI Agent", path: "/agent" },
   { icon: GraduationCap, label: "Training", path: "/training" },
-  { icon: LayoutTemplate, label: "Templates", path: "/templates" },
-  { icon: Sparkles, label: "Agent Skills", path: "/agent-skills" },
+  { icon: FileStack, label: "Templates", path: "/templates" },
   { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
   { icon: Workflow, label: "Workflow Builder", path: "/workflow-builder" },
@@ -59,7 +56,6 @@ const menuItems = [
   { icon: Megaphone, label: "AI Campaigns", path: "/ai-campaigns" },
   { icon: CreditCard, label: "Credits", path: "/credits" },
   { icon: Settings, label: "Settings", path: "/settings" },
-  { icon: LifeBuoy, label: "Support", path: "/support" },
 ];
 
 const adminOnlyItems = [
@@ -157,9 +153,7 @@ function DashboardLayoutContent({
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const allMenuItems = [...menuItems, ...adminOnlyItems];
-  const activeMenuItem = allMenuItems.find(item =>
-    item.path === "/" ? location === "/" : location.startsWith(item.path)
-  );
+  const activeMenuItem = allMenuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -250,7 +244,7 @@ function DashboardLayoutContent({
           <SidebarContent className="gap-0" data-tour="sidebar-nav">
             <SidebarMenu className="px-2 py-1">
               {menuItems.map(item => {
-                const isActive = item.path === "/" ? location === "/" : location.startsWith(item.path);
+                const isActive = location === item.path;
                 const tourId =
                   item.path === "/" ? "nav-dashboard" :
                   item.path === "/lead-lists" ? "nav-leads" :
