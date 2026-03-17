@@ -2,7 +2,7 @@
  * GHL tRPC Router
  *
  * Provides typed RPC endpoints for GHL integration management:
- * - ghl.connect — initiate OAuth flow
+ * - ghl.connect — initiate OAuth authorization flow (with optional scopes)
  * - ghl.disconnect — revoke tokens and disconnect a location
  * - ghl.status — connection health check for all locations
  * - ghl.listLocations — list all authorized GHL locations

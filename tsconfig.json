@@ -11,7 +11,10 @@
     "dist",
     "**/*.test.ts",
     "**/*.example.ts",
-    "server/templates/**/*"
+    "server/templates/**/*",
+    ".claude/**/*",
+    ".beads/**/*",
+    ".planning/**/*"
   ],
   "compilerOptions": {
     "incremental": true,

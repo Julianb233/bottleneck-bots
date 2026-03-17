@@ -147,7 +147,7 @@ ghlWebhookRouter.post("/", async (req: Request, res: Response) => {
         eventId,
         payload: payload as Record<string, unknown>,
         status: "pending",
-        attempts: 0,
+        retryCount: 0,
       })
       .returning();
 
@@ -168,9 +168,9 @@ ghlWebhookRouter.post("/", async (req: Request, res: Response) => {
       await db
         .update(ghlWebhookEvents)
         .set({
-          status: storedEvent.attempts >= 4 ? "dead_letter" : "failed",
-          error: errorMsg,
-          attempts: storedEvent.attempts + 1,
+          status: (storedEvent.retryCount ?? 0) >= 4 ? "dead_letter" : "failed",
+          errorMessage: errorMsg,
+          retryCount: (storedEvent.retryCount ?? 0) + 1,
         })
         .where(eq(ghlWebhookEvents.id, storedEvent.id));
 

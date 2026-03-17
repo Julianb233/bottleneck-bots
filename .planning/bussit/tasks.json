@@ -154,15 +154,15 @@
       "phase": "02",
       "plan": "03",
       "priority": 221,
-      "status": "pending",
+      "status": "claimed",
       "dependencies": [
         "01-03-build"
       ],
       "source": "gsd",
       "linearId": null,
       "linearIdentifier": "AI-2874",
-      "assignedTo": null,
-      "claimedAt": null,
+      "assignedTo": "worker-3b",
+      "claimedAt": "2026-03-17T11:03:59Z",
       "completedAt": null,
       "createdAt": "2026-03-16T20:00:00Z",
       "result": null,
@@ -356,7 +356,7 @@
       "phase": "04",
       "plan": "02",
       "priority": 411,
-      "status": "claimed",
+      "status": "completed",
       "dependencies": [
         "04-01-build"
       ],
@@ -365,9 +365,9 @@
       "linearIdentifier": "AI-2885",
       "assignedTo": "worker-3",
       "claimedAt": "2026-03-17T10:56:15.799117Z",
-      "completedAt": null,
+      "completedAt": "2026-03-17T03:58:00.000Z",
       "createdAt": "2026-03-16T20:00:00Z",
-      "result": null,
+      "result": "Built ExecutionDetailView with step timeline, reasoning chain, SessionRecordingViewer replay, error classification, JSON export, retry button. Enhanced ExecutionHistory with date grouping. All exported from agent index.",
       "executionTime": 0,
       "retries": 0,
       "failureHistory": []
@@ -381,15 +381,15 @@
       "phase": "04",
       "plan": "03",
       "priority": 421,
-      "status": "pending",
+      "status": "claimed",
       "dependencies": [
         "01-03-build"
       ],
       "source": "gsd",
       "linearId": null,
       "linearIdentifier": "AI-2886",
-      "assignedTo": null,
-      "claimedAt": null,
+      "assignedTo": "worker-1",
+      "claimedAt": "2026-03-17T11:04:44Z",
       "completedAt": null,
       "createdAt": "2026-03-16T20:00:00Z",
       "result": null,
