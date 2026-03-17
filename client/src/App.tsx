@@ -173,7 +173,12 @@ function App() {
     }
   };
 
-  if (isAuthLoading) {
+  // Only show auth loading spinner for protected routes — public pages render immediately
+  const currentPath = window.location.pathname;
+  const protectedPaths = ['/dashboard', '/agent', '/settings', '/lead-lists', '/ai-campaigns', '/browser-sessions'];
+  const isOnProtectedPath = protectedPaths.some(p => currentPath.startsWith(p));
+
+  if (isAuthLoading && isOnProtectedPath) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
