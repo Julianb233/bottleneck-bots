@@ -486,6 +486,57 @@ export function isReportConfig(config: unknown): config is ReportConfig {
 }
 
 // ========================================
+// PIPELINE (MULTI-STEP WORKFLOW) TYPES
+// ========================================
+
+export type PipelineStepType =
+  | 'workflow'
+  | 'apiCall'
+  | 'transform'
+  | 'condition'
+  | 'delay';
+
+export interface PipelineStepDefinition {
+  name: string;
+  type: PipelineStepType;
+  order: number;
+  config: Record<string, unknown>;
+  /** Maps shared context keys → step input variables */
+  inputMapping?: Record<string, string>;
+  /** Maps step output keys → shared context keys */
+  outputMapping?: Record<string, string>;
+  /** Expression evaluated against shared context; step is skipped if false */
+  condition?: string;
+  continueOnError?: boolean;
+  retryCount?: number;
+  timeoutMs?: number;
+}
+
+export interface PipelineExecutionStatus {
+  executionId: number;
+  pipelineId: number;
+  status: string;
+  currentStepIndex: number;
+  sharedContext: Record<string, unknown>;
+  stepResults: Array<{
+    stepIndex: number;
+    stepName: string;
+    type: string;
+    status: string;
+    startedAt: string;
+    completedAt?: string;
+    duration?: number;
+    output?: unknown;
+    error?: string;
+  }>;
+  output?: unknown;
+  error?: string;
+  startedAt?: Date;
+  completedAt?: Date;
+  duration?: number;
+}
+
+// ========================================
 // UTILITY TYPES
 // ========================================
 

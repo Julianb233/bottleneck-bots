@@ -700,3 +700,15 @@ export {
   type PasswordResetConfirm,
   type EmailVerificationRequest,
 } from "./schema-auth";
+
+// ── Pipeline (Multi-Step Workflow) Schema ──
+export {
+  pipelines,
+  pipelineExecutions,
+  type Pipeline,
+  type InsertPipeline,
+  type PipelineExecution,
+  type InsertPipelineExecution,
+  type PipelineStepJson,
+  type PipelineStepResultJson,
+} from "./schema-pipelines";
