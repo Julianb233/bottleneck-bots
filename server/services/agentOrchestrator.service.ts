@@ -1291,16 +1291,32 @@ export class AgentOrchestratorService {
         content: currentPrompt,
       });
 
+<<<<<<< HEAD
       // Fetch RAG context on first iteration (enhanced with SOP knowledge)
       let ragContext: RAGContext | undefined;
       if (state.iterations === 0) {
         try {
           // Retrieve RAG documentation context
+=======
+      // Fetch RAG context on first iteration with priority-weighted SOP-aware retrieval
+      let ragContext: RAGContext | undefined;
+      if (state.iterations === 0) {
+        try {
+          // Use priority-weighted retrieval to boost SOP and process documents
+          const priorityChunks = await ragService.retrieveWithPriority(state.taskDescription, {
+            topK: 10,
+            minSimilarity: 0.5,
+            priorityBoost: true,
+          });
+
+          // Also get the system prompt for platform detection
+>>>>>>> worktree-agent-a3dc1bfd
           const ragResult = await ragService.buildSystemPrompt(state.taskDescription, {
             maxDocumentationTokens: 3000,
             includeExamples: true,
           });
 
+<<<<<<< HEAD
           // Also retrieve SOP-specific knowledge with priority-weighted results
           const sopChunks = await ragService.retrieve(state.taskDescription, {
             topK: 5,
@@ -1338,18 +1354,37 @@ export class AgentOrchestratorService {
               };
             });
 
+=======
+          // Build enhanced RAG context combining priority chunks and standard retrieval
+          const sopChunks = priorityChunks.filter(c => {
+            const meta = c.metadata as Record<string, any> || {};
+            return meta.knowledgeCategory === 'sop' || meta.knowledgeCategory === 'process';
+          });
+
+>>>>>>> worktree-agent-a3dc1bfd
           ragContext = {
             relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
               elementName: 'document',
               selector: chunk.content.substring(0, 100),
               reliability: chunk.similarity || 0,
             })),
+<<<<<<< HEAD
             actionSequences: actionSequences.length > 0 ? actionSequences : undefined,
             sopDocuments: sopDocuments.length > 0 ? sopDocuments : undefined,
           };
 
           const sopCount = sopChunks.length;
           console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} doc chunks, ${sopCount} SOP chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+=======
+            actionSequences: sopChunks.length > 0 ? sopChunks.slice(0, 5).map((chunk, idx) => ({
+              sequenceId: `sop-${chunk.id}`,
+              name: `SOP Reference ${idx + 1}`,
+              successRate: chunk.similarity || 0.8,
+              steps: chunk.content.split(/\n/).filter(line => /^\s*\d+[.)]\s/.test(line)).map(s => s.trim()),
+            })).filter(s => s.steps.length > 0) : undefined,
+          };
+          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks (${sopChunks.length} SOP), platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+>>>>>>> worktree-agent-a3dc1bfd
         } catch (ragError) {
           console.warn('[Agent] Failed to load RAG context:', ragError);
           // Continue without RAG context

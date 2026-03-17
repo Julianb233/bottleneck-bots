@@ -27,6 +27,7 @@ import {
   sentryErrorHandler
 } from "../lib/sentry";
 import { createRestApi } from "../api/rest";
+import { registerGhlOAuthRoutes } from "./ghl-oauth";
 
 // Initialize Sentry as early as possible
 initSentry();

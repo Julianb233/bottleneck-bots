@@ -223,3 +223,6 @@ export function getSkillConfigService(): SkillConfigService {
   }
   return instance;
 }
+
+// Alias for backward compatibility with agentOrchestrator imports
+export const getAgentSkillConfigService = getSkillConfigService;

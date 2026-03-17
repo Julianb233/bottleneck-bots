@@ -42,6 +42,9 @@ export { ExecutionErrorDisplay } from './ExecutionErrorDisplay';
 // Scheduling
 export { CronExpressionBuilder } from './CronExpressionBuilder';
 
+// Live execution panel with browser preview and controls
+export { ExecutionLivePanel } from './ExecutionLivePanel';
+
 // Existing enhanced components
 export { BrowserLiveView } from './BrowserLiveView';
 export { ReasoningChain } from './ReasoningChain';

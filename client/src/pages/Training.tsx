@@ -1,46 +1,6 @@
-import React, { useState, useCallback } from 'react';
-import { trpc } from '@/lib/trpc';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Upload,
   FileText,
-  Trash2,
-  RefreshCw,
-  CheckCircle2,
-  Link2,
-  Database,
-  BookOpen,
-  Sparkles,
   Workflow,
   Zap,
   MessageSquare,
@@ -52,11 +12,10 @@ import {
   AlertCircle,
   Loader2,
 } from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import WorkflowsTab from '@/components/training/WorkflowsTab';
 import SkillsTab from '@/components/training/SkillsTab';
 import BehaviorTab from '@/components/training/BehaviorTab';
+<<<<<<< HEAD
 import { PageEmptyState } from '@/components/onboarding/PageEmptyState';
 import KnowledgeBaseBrowser from '@/components/training/KnowledgeBaseBrowser';
 
@@ -269,6 +228,11 @@ export default function Training() {
     });
   };
 
+=======
+import { DocumentsTab } from '@/components/training/DocumentsTab';
+
+export default function Training() {
+>>>>>>> worktree-agent-a3dc1bfd
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -306,8 +270,9 @@ export default function Training() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Documents Tab - existing functionality */}
+        {/* Documents Tab - Knowledge Base with SOP processing */}
         <TabsContent value="documents" className="space-y-6">
+<<<<<<< HEAD
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
@@ -716,6 +681,9 @@ export default function Training() {
               )}
             </CardContent>
           </Card>
+=======
+          <DocumentsTab />
+>>>>>>> worktree-agent-a3dc1bfd
         </TabsContent>
 
         {/* Knowledge Base Browser Tab */}
@@ -738,27 +706,6 @@ export default function Training() {
           <BehaviorTab />
         </TabsContent>
       </Tabs>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Document</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this training document? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              onClick={() => deleteId && deleteMutation.mutate({ sourceId: deleteId })}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

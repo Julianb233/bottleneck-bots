@@ -885,3 +885,18 @@ export function getGHLService(): GHLService {
   }
   return ghlServiceInstance;
 }
+
+/** Lowercase alias for backwards compatibility */
+export const getGhlService = getGHLService;
+
+/** Error class for GHL-specific errors */
+export class GHLError extends Error {
+  constructor(
+    message: string,
+    public category: "auth" | "rate_limit" | "api" | "network" | "unknown" = "unknown",
+    public statusCode?: number
+  ) {
+    super(message);
+    this.name = "GHLError";
+  }
+}
