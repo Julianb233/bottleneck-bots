@@ -44,6 +44,7 @@ import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlRouter } from "./api/routers/ghl";
 import { taskTemplatesRouter } from "./api/routers/taskTemplates";
+import { contactsRouter } from "./api/routers/contacts";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -146,6 +147,9 @@ export const appRouter = router({
 
   // Task Templates (template library for creating tasks)
   taskTemplates: taskTemplatesRouter,
+
+  // GHL Contact Management (AI-2877)
+  contacts: contactsRouter,
 });
 
 export type AppRouter = typeof appRouter;
