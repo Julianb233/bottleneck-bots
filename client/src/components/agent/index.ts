@@ -45,6 +45,9 @@ export { CronExpressionBuilder } from './CronExpressionBuilder';
 // Live execution panel with browser preview and controls
 export { ExecutionLivePanel } from './ExecutionLivePanel';
 
+// Agent execution panel with SSE streaming, live browser preview, and pause/resume/cancel
+export { AgentExecutionPanel } from './AgentExecutionPanel';
+
 // Existing enhanced components
 export { BrowserLiveView } from './BrowserLiveView';
 export { ReasoningChain } from './ReasoningChain';
