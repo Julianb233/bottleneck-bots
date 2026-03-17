@@ -17,6 +17,7 @@ import AICampaigns from '@/pages/AICampaigns';
 import CampaignDetails from '@/pages/CampaignDetails';
 import CreditPurchase from '@/pages/CreditPurchase';
 import Training from '@/pages/Training';
+import TaskTemplates from '@/pages/TaskTemplates';
 import AgentCustomization from '@/pages/AgentCustomization';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { UserManagement } from '@/pages/admin/UserManagement';
@@ -52,6 +53,7 @@ export function Routes() {
           <Route path="/dashboard/ai-campaigns/:id" component={CampaignDetails} />
           <Route path="/dashboard/credits" component={CreditPurchase} />
           <Route path="/dashboard/training" component={Training} />
+          <Route path="/dashboard/task-templates" component={TaskTemplates} />
           <Route path="/dashboard/agent/customize" component={AgentCustomization} />
           {/* Admin routes */}
           <Route path="/dashboard/admin" component={AdminDashboard} />

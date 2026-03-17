@@ -36,7 +36,8 @@ import {
   Shield,
   Bot,
   GraduationCap,
-  SlidersHorizontal
+  SlidersHorizontal,
+  FileStack
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -49,6 +50,7 @@ const menuItems = [
   { icon: Bot, label: "AI Agent", path: "/dashboard/agent" },
   { icon: SlidersHorizontal, label: "Customize Agent", path: "/dashboard/agent/customize" },
   { icon: GraduationCap, label: "Training", path: "/dashboard/training" },
+  { icon: FileStack, label: "Task Templates", path: "/dashboard/task-templates" },
   { icon: Globe, label: "Browser Sessions", path: "/dashboard/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/dashboard/scheduled-tasks" },
   { icon: Workflow, label: "Workflow Builder", path: "/dashboard/workflow-builder" },

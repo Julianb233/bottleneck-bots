@@ -575,6 +575,67 @@ export const ragRouter = router({
     }),
 
   /**
+   * Preview the extracted chunks for a given source document
+   * Returns up to 100 chunks ordered by chunk index
+   * Scoped to the authenticated user's sources
+   */
+  getSourceChunks: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      try {
+        const database = await getDb();
+        if (!database) {
+          throw new Error("Database not available");
+        }
+
+        // Verify the source belongs to the authenticated user
+        const [source] = await database
+          .select({ id: documentationSources.id })
+          .from(documentationSources)
+          .where(
+            and(
+              eq(documentationSources.id, input.sourceId),
+              eq(documentationSources.userId, ctx.user.id)
+            )
+          )
+          .limit(1);
+
+        if (!source) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Source ${input.sourceId} not found`,
+          });
+        }
+
+        const chunks = await database
+          .select({
+            id: documentationChunks.id,
+            content: documentationChunks.content,
+            metadata: documentationChunks.metadata,
+            chunkIndex: documentationChunks.chunkIndex,
+            createdAt: documentationChunks.createdAt,
+          })
+          .from(documentationChunks)
+          .where(eq(documentationChunks.sourceId, input.sourceId))
+          .orderBy(documentationChunks.chunkIndex)
+          .limit(100);
+
+        return {
+          chunks,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Get source chunks failed:", error);
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to get source chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
    * Seed platform keywords (admin operation)
    * This should be called once during initial setup
    */
