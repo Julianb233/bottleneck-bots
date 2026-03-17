@@ -9,7 +9,6 @@ import { NotificationProvider } from "./components/notifications";
 import { trpc } from "@/lib/trpc";
 
 // Lazy load heavy components for better initial bundle size
-const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
 const AlexRamozyPage = lazy(() => import('./components/AlexRamozyPage').then(m => ({ default: m.AlexRamozyPage })));
 const LandingPage = lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
 const FeaturesPage = lazy(() => import('./components/FeaturesPage').then(m => ({ default: m.FeaturesPage })));
@@ -21,6 +20,7 @@ const OAuthCallback = lazy(() => import('./components/OAuthPopup').then(m => ({ 
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const NotFound = lazy(() => import('./pages/NotFound'));
+const RoutesComponent = lazy(() => import('./components/Routes').then(m => ({ default: m.Routes })));
 
 // Loading spinner component
 const LoadingSpinner = () => (
@@ -41,8 +41,7 @@ const ADMIN_EMAIL = 'julian@aiacrobatics.com';
 function App() {
   // NOTE: Defaulting to LANDING as requested by user
   const [currentView, setCurrentView] = useState<ViewState>('LANDING');
-  const [userTier, setUserTier] = useState<UserTier>('STARTER'); // Default tier for new users
-  const [credits, setCredits] = useState(100); // Default credits for new users
+  // User tier and credits are now fetched via tRPC in dashboard components
   const [isAdminPreview, setIsAdminPreview] = useState(false);
 
   // Check for active session
@@ -75,8 +74,13 @@ function App() {
     }
 
     // Handle protected routes - redirect to login if not authenticated
-    const protectedPaths = ['/dashboard', '/agent', '/settings', '/lead-lists', '/ai-campaigns', '/browser-sessions'];
-    const isProtectedPath = protectedPaths.some(p => path.startsWith(p));
+    // These are all paths served by the Dashboard/Routes component
+    const protectedPaths = [
+      '/dashboard', '/agent', '/settings', '/lead-lists', '/ai-campaigns',
+      '/browser-sessions', '/scheduled-tasks', '/workflow-builder', '/quizzes',
+      '/credits', '/training', '/admin',
+    ];
+    const isProtectedPath = protectedPaths.some(p => path === p || path.startsWith(p + '/'));
 
     if (isProtectedPath && !isAuthLoading && !user) {
       // Not logged in, redirect to login
@@ -160,11 +164,8 @@ function App() {
     }
   };
 
-  const handleLogin = (tier: UserTier, needsOnboarding?: boolean) => {
-    setUserTier(tier);
-    // Credits are now fetched from subscription data in Dashboard via tRPC
-    // No hardcoded credit values - Dashboard queries getMySubscription for actual usage
-
+  const handleLogin = (_tier: UserTier, needsOnboarding?: boolean) => {
+    // Credits and tier are now fetched from subscription data via tRPC
     // Route to onboarding if needed, otherwise go to dashboard
     if (needsOnboarding) {
       setCurrentView('ONBOARDING');
@@ -262,7 +263,7 @@ function App() {
 
               {currentView === 'DASHBOARD' && (
                 <main id="main-content">
-                  <Dashboard userTier={userTier} credits={credits} />
+                  <RoutesComponent />
                 </main>
               )}
 
