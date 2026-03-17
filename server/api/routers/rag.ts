@@ -122,10 +122,16 @@ export const ragRouter = router({
         // Use the title from input, parsed metadata, or filename
         const title = input.title || parsed.metadata.title || input.filename;
 
+        // Use SOP-detected category if the user chose 'training' or 'general'
+        const effectiveCategory = (input.category === 'training' || input.category === 'general')
+          && parsed.metadata.detectedCategory && parsed.metadata.detectedCategory !== 'general'
+          ? parsed.metadata.detectedCategory
+          : input.category;
+
         // Ingest the parsed content into RAG system
         const result = await ragService.ingest({
           platform: input.platform,
-          category: input.category,
+          category: effectiveCategory,
           title,
           content: parsed.text,
           sourceType: parsed.metadata.format as "markdown" | "html" | "pdf" | "docx",
@@ -134,6 +140,11 @@ export const ragRouter = router({
             maxTokens: input.maxTokens,
             overlapTokens: input.overlapTokens,
           },
+          sopMetadata: parsed.metadata.isSOP ? {
+            detectedCategory: parsed.metadata.detectedCategory,
+            isSOP: parsed.metadata.isSOP,
+            sopSteps: parsed.metadata.sopSteps,
+          } : undefined,
         });
 
         console.log(
@@ -301,8 +312,11 @@ export const ragRouter = router({
             category: documentationSources.category,
             title: documentationSources.title,
             sourceUrl: documentationSources.sourceUrl,
+            sourceType: documentationSources.sourceType,
             version: documentationSources.version,
             isActive: documentationSources.isActive,
+            metadata: documentationSources.metadata,
+            tags: documentationSources.tags,
             createdAt: documentationSources.createdAt,
             updatedAt: documentationSources.updatedAt,
           })
@@ -501,6 +515,54 @@ export const ragRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to ingest URL: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
+   * Re-process a document (re-chunk, re-embed, re-detect SOP)
+   */
+  reprocessDocument: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .mutation(async ({ input }) => {
+      try {
+        const result = await ragService.reprocessDocument(input.sourceId);
+
+        return {
+          success: true,
+          sourceId: result.sourceId,
+          chunkCount: result.chunkCount,
+          totalTokens: result.totalTokens,
+          message: `Re-processed document: ${result.chunkCount} chunks`,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Reprocess failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reprocess: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
+   * Get chunks for a specific document
+   */
+  getDocumentChunks: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .query(async ({ input }) => {
+      try {
+        const chunks = await ragService.getChunks(input.sourceId);
+
+        return {
+          success: true,
+          chunks,
+          count: chunks.length,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Get chunks failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to get chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
         });
       }
     }),

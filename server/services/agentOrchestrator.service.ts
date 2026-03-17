@@ -1283,14 +1283,37 @@ export class AgentOrchestratorService {
             maxDocumentationTokens: 3000,
             includeExamples: true,
           });
+
+          // Also retrieve SOP-specific chunks for procedural guidance
+          const sopChunks = await ragService.retrieve(state.taskDescription, {
+            topK: 5,
+            categories: ['sop', 'process'],
+            minSimilarity: 0.5,
+          });
+
+          // Build action sequences from SOP chunks
+          const actionSequences = sopChunks
+            .filter(chunk => {
+              const meta = chunk.metadata as Record<string, any> | undefined;
+              return meta?.isSOP || meta?.documentCategory === 'sop';
+            })
+            .map((chunk, index) => ({
+              sequenceId: `sop-${chunk.sourceId}-${chunk.chunkIndex}`,
+              name: (chunk.metadata as Record<string, any>)?.title || `SOP Procedure ${index + 1}`,
+              successRate: chunk.similarity || 0.7,
+              steps: chunk.content.split('\n').filter((l: string) => l.trim().match(/^\d+[.):\-]/)).map((l: string) => l.trim()),
+            }))
+            .filter(seq => seq.steps.length > 0);
+
           ragContext = {
             relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
               elementName: 'document',
               selector: chunk.content.substring(0, 100),
               reliability: chunk.similarity || 0,
             })),
+            ...(actionSequences.length > 0 && { actionSequences }),
           };
-          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks, ${sopChunks.length} SOP chunks, ${actionSequences.length} action sequences, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
         } catch (ragError) {
           console.warn('[Agent] Failed to load RAG context:', ragError);
           // Continue without RAG context

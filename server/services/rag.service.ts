@@ -31,6 +31,11 @@ export interface IngestDocumentInput {
     maxTokens?: number;
     overlapTokens?: number;
   };
+  sopMetadata?: {
+    detectedCategory?: string;
+    isSOP?: boolean;
+    sopSteps?: Array<{ stepNumber: number; title: string; description: string }>;
+  };
 }
 
 export interface IngestResult {
@@ -129,6 +134,24 @@ class RAGService {
         };
       }
 
+      // Build metadata including SOP info
+      const sourceMetadata: Record<string, any> = {};
+      const sourceTags: string[] = [];
+      if (input.sopMetadata) {
+        if (input.sopMetadata.detectedCategory) {
+          sourceMetadata.detectedCategory = input.sopMetadata.detectedCategory;
+          sourceTags.push(input.sopMetadata.detectedCategory);
+        }
+        if (input.sopMetadata.isSOP) {
+          sourceMetadata.isSOP = true;
+          sourceTags.push('sop');
+          if (input.sopMetadata.sopSteps) {
+            sourceMetadata.sopStepCount = input.sopMetadata.sopSteps.length;
+            sourceMetadata.sopSteps = input.sopMetadata.sopSteps;
+          }
+        }
+      }
+
       // Create documentation source
       const [source] = await db
         .insert(documentationSources)
@@ -143,8 +166,8 @@ class RAGService {
           sourceType: input.sourceType || "markdown",
           version: input.version,
           isActive: true,
-          metadata: {},
-          tags: [],
+          metadata: sourceMetadata,
+          tags: sourceTags,
         })
         .returning();
 
@@ -171,6 +194,11 @@ class RAGService {
           category: input.category,
           title: input.title,
           chunkSize: chunk.length,
+          ...(input.sopMetadata?.detectedCategory && { documentCategory: input.sopMetadata.detectedCategory }),
+          ...(input.sopMetadata?.isSOP && { isSOP: true }),
+          ...(input.sopMetadata?.sopSteps && input.sopMetadata.sopSteps.length > 0 && {
+            sopStepCount: input.sopMetadata.sopSteps.length,
+          }),
         },
       }));
 
@@ -549,6 +577,131 @@ class RAGService {
       logger.info({ sourceId }, 'Deleted documentation source');
     } catch (error) {
       logger.error({ error, sourceId }, 'Delete source failed');
+      throw error;
+    }
+  }
+
+  /**
+   * Re-process a document: delete chunks and re-ingest with current settings
+   */
+  async reprocessDocument(sourceId: number): Promise<IngestResult> {
+    const db = await getDb();
+    if (!db) {
+      throw new Error("Database not available");
+    }
+
+    try {
+      // Get the existing source
+      const [source] = await db
+        .select()
+        .from(documentationSources)
+        .where(eq(documentationSources.id, sourceId))
+        .limit(1);
+
+      if (!source) {
+        throw new Error(`Source ${sourceId} not found`);
+      }
+
+      // Delete existing chunks
+      await db
+        .delete(documentationChunks)
+        .where(eq(documentationChunks.sourceId, sourceId));
+
+      logger.info({ sourceId }, 'Deleted existing chunks for reprocessing');
+
+      // Re-chunk and re-embed
+      const chunks = chunkDocument(source.content);
+      const embeddings = await generateEmbeddings(chunks);
+
+      // Detect SOP metadata from content
+      const { documentParserService } = await import('./document-parser.service');
+      const sopInfo = documentParserService.detectSOPContent(source.content);
+
+      const chunkValues = chunks.map((chunk, index) => ({
+        sourceId: sourceId,
+        chunkIndex: index,
+        content: chunk,
+        tokenCount: estimateTokens(chunk),
+        metadata: {
+          platform: source.platform,
+          category: source.category,
+          title: source.title,
+          chunkSize: chunk.length,
+          ...(sopInfo.category !== 'general' && { documentCategory: sopInfo.category }),
+          ...(sopInfo.isSOP && { isSOP: true, sopStepCount: sopInfo.steps.length }),
+        },
+      }));
+
+      await db.insert(documentationChunks).values(chunkValues);
+
+      // Update embeddings
+      for (let i = 0; i < chunks.length; i++) {
+        const embeddingVector = `[${embeddings[i].join(",")}]`;
+        await db.execute(sql`
+          UPDATE documentation_chunks
+          SET embedding = ${embeddingVector}::vector
+          WHERE source_id = ${sourceId} AND chunk_index = ${i}
+        `);
+      }
+
+      // Update source metadata with SOP info
+      const sourceMetadata: Record<string, any> = (source.metadata as Record<string, any>) || {};
+      if (sopInfo.isSOP) {
+        sourceMetadata.detectedCategory = sopInfo.category;
+        sourceMetadata.isSOP = true;
+        sourceMetadata.sopStepCount = sopInfo.steps.length;
+        sourceMetadata.sopSteps = sopInfo.steps;
+      }
+
+      await db
+        .update(documentationSources)
+        .set({
+          metadata: sourceMetadata,
+          updatedAt: new Date(),
+        })
+        .where(eq(documentationSources.id, sourceId));
+
+      const totalTokens = chunkValues.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
+
+      logger.info({ sourceId, chunkCount: chunks.length, totalTokens }, 'Document reprocessed');
+
+      return {
+        sourceId: sourceId,
+        chunkCount: chunks.length,
+        totalTokens,
+      };
+    } catch (error) {
+      logger.error({ error, sourceId }, 'Reprocess failed');
+      throw error;
+    }
+  }
+
+  /**
+   * Get chunks for a specific source
+   */
+  async getChunks(sourceId: number): Promise<DocumentChunk[]> {
+    const db = await getDb();
+    if (!db) {
+      throw new Error("Database not available");
+    }
+
+    try {
+      const chunks = await db
+        .select({
+          id: documentationChunks.id,
+          sourceId: documentationChunks.sourceId,
+          chunkIndex: documentationChunks.chunkIndex,
+          content: documentationChunks.content,
+          tokenCount: documentationChunks.tokenCount,
+          metadata: documentationChunks.metadata,
+        })
+        .from(documentationChunks)
+        .where(eq(documentationChunks.sourceId, sourceId))
+        .orderBy(documentationChunks.chunkIndex);
+
+      return chunks as unknown as DocumentChunk[];
+    } catch (error) {
+      logger.error({ error, sourceId }, 'Get chunks failed');
       throw error;
     }
   }
