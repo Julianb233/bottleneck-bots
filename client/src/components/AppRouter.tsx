@@ -105,7 +105,7 @@ export function AppRouter() {
         <Route path="/dashboard">
           {user ? (
             <main id="main-content">
-              <Dashboard userTier="WHITELABEL" credits={1000} />
+              <Dashboard />
             </main>
           ) : (
             <div>Redirecting...</div>
