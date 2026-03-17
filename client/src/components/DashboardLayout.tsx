@@ -35,7 +35,8 @@ import {
   LifeBuoy,
   Shield,
   Bot,
-  GraduationCap
+  GraduationCap,
+  Puzzle
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -47,6 +48,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Bot, label: "AI Agent", path: "/agent" },
   { icon: GraduationCap, label: "Training", path: "/training" },
+  { icon: Puzzle, label: "Agent Skills", path: "/agent-skills" },
   { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
   { icon: Workflow, label: "Workflow Builder", path: "/workflow-builder" },

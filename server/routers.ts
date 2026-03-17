@@ -40,9 +40,9 @@ import { subAccountsRouter } from "./api/routers/subAccounts";
 import { agentPermissionsRouter } from "./api/routers/agentPermissions";
 import { agentMemoryRouter } from "./api/routers/agentMemory";
 import { agentTrainingRouter } from "./api/routers/agentTraining";
+import { agentSkillConfigRouter } from "./api/routers/agentSkillConfig";
 import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
-import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
 import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
 import { publicProcedure, router } from "./_core/trpc";
 
@@ -137,6 +137,9 @@ export const appRouter = router({
 
   // Agent Training Configuration (Workflows, Skills, Behavior)
   agentTraining: agentTrainingRouter,
+
+  // Agent Skill Configuration (Toggles, Permissions, Rate Limits)
+  agentSkillConfig: agentSkillConfigRouter,
 
   // Multi-Step Workflow Pipelines
   pipelines: pipelinesRouter,
