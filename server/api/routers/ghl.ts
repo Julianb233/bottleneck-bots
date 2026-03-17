@@ -165,4 +165,21 @@ export const ghlRouter = router({
       hasClientSecret: !!process.env.GHL_CLIENT_SECRET,
     };
   }),
+
+  /**
+   * Get circuit breaker statuses for all GHL locations.
+   * Used by the UI to display warnings when the API is degraded.
+   */
+  circuitBreakerStatus: protectedProcedure.query(async () => {
+    try {
+      const service = getGHLService();
+      const statuses = service.getCircuitBreakerStatuses();
+      return {
+        hasOpenBreakers: statuses.some((s) => s.state === "open"),
+        statuses,
+      };
+    } catch {
+      return { hasOpenBreakers: false, statuses: [] };
+    }
+  }),
 });
