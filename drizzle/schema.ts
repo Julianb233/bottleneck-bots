@@ -155,6 +155,51 @@ export const integrations = pgTable("integrations", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
+// ========================================
+// GHL LOCATION CONFIGS (AI-2881)
+// ========================================
+
+/**
+ * Per-location configuration for GHL multi-location accounts.
+ * Stores location metadata, sync preferences, and per-location settings.
+ */
+export const ghlLocationConfigs = pgTable("ghl_location_configs", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").references(() => users.id).notNull(),
+  locationId: varchar("locationId", { length: 100 }).notNull(),
+  /** Cached location name from GHL API */
+  locationName: text("locationName"),
+  /** Cached company ID */
+  companyId: varchar("companyId", { length: 100 }),
+  /** Whether this is the user's active/selected location */
+  isActive: boolean("isActive").default(false).notNull(),
+  /** Per-location sync settings as JSON */
+  syncConfig: jsonb("syncConfig").$type<{
+    autoSyncContacts?: boolean;
+    autoSyncOpportunities?: boolean;
+    syncInterval?: number; // minutes
+    defaultTags?: string[];
+    contactImportEnabled?: boolean;
+    webhookEnabled?: boolean;
+  }>(),
+  /** Cached location details from GHL (address, phone, etc.) */
+  locationDetails: jsonb("locationDetails").$type<{
+    address?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+    timezone?: string;
+  }>(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type GhlLocationConfig = typeof ghlLocationConfigs.$inferSelect;
+export type InsertGhlLocationConfig = typeof ghlLocationConfigs.$inferInsert;
+
 // Lead types are defined in schema-lead-enrichment.ts and re-exported below
 
 export type Document = typeof documents.$inferSelect;
