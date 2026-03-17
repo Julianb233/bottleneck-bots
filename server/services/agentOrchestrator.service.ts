@@ -35,7 +35,6 @@ import {
   getAgentPermissionsService,
   PermissionDeniedError,
 } from "./agentPermissions.service";
-import { getAgentSkillConfigService } from "./agentSkillConfig.service";
 import { getSelfCorrectionService, type FailureAttempt } from "./browser/selfCorrection.service";
 import { getConfidenceService } from "./agentConfidence.service";
 import { getStrategyService, type ExecutionStrategy } from "./agentStrategy.service";
@@ -79,8 +78,13 @@ import {
   getExecutionControl,
 } from "./security";
 
-// =================================// TYPES & INTERFACES
-// =================================
+// Skill Configuration Service
+import { getAgentSkillConfigService } from "./agentSkillConfig.service";
+
+// ========================================
+// TYPES & INTERFACES
+// ========================================
+
 /**
  * Agent plan structure
  */
@@ -221,15 +225,19 @@ export interface AgentExecutionResult {
   duration: number;
 }
 
-// =================================// CONSTANTS
-// =================================
+// ========================================
+// CONSTANTS
+// ========================================
+
 const MAX_ITERATIONS = 50;
 const MAX_CONSECUTIVE_ERRORS = 3;
 const CLAUDE_MODEL = "claude-opus-4-5-20251101"; // Latest Opus 4.5
 const MAX_TOKENS = 4096;
 
-// =================================// AGENT ORCHESTRATOR SERVICE
-// =================================
+// ========================================
+// AGENT ORCHESTRATOR SERVICE
+// ========================================
+
 export class AgentOrchestratorService {
   private claude: Anthropic;
   private toolRegistry: Map<string, Function>;
@@ -894,12 +902,13 @@ export class AgentOrchestratorService {
         throw error;
       }
 
-      // Skill-level access control: verify the tool's parent skill is enabled, has correct
-      // permission (read vs read-write), and hasn't exceeded its rate limit for this user.
-      const skillCfg = getAgentSkillConfigService();
-      const skillResult = await skillCfg.checkSkillPermission(state.userId, toolName);
-      if (!skillResult.allowed) {
-        throw new Error(`Skill blocked: ${skillResult.reason}`);
+      // SKILL CONFIG: Check if the required skill is enabled and has correct permissions
+      const skillConfigService = getAgentSkillConfigService();
+      const skillCheck = await skillConfigService.checkToolAllowed(state.userId, toolName);
+      if (!skillCheck.allowed) {
+        throw new Error(
+          `Skill check failed: ${skillCheck.reason} (Tool: ${toolName}, Skill: ${skillCheck.skillId})`
+        );
       }
 
       // Special handling for certain tools that need state
@@ -1015,6 +1024,9 @@ export class AgentOrchestratorService {
 
       const duration = Date.now() - startTime;
 
+      // Record skill usage for rate limiting
+      skillConfigService.recordToolUsage(state.userId, toolName);
+
       // Emit tool complete event
       if (emitter) {
         emitter.toolComplete({
@@ -1024,9 +1036,6 @@ export class AgentOrchestratorService {
         });
       }
 
-      // Record successful skill usage for analytics (fire-and-forget)
-      getAgentSkillConfigService().recordSkillUsage(state.userId, toolName, true, duration).catch(() => {});
-
       return {
         success: true,
         result,
@@ -1034,23 +1043,19 @@ export class AgentOrchestratorService {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-      // Record failed skill usage for analytics (fire-and-forget)
-      getAgentSkillConfigService().recordSkillUsage(state.userId, toolName, false, duration).catch(() => {});
 
       // Emit tool complete event with error
       if (emitter) {
         emitter.toolComplete({
           toolName,
-          result: { error: errorMessage },
+          result: { error: error instanceof Error ? error.message : 'Unknown error' },
           duration,
         });
       }
 
       return {
         success: false,
-        error: errorMessage,
+        error: error instanceof Error ? error.message : 'Unknown error',
         duration,
       };
     }
@@ -1122,8 +1127,10 @@ export class AgentOrchestratorService {
       console.log(`[SelfCorrection] Confidence: ${(analysis.confidence * 100).toFixed(0)}%`);
       console.log(`[SelfCorrection] Found ${analysis.alternatives.length} alternatives`);
 
-      // =================================      // INTELLIGENCE: Use failure recovery service for learning
-      // =================================      try {
+      // ========================================
+      // INTELLIGENCE: Use failure recovery service for learning
+      // ========================================
+      try {
         // Record the failure pattern for learning
         // Map the errorType enum to the string format expected by failureRecovery
         const errorTypeStr = analysis.errorType.toLowerCase().replace(/_/g, '_') as import('./intelligence/failureRecovery.service').ErrorType;
@@ -1283,65 +1290,22 @@ export class AgentOrchestratorService {
         content: currentPrompt,
       });
 
-      // Fetch RAG context on first iteration (enhanced with SOP knowledge)
+      // Fetch RAG context on first iteration
       let ragContext: RAGContext | undefined;
       if (state.iterations === 0) {
         try {
-          // Retrieve RAG documentation context
           const ragResult = await ragService.buildSystemPrompt(state.taskDescription, {
             maxDocumentationTokens: 3000,
             includeExamples: true,
           });
-
-          // Also retrieve SOP-specific knowledge with priority-weighted results
-          const sopChunks = await ragService.retrieve(state.taskDescription, {
-            topK: 5,
-            categories: ['sop', 'process', 'policy'],
-            minSimilarity: 0.5,
-          });
-
-          // Extract SOP action sequences from chunk metadata
-          const actionSequences: RAGContext['actionSequences'] = [];
-          for (const chunk of sopChunks) {
-            const meta = (chunk.metadata as Record<string, any>) || {};
-            if (meta.knowledgeCategory === 'sop' || meta.knowledgeCategory === 'process') {
-              actionSequences.push({
-                sequenceId: `sop-${chunk.id}`,
-                name: meta.title || 'SOP Document',
-                successRate: (meta.priority || 5) / 10,
-                steps: [chunk.content.substring(0, 200)],
-              });
-            }
-          }
-
-          // Build SOP documents context from high-priority chunks
-          const sopDocuments = sopChunks
-            .filter(chunk => {
-              const meta = (chunk.metadata as Record<string, any>) || {};
-              return meta.priority >= 6;
-            })
-            .map(chunk => {
-              const meta = (chunk.metadata as Record<string, any>) || {};
-              return {
-                title: meta.title || 'Training Document',
-                category: meta.knowledgeCategory || meta.category || 'general',
-                content: chunk.content,
-                priority: meta.priority || 5,
-              };
-            });
-
           ragContext = {
             relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
               elementName: 'document',
               selector: chunk.content.substring(0, 100),
               reliability: chunk.similarity || 0,
             })),
-            actionSequences: actionSequences.length > 0 ? actionSequences : undefined,
-            sopDocuments: sopDocuments.length > 0 ? sopDocuments : undefined,
           };
-
-          const sopCount = sopChunks.length;
-          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} doc chunks, ${sopCount} SOP chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
         } catch (ragError) {
           console.warn('[Agent] Failed to load RAG context:', ragError);
           // Continue without RAG context
@@ -1365,8 +1329,10 @@ export class AgentOrchestratorService {
       });
       const apiCallDuration = Date.now() - apiCallStartTime;
 
-      // =================================      // COST TRACKING: Track Claude API token usage
-      // =================================      try {
+      // ========================================
+      // COST TRACKING: Track Claude API token usage
+      // ========================================
+      try {
         const costTrackingService = getCostTrackingService();
 
         // Determine prompt type based on iteration
@@ -1662,8 +1628,10 @@ export class AgentOrchestratorService {
       recoveryAttempts: 0,
     };
 
-    // =================================    // MEMORY & LEARNING: Pre-execution setup
-    // =================================    const learningEngine = getLearningEngine();
+    // ========================================
+    // MEMORY & LEARNING: Pre-execution setup
+    // ========================================
+    const learningEngine = getLearningEngine();
     const patternReuse = getPatternReuseService();
     const checkpointService = getCheckpointService();
     const userMemoryService = getUserMemoryService();
@@ -1702,15 +1670,19 @@ export class AgentOrchestratorService {
       console.warn('[Memory] Pre-execution setup error (continuing):', memoryError);
     }
 
-    // =================================    // BROWSER AUTOMATION: Initialize services
-    // =================================    const multiTabService = getMultiTabService();
+    // ========================================
+    // BROWSER AUTOMATION: Initialize services
+    // ========================================
+    const multiTabService = getMultiTabService();
     const fileUploadService = getFileUploadService();
     const visualVerificationService = getVisualVerificationService();
     state.activeTabIds = [];
     state.pendingUploads = [];
 
-    // =================================    // INTELLIGENCE: Initialize services
-    // =================================    const failureRecoveryService = getFailureRecoveryService();
+    // ========================================
+    // INTELLIGENCE: Initialize services
+    // ========================================
+    const failureRecoveryService = getFailureRecoveryService();
     const strategyAdaptationService = getStrategyAdaptationService();
     state.recoveryStrategiesUsed = [];
 
@@ -1741,8 +1713,10 @@ export class AgentOrchestratorService {
       console.warn('[Intelligence] Strategy adaptation error (continuing with default):', intelligenceError);
     }
 
-    // =================================    // SECURITY: Initialize execution control
-    // =================================    const executionControl = getExecutionControl();
+    // ========================================
+    // SECURITY: Initialize execution control
+    // ========================================
+    const executionControl = getExecutionControl();
     const credentialVault = getCredentialVault();
     state.isPaused = false;
     state.credentialsUsed = [];
@@ -1794,8 +1768,10 @@ export class AgentOrchestratorService {
       // Start progress tracking
       progressTracker.startPhase('initialization');
 
-      // =================================      // MEMORY & LEARNING: Create initial checkpoint
-      // =================================      try {
+      // ========================================
+      // MEMORY & LEARNING: Create initial checkpoint
+      // ========================================
+      try {
         state.checkpointId = await checkpointService.createCheckpoint({
           executionId: execution.id,
           userId,
@@ -1821,8 +1797,10 @@ export class AgentOrchestratorService {
       const loopStartTime = Date.now();
 
       while (continueLoop && state.iterations < maxIterations) {
-        // =================================        // SECURITY: Check execution control state
-        // =================================        try {
+        // ========================================
+        // SECURITY: Check execution control state
+        // ========================================
+        try {
           const controlState = executionControl.getExecutionStatus(execution.id.toString());
 
           if (controlState?.status === 'cancelled') {
@@ -1965,8 +1943,10 @@ export class AgentOrchestratorService {
           tokensUsed: progressStats.stepCount, // Approximate token usage
         });
 
-        // =================================        // MEMORY & LEARNING: Record success feedback
-        // =================================        try {
+        // ========================================
+        // MEMORY & LEARNING: Record success feedback
+        // ========================================
+        try {
           const taskType = inferTaskType(taskDescription);
 
           // Record task history and feedback
@@ -2007,8 +1987,10 @@ export class AgentOrchestratorService {
           error: state.errorCount > 0 ? 'Execution failed after multiple errors' : 'Execution failed',
         });
 
-        // =================================        // MEMORY & LEARNING: Record failure feedback
-        // =================================        try {
+        // ========================================
+        // MEMORY & LEARNING: Record failure feedback
+        // ========================================
+        try {
           const taskType = inferTaskType(taskDescription);
 
           // Record task history and feedback
@@ -2133,8 +2115,10 @@ export class AgentOrchestratorService {
   }
 }
 
-// =================================// EXPORT SINGLETON INSTANCE
-// =================================
+// ========================================
+// EXPORT SINGLETON INSTANCE
+// ========================================
+
 let agentOrchestratorInstance: AgentOrchestratorService | null = null;
 
 /**

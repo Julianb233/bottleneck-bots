@@ -14,9 +14,9 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../../db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { knowledgeEntries } from "../../../drizzle/schema-agent";
-import { getAgentSkillConfigService } from "../../services/agentSkillConfig.service";
+import { taskExecutions } from "../../../drizzle/schema-webhooks";
 
 // ========================================
 // CONSTANTS — DEFAULT CONFIGURATIONS
@@ -80,7 +80,7 @@ const skillSchema = z.object({
   name: z.string().min(1),
   enabled: z.boolean(),
   permission: z.enum(["read", "read-write"]),
-  rateLimit: z.number().int().positive().optional(),
+  rateLimit: z.number().int().min(1).max(10000).optional(),
 });
 
 const escalationRuleSchema = z.object({
@@ -383,6 +383,148 @@ export const agentTrainingRouter = router({
     }),
 
   // ========================================
+  // SKILL USAGE ANALYTICS
+  // ========================================
+
+  /**
+   * Get skill usage analytics for the authenticated user.
+   * Aggregates tool calls from task executions, mapping tools to skill categories.
+   */
+  getSkillUsage: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not initialized" });
+    }
+
+    try {
+      // Map of tool names to skill IDs
+      const TOOL_TO_SKILL: Record<string, string> = {
+        browser_navigate: "browser",
+        browser_click: "browser",
+        browser_type: "browser",
+        browser_extract: "browser",
+        browser_screenshot: "browser",
+        browser_scroll: "browser",
+        browser_select: "browser",
+        browser_wait: "browser",
+        browser_close: "browser",
+        browser_create_session: "browser",
+        http_request: "ghl_api",
+        ghl_create_contact: "ghl_api",
+        ghl_update_contact: "ghl_api",
+        ghl_search_contacts: "ghl_api",
+        ghl_create_opportunity: "ghl_api",
+        ghl_send_email: "email",
+        send_email: "email",
+        send_sms: "sms",
+        ghl_send_sms: "sms",
+        voice_call: "voice",
+        make_call: "voice",
+        file_write: "file_creation",
+        file_edit: "file_creation",
+        file_read: "file_creation",
+        file_list: "file_creation",
+        file_search: "web_scraping",
+        retrieve_data: "web_scraping",
+        retrieve_documentation: "web_scraping",
+        calendar_create: "calendar",
+        calendar_update: "calendar",
+        calendar_list: "calendar",
+        store_data: "crm",
+        update_plan: "reporting",
+        advance_phase: "reporting",
+      };
+
+      // Fetch recent executions for this user
+      const executions = await db
+        .select({
+          stepResults: taskExecutions.stepResults,
+          status: taskExecutions.status,
+          completedAt: taskExecutions.completedAt,
+          duration: taskExecutions.duration,
+        })
+        .from(taskExecutions)
+        .where(eq(taskExecutions.triggeredByUserId, ctx.user.id))
+        .orderBy(desc(taskExecutions.startedAt))
+        .limit(100);
+
+      // Aggregate usage per skill
+      const skillStats: Record<string, {
+        totalCalls: number;
+        successCount: number;
+        failureCount: number;
+        lastUsed: string | null;
+        totalDurationMs: number;
+      }> = {};
+
+      // Initialize all skills
+      for (const skill of DEFAULT_SKILLS) {
+        skillStats[skill.id] = {
+          totalCalls: 0,
+          successCount: 0,
+          failureCount: 0,
+          lastUsed: null,
+          totalDurationMs: 0,
+        };
+      }
+
+      for (const execution of executions) {
+        const steps = execution.stepResults as Array<{
+          tool?: string;
+          toolName?: string;
+          success?: boolean;
+          duration?: number;
+          timestamp?: string;
+        }> | null;
+
+        if (!Array.isArray(steps)) continue;
+
+        for (const step of steps) {
+          const toolName = step.tool || step.toolName;
+          if (!toolName) continue;
+
+          const skillId = TOOL_TO_SKILL[toolName];
+          if (!skillId || !skillStats[skillId]) continue;
+
+          const stat = skillStats[skillId];
+          stat.totalCalls++;
+          if (step.success !== false) {
+            stat.successCount++;
+          } else {
+            stat.failureCount++;
+          }
+          if (step.duration) {
+            stat.totalDurationMs += step.duration;
+          }
+          // Track most recent usage
+          const ts = step.timestamp || (execution.completedAt ? new Date(execution.completedAt).toISOString() : null);
+          if (ts && (!stat.lastUsed || ts > stat.lastUsed)) {
+            stat.lastUsed = ts;
+          }
+        }
+      }
+
+      // Build response
+      const usage = Object.entries(skillStats).map(([skillId, stat]) => ({
+        skillId,
+        totalCalls: stat.totalCalls,
+        successCount: stat.successCount,
+        failureCount: stat.failureCount,
+        successRate: stat.totalCalls > 0 ? (stat.successCount / stat.totalCalls) * 100 : 0,
+        lastUsed: stat.lastUsed,
+        avgDurationMs: stat.totalCalls > 0 ? Math.round(stat.totalDurationMs / stat.totalCalls) : 0,
+      }));
+
+      return { success: true, usage };
+    } catch (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: error instanceof Error ? error.message : "Failed to get skill usage analytics",
+      });
+    }
+  }),
+
+  // ========================================
   // BEHAVIOR CONFIGURATION
   // ========================================
 
@@ -478,47 +620,6 @@ export const agentTrainingRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: error instanceof Error ? error.message : "Failed to update behavior configuration",
-        });
-      }
-    }),
-
-  // ========================================
-  // SKILL ANALYTICS
-  // ========================================
-
-  /**
-   * Get skill usage analytics for the authenticated user.
-   * Returns per-skill metrics including total executions, success rate,
-   * average duration, and top tools used per skill.
-   */
-  getSkillAnalytics: protectedProcedure.query(async ({ ctx }) => {
-    try {
-      const service = getAgentSkillConfigService();
-      const analytics = await service.getSkillAnalytics(ctx.user.id);
-      return { success: true, analytics };
-    } catch (error) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: error instanceof Error ? error.message : "Failed to get skill analytics",
-      });
-    }
-  }),
-
-  /**
-   * Check if a specific tool is allowed by the user's skill config.
-   * Useful for UI previews and debugging.
-   */
-  checkSkillPermission: protectedProcedure
-    .input(z.object({ toolName: z.string().min(1) }))
-    .query(async ({ input, ctx }) => {
-      try {
-        const service = getAgentSkillConfigService();
-        const result = await service.checkSkillPermission(ctx.user.id, input.toolName);
-        return { success: true, ...result };
-      } catch (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: error instanceof Error ? error.message : "Failed to check skill permission",
         });
       }
     }),

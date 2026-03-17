@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -51,16 +50,14 @@ interface Skill {
   rateLimit?: number;
 }
 
-interface SkillAnalytics {
+interface SkillUsageStat {
   skillId: string;
-  skillName: string;
-  totalExecutions: number;
+  totalCalls: number;
   successCount: number;
   failureCount: number;
   successRate: number;
-  avgDurationMs: number;
   lastUsed: string | null;
-  topTools: Array<{ toolName: string; count: number }>;
+  avgDurationMs: number;
 }
 
 // Skill metadata: icon and description per skill id
@@ -124,6 +121,7 @@ const SKILL_META: Record<string, SkillMeta> = {
   },
 };
 
+// Fallback meta for unknown skills
 function getSkillMeta(skillId: string): SkillMeta {
   return (
     SKILL_META[skillId] ?? {
@@ -134,31 +132,162 @@ function getSkillMeta(skillId: string): SkillMeta {
   );
 }
 
-// Default skills if backend returns empty
+// Default skills if backend returns empty (mirroring server defaults)
 const DEFAULT_SKILLS: Skill[] = [
-  { id: 'browser',       name: 'Browser Automation',   enabled: true,  permission: 'read-write' },
-  { id: 'ghl_api',       name: 'GoHighLevel API',       enabled: true,  permission: 'read-write' },
-  { id: 'email',         name: 'Email Sending',         enabled: true,  permission: 'read-write' },
-  { id: 'sms',           name: 'SMS Messaging',         enabled: false, permission: 'read' },
-  { id: 'voice',         name: 'Voice Calling',         enabled: false, permission: 'read' },
-  { id: 'file_creation', name: 'File Creation',         enabled: true,  permission: 'read-write' },
-  { id: 'web_scraping',  name: 'Web Scraping',          enabled: true,  permission: 'read' },
-  { id: 'calendar',      name: 'Calendar Management',   enabled: true,  permission: 'read-write' },
-  { id: 'crm',           name: 'CRM Operations',        enabled: true,  permission: 'read-write' },
-  { id: 'reporting',     name: 'Report Generation',     enabled: true,  permission: 'read' },
+  { id: 'browser',       name: 'Browser Automation',   enabled: true,  permission: 'read-write', rateLimit: 100 },
+  { id: 'ghl_api',       name: 'GoHighLevel API',       enabled: true,  permission: 'read-write', rateLimit: 200 },
+  { id: 'email',         name: 'Email Sending',         enabled: true,  permission: 'read-write', rateLimit: 50 },
+  { id: 'sms',           name: 'SMS Messaging',         enabled: false, permission: 'read',       rateLimit: 50 },
+  { id: 'voice',         name: 'Voice Calling',         enabled: false, permission: 'read',       rateLimit: 20 },
+  { id: 'file_creation', name: 'File Creation',         enabled: true,  permission: 'read-write', rateLimit: 100 },
+  { id: 'web_scraping',  name: 'Web Scraping',          enabled: true,  permission: 'read',       rateLimit: 100 },
+  { id: 'calendar',      name: 'Calendar Management',   enabled: true,  permission: 'read-write', rateLimit: 50 },
+  { id: 'crm',           name: 'CRM Operations',        enabled: true,  permission: 'read-write', rateLimit: 200 },
+  { id: 'reporting',     name: 'Report Generation',     enabled: true,  permission: 'read',       rateLimit: 30 },
 ];
 
-// ========================================
-// SKILL CARD
-// ========================================
+// Format relative time
+function formatRelativeTime(dateStr: string | null): string {
+  if (!dateStr) return 'Never';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ===== Skill Usage Analytics Card =====
+
+function SkillUsageAnalytics({ usageData }: { usageData: SkillUsageStat[] }) {
+  if (!usageData || usageData.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Activity className="w-5 h-5" />
+            Skill Usage Analytics
+          </CardTitle>
+          <CardDescription>
+            No usage data yet. Analytics will appear once the agent starts executing tasks.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const totalCalls = usageData.reduce((sum, s) => sum + s.totalCalls, 0);
+  const overallSuccessRate =
+    totalCalls > 0
+      ? Math.round(
+          (usageData.reduce((sum, s) => sum + s.successCount, 0) / totalCalls) * 100
+        )
+      : 0;
+  const mostUsed = usageData.reduce(
+    (best, s) => (s.totalCalls > best.totalCalls ? s : best),
+    usageData[0]
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Activity className="w-5 h-5" />
+          Skill Usage Analytics
+        </CardTitle>
+        <CardDescription>How your agent uses each skill across executions</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Summary stats */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg border p-3 text-center">
+            <div className="flex items-center justify-center gap-1.5 text-gray-500 mb-1">
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span className="text-xs">Total Calls</span>
+            </div>
+            <p className="text-xl font-bold text-gray-900">{totalCalls.toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg border p-3 text-center">
+            <div className="flex items-center justify-center gap-1.5 text-gray-500 mb-1">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span className="text-xs">Success Rate</span>
+            </div>
+            <p className="text-xl font-bold text-emerald-600">{overallSuccessRate}%</p>
+          </div>
+          <div className="rounded-lg border p-3 text-center">
+            <div className="flex items-center justify-center gap-1.5 text-gray-500 mb-1">
+              <Zap className="w-3.5 h-3.5" />
+              <span className="text-xs">Most Used</span>
+            </div>
+            <p className="text-sm font-bold text-gray-900 truncate">
+              {getSkillMeta(mostUsed.skillId) ? SKILL_META[mostUsed.skillId]?.icon ? mostUsed.skillId : mostUsed.skillId : mostUsed.skillId}
+            </p>
+          </div>
+        </div>
+
+        {/* Per-skill usage bars */}
+        <div className="space-y-3">
+          {usageData
+            .sort((a, b) => b.totalCalls - a.totalCalls)
+            .map((stat) => {
+              const meta = getSkillMeta(stat.skillId);
+              const Icon = meta.icon;
+              const barWidth = totalCalls > 0 ? (stat.totalCalls / totalCalls) * 100 : 0;
+
+              return (
+                <div key={stat.skillId} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Icon className={cn('w-3.5 h-3.5', meta.color.split(' ')[0])} />
+                      <span className="font-medium text-gray-700 capitalize">
+                        {stat.skillId.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-gray-500">
+                      <span>{stat.totalCalls} calls</span>
+                      <span
+                        className={cn(
+                          stat.successRate >= 80
+                            ? 'text-emerald-600'
+                            : stat.successRate >= 50
+                              ? 'text-amber-600'
+                              : 'text-red-500'
+                        )}
+                      >
+                        {Math.round(stat.successRate)}% success
+                      </span>
+                      <span className="text-gray-400">{formatRelativeTime(stat.lastUsed)}</span>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.max(barWidth, 2)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ===== Skill Card Component =====
 
 function SkillCard({
   skill,
-  analytics,
+  usage,
   onChange,
 }: {
   skill: Skill;
-  analytics?: SkillAnalytics;
+  usage?: SkillUsageStat;
   onChange: (updated: Skill) => void;
 }) {
   const meta = getSkillMeta(skill.id);
@@ -193,12 +322,30 @@ function SkillCard({
 
             <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{meta.description}</p>
 
-            {/* Controls — only shown when enabled */}
+            {/* Usage mini-stats when enabled */}
+            {skill.enabled && usage && usage.totalCalls > 0 && (
+              <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                <span className="flex items-center gap-1">
+                  <Activity className="w-3 h-3" />
+                  {usage.totalCalls} calls
+                </span>
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                  {Math.round(usage.successRate)}%
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {formatRelativeTime(usage.lastUsed)}
+                </span>
+              </div>
+            )}
+
+            {/* Permission + Rate Limit — only shown when enabled */}
             {skill.enabled && (
               <div className="space-y-2 mt-3 pt-2 border-t border-gray-100">
-                {/* Permission selector */}
+                {/* Permission row */}
                 <div className="flex items-center gap-2">
-                  <Label className="text-xs text-gray-500 flex-shrink-0">Permission</Label>
+                  <Label className="text-xs text-gray-500 flex-shrink-0 w-16">Permission</Label>
                   <Select
                     value={skill.permission}
                     onValueChange={(val) =>
@@ -229,54 +376,30 @@ function SkillCard({
                   </Badge>
                 </div>
 
-                {/* Rate limit */}
+                {/* Rate limit row */}
                 <div className="flex items-center gap-2">
-                  <Label className="text-xs text-gray-500 flex-shrink-0">
-                    <Gauge className="w-3 h-3 inline mr-1" />
-                    Rate Limit
+                  <Label className="text-xs text-gray-500 flex-shrink-0 w-16">
+                    <span className="flex items-center gap-1">
+                      <Gauge className="w-3 h-3" />
+                      Limit
+                    </span>
                   </Label>
                   <Input
                     type="number"
-                    min={0}
-                    placeholder="No limit"
-                    value={skill.rateLimit ?? ''}
+                    min={1}
+                    max={10000}
+                    value={skill.rateLimit ?? 100}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      onChange({
-                        ...skill,
-                        rateLimit: val === '' ? undefined : Math.max(0, parseInt(val, 10)),
-                      });
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val) && val > 0) {
+                        onChange({ ...skill, rateLimit: val });
+                      }
                     }}
                     className="h-7 text-xs flex-1"
+                    placeholder="calls/hour"
                   />
-                  <span className="text-[10px] text-gray-400 flex-shrink-0">/hr</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0">/ hour</span>
                 </div>
-
-                {/* Inline analytics mini-stats */}
-                {analytics && analytics.totalExecutions > 0 && (
-                  <div className="flex items-center gap-3 pt-1">
-                    <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                      <Activity className="w-3 h-3" />
-                      {analytics.totalExecutions} uses
-                    </span>
-                    <span className={cn(
-                      'text-[10px] flex items-center gap-0.5',
-                      analytics.successRate >= 80 ? 'text-emerald-500' :
-                      analytics.successRate >= 50 ? 'text-amber-500' : 'text-red-500'
-                    )}>
-                      <TrendingUp className="w-3 h-3" />
-                      {Math.round(analytics.successRate)}%
-                    </span>
-                    {analytics.avgDurationMs > 0 && (
-                      <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
-                        <Clock className="w-3 h-3" />
-                        {analytics.avgDurationMs < 1000
-                          ? `${Math.round(analytics.avgDurationMs)}ms`
-                          : `${(analytics.avgDurationMs / 1000).toFixed(1)}s`}
-                      </span>
-                    )}
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -286,178 +409,14 @@ function SkillCard({
   );
 }
 
-// ========================================
-// SKILL ANALYTICS PANEL
-// ========================================
-
-function SkillAnalyticsPanel({ analytics }: { analytics: SkillAnalytics[] }) {
-  const totalExecutions = analytics.reduce((s, a) => s + a.totalExecutions, 0);
-  const totalSuccess = analytics.reduce((s, a) => s + a.successCount, 0);
-  const totalFailure = analytics.reduce((s, a) => s + a.failureCount, 0);
-  const overallSuccessRate = totalExecutions > 0 ? (totalSuccess / totalExecutions) * 100 : 0;
-
-  const sortedByUsage = [...analytics]
-    .filter((a) => a.totalExecutions > 0)
-    .sort((a, b) => b.totalExecutions - a.totalExecutions);
-
-  if (totalExecutions === 0) {
-    return (
-      <div className="text-center py-12">
-        <Activity className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-        <p className="text-gray-500 font-medium">No Skill Usage Data Yet</p>
-        <p className="text-sm text-gray-400 mt-1">
-          Run agent tasks to see which skills are used most and their success rates.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Activity className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalExecutions}</p>
-                <p className="text-xs text-gray-500">Total Uses</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-100 rounded-lg">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalSuccess}</p>
-                <p className="text-xs text-gray-500">Successes</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <XCircle className="w-5 h-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalFailure}</p>
-                <p className="text-xs text-gray-500">Failures</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{Math.round(overallSuccessRate)}%</p>
-                <p className="text-xs text-gray-500">Success Rate</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Per-skill breakdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <BarChart3 className="w-5 h-5" />
-            Skill Usage Breakdown
-          </CardTitle>
-          <CardDescription>
-            Skills ranked by total usage with success rates
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {sortedByUsage.map((a) => {
-            const meta = getSkillMeta(a.skillId);
-            const Icon = meta.icon;
-            const maxExec = sortedByUsage[0]?.totalExecutions || 1;
-            const barWidth = (a.totalExecutions / maxExec) * 100;
-
-            return (
-              <div key={a.skillId} className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={cn('p-1 rounded', meta.color)}>
-                      <Icon className="w-3 h-3" />
-                    </div>
-                    <span className="text-sm font-medium text-gray-900">{a.skillName}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-500">
-                    <span>{a.totalExecutions} uses</span>
-                    <span className={cn(
-                      a.successRate >= 80 ? 'text-emerald-600' :
-                      a.successRate >= 50 ? 'text-amber-600' : 'text-red-600'
-                    )}>
-                      {Math.round(a.successRate)}% success
-                    </span>
-                    {a.avgDurationMs > 0 && (
-                      <span className="text-gray-400">
-                        avg {a.avgDurationMs < 1000
-                          ? `${Math.round(a.avgDurationMs)}ms`
-                          : `${(a.avgDurationMs / 1000).toFixed(1)}s`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      'h-full rounded-full transition-all',
-                      a.successRate >= 80 ? 'bg-emerald-500' :
-                      a.successRate >= 50 ? 'bg-amber-500' : 'bg-red-500'
-                    )}
-                    style={{ width: `${barWidth}%` }}
-                  />
-                </div>
-                {/* Top tools */}
-                {a.topTools.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pl-7">
-                    {a.topTools.map((t) => (
-                      <Badge
-                        key={t.toolName}
-                        variant="outline"
-                        className="text-[10px] px-1.5 py-0 h-4"
-                      >
-                        {t.toolName} ({t.count})
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ========================================
-// MAIN COMPONENT
-// ========================================
+// ===== Main Component =====
 
 export default function SkillsTab() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [isDirty, setIsDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<'config' | 'analytics'>('config');
 
   const configQuery = trpc.agentTraining.getSkillConfig.useQuery();
-  const analyticsQuery = trpc.agentTraining.getSkillAnalytics.useQuery();
+  const usageQuery = trpc.agentTraining.getSkillUsage.useQuery();
 
   const updateMutation = trpc.agentTraining.updateSkillConfig.useMutation({
     onSuccess: () => {
@@ -492,11 +451,11 @@ export default function SkillsTab() {
 
   const enabledCount = skills.filter((s) => s.enabled).length;
 
-  // Build analytics lookup
-  const analyticsMap = new Map<string, SkillAnalytics>();
-  if (analyticsQuery.data?.analytics) {
-    for (const a of analyticsQuery.data.analytics) {
-      analyticsMap.set(a.skillId, a as SkillAnalytics);
+  // Build usage map keyed by skillId
+  const usageMap: Record<string, SkillUsageStat> = {};
+  if (usageQuery.data?.usage) {
+    for (const stat of usageQuery.data.usage) {
+      usageMap[stat.skillId] = stat;
     }
   }
 
@@ -506,7 +465,7 @@ export default function SkillsTab() {
         <Skeleton className="h-8 w-64" />
         <div className="grid sm:grid-cols-2 gap-4">
           {[...Array(10)].map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            <Skeleton key={i} className="h-32 w-full rounded-xl" />
           ))}
         </div>
       </div>
@@ -533,114 +492,54 @@ export default function SkillsTab() {
 
   return (
     <div className="space-y-6">
-      {/* Header with tabs */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Agent Skills</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            Toggle capabilities, set permissions and rate limits.{' '}
+            Toggle capabilities, set permissions, and configure rate limits.{' '}
             <span className="font-medium text-emerald-600">{enabledCount}</span> of{' '}
             {skills.length} enabled.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              configQuery.refetch();
-              analyticsQuery.refetch();
-            }}
-            disabled={configQuery.isRefetching || analyticsQuery.isRefetching}
-          >
-            <RefreshCw className={cn(
-              'w-4 h-4 mr-1.5',
-              (configQuery.isRefetching || analyticsQuery.isRefetching) && 'animate-spin'
-            )} />
-            Refresh
-          </Button>
-          {activeTab === 'config' && (
-            <Button
-              onClick={handleSave}
-              disabled={!isDirty || updateMutation.isPending}
-              className={cn(
-                'transition-all',
-                isDirty
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              )}
-              size="sm"
-            >
-              <Save className="w-4 h-4 mr-1.5" />
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </Button>
+        <Button
+          onClick={handleSave}
+          disabled={!isDirty || updateMutation.isPending}
+          className={cn(
+            'transition-all',
+            isDirty
+              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
           )}
-        </div>
+          size="sm"
+        >
+          <Save className="w-4 h-4 mr-1.5" />
+          {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+        </Button>
       </div>
 
-      {/* Sub-tabs: Configuration | Analytics */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'config' | 'analytics')}>
-        <TabsList className="w-auto">
-          <TabsTrigger value="config" className="gap-1.5">
-            <Zap className="w-4 h-4" />
-            Configuration
-          </TabsTrigger>
-          <TabsTrigger value="analytics" className="gap-1.5">
-            <BarChart3 className="w-4 h-4" />
-            Analytics
-          </TabsTrigger>
-        </TabsList>
+      {/* Usage Analytics */}
+      <SkillUsageAnalytics usageData={usageQuery.data?.usage ?? []} />
 
-        <TabsContent value="config" className="space-y-4 mt-4">
-          {/* Skills grid */}
-          <div className="grid sm:grid-cols-2 gap-4">
-            {skills.map((skill) => (
-              <SkillCard
-                key={skill.id}
-                skill={skill}
-                analytics={analyticsMap.get(skill.id)}
-                onChange={handleSkillChange}
-              />
-            ))}
-          </div>
+      {/* Skills grid */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        {skills.map((skill) => (
+          <SkillCard
+            key={skill.id}
+            skill={skill}
+            usage={usageMap[skill.id]}
+            onChange={handleSkillChange}
+          />
+        ))}
+      </div>
 
-          {/* Unsaved changes notice */}
-          {isDirty && (
-            <p className="text-xs text-amber-600 text-center">
-              You have unsaved changes -- click "Save Changes" to apply them.
-            </p>
-          )}
-        </TabsContent>
-
-        <TabsContent value="analytics" className="mt-4">
-          {analyticsQuery.isLoading ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[...Array(4)].map((_, i) => (
-                  <Skeleton key={i} className="h-20 w-full rounded-xl" />
-                ))}
-              </div>
-              <Skeleton className="h-64 w-full rounded-xl" />
-            </div>
-          ) : analyticsQuery.isError ? (
-            <div className="text-center py-12">
-              <p className="text-red-500 font-medium">Failed to load analytics</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => analyticsQuery.refetch()}
-              >
-                <RefreshCw className="w-4 h-4 mr-1.5" />
-                Retry
-              </Button>
-            </div>
-          ) : (
-            <SkillAnalyticsPanel analytics={(analyticsQuery.data?.analytics || []) as SkillAnalytics[]} />
-          )}
-        </TabsContent>
-      </Tabs>
+      {/* Unsaved changes notice */}
+      {isDirty && (
+        <p className="text-xs text-amber-600 text-center">
+          You have unsaved changes -- click "Save Changes" to apply them.
+        </p>
+      )}
     </div>
   );
 }
