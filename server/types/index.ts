@@ -501,6 +501,89 @@ export type Optional<T> = T | undefined;
 
 export type StringKeys<T> = Extract<keyof T, string>;
 
+// ========================================
+// PIPELINE TYPES (Multi-Step Workflow Chaining)
+// ========================================
+
+export type PipelineStepType = 'workflow' | 'inline';
+
+export type InlineStepType = 'apiCall' | 'notification' | 'condition' | 'transform';
+
+export interface PipelineStepDefinition {
+  stepId: string;
+  type: PipelineStepType;
+  /** For type=workflow: references an automationWorkflows row */
+  workflowId?: number;
+  /** For type=inline: defines the task inline */
+  inlineConfig?: InlineTaskConfig;
+  /** Maps output from previous steps into this step's input variables.
+   *  Keys are variable names, values are expressions like "{{stepId.output.field}}" */
+  inputMapping?: Record<string, string>;
+  /** Optional condition expression; if falsy, step is skipped */
+  condition?: string;
+  continueOnError?: boolean;
+  retryCount?: number;
+  retryDelayMs?: number;
+}
+
+export type InlineTaskConfig =
+  | InlineApiCallConfig
+  | InlineNotificationConfig
+  | InlineTransformConfig;
+
+export interface InlineApiCallConfig {
+  type: 'apiCall';
+  url: string;
+  method?: HttpMethod;
+  headers?: Record<string, string>;
+  body?: unknown;
+}
+
+export interface InlineNotificationConfig {
+  type: 'notification';
+  message: string;
+  notificationType?: string;
+}
+
+export interface InlineTransformConfig {
+  type: 'transform';
+  /** JavaScript-safe expression evaluated against the pipeline context */
+  expression: string;
+}
+
+export interface PipelineStepResult {
+  stepId: string;
+  stepIndex: number;
+  type: PipelineStepType;
+  status: 'completed' | 'failed' | 'skipped';
+  output?: unknown;
+  error?: string;
+  startedAt: Date;
+  completedAt: Date;
+  duration: number;
+}
+
+export interface PipelineExecutionStatus {
+  executionId: number;
+  pipelineId: number;
+  status: string;
+  currentStepIndex: number;
+  totalSteps: number;
+  stepResults: PipelineStepResult[];
+  input?: unknown;
+  output?: unknown;
+  error?: string;
+  startedAt?: Date;
+  completedAt?: Date;
+  duration?: number;
+}
+
+export interface ExecutePipelineOptions {
+  pipelineId: number;
+  userId: number;
+  variables?: Record<string, unknown>;
+}
+
 export type JsonValue =
   | string
   | number

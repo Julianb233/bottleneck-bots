@@ -683,6 +683,16 @@ export {
   type InsertCostBudget,
 } from "./schema-costs";
 
+// Multi-Step Workflow Pipelines
+export {
+  workflowPipelines,
+  pipelineExecutions,
+  type WorkflowPipeline,
+  type InsertWorkflowPipeline,
+  type PipelineExecution,
+  type InsertPipelineExecution,
+} from "./schema-pipelines";
+
 // Authentication Enhancement
 export {
   passwordResetTokens,
