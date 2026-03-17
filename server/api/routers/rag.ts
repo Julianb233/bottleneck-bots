@@ -759,6 +759,44 @@ export const ragRouter = router({
     }),
 
   /**
+   * Similarity search - test which chunks would be retrieved for a given query
+   */
+  similaritySearch: protectedProcedure
+    .input(z.object({
+      query: z.string().min(1).max(2000),
+      topK: z.number().min(1).max(20).optional().default(5),
+      minSimilarity: z.number().min(0).max(1).optional().default(0.5),
+    }))
+    .query(async ({ input }) => {
+      try {
+        const chunks = await ragService.retrieve(input.query, {
+          topK: input.topK,
+          minSimilarity: input.minSimilarity,
+        });
+        return {
+          success: true,
+          query: input.query,
+          results: chunks.map((chunk) => ({
+            id: chunk.id,
+            sourceId: chunk.sourceId,
+            chunkIndex: chunk.chunkIndex,
+            content: chunk.content,
+            tokenCount: chunk.tokenCount,
+            similarity: chunk.similarity,
+            metadata: chunk.metadata,
+          })),
+          count: chunks.length,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Similarity search failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Similarity search failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
    * Seed platform keywords (admin operation)
    * This should be called once during initial setup
    */
