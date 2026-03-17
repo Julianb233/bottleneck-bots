@@ -1,6 +1,12 @@
 /**
- * GoHighLevel Integration Schema
- * Database tables for GHL OAuth connections and sync logging
+ * GHL (GoHighLevel) Integration Schema
+ *
+ * Database tables for:
+ * - GHL webhook events (inbound from GHL)
+ * - Dead letter queue for failed event processing
+ * - Event deduplication
+ *
+ * Linear: AI-2870
  */
 
 import {
@@ -10,144 +16,71 @@ import {
   timestamp,
   varchar,
   integer,
+  boolean,
   jsonb,
+  uuid,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { users } from "./schema";
 
-/**
- * GHL OAuth Connections
- * Tracks authorized GHL locations per user with credential references
- */
-export const ghlConnections = pgTable("ghl_connections", {
-  id: serial("id").primaryKey(),
-
-  /** User who owns this connection */
-  userId: integer("userId")
-    .references(() => users.id)
-    .notNull(),
-
-  /** GHL location ID */
-  locationId: varchar("locationId", { length: 255 }).notNull(),
-
-  /** GHL company/agency ID */
-  companyId: varchar("companyId", { length: 255 }),
-
-  /** Human-readable location name (fetched from GHL API) */
-  locationName: text("locationName"),
-
-  /** Connection status */
-  status: varchar("status", { length: 50 }).notNull().default("connected"),
-  // 'connected' | 'disconnected' | 'needs_reauth' | 'error'
-
-  /** Granted OAuth scopes */
-  scopes: text("scopes"),
-
-  /** Reference to encrypted credential in the vault */
-  credentialId: integer("credentialId"),
-
-  /** When the OAuth connection was established */
-  connectedAt: timestamp("connectedAt").defaultNow().notNull(),
-
-  /** Last successful data sync */
-  lastSyncAt: timestamp("lastSyncAt"),
-
-  /** Last error message (null when healthy) */
-  lastError: text("lastError"),
-
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
-
-export type GhlConnection = typeof ghlConnections.$inferSelect;
-export type InsertGhlConnection = typeof ghlConnections.$inferInsert;
+// ========================================
+// GHL WEBHOOK EVENTS
+// ========================================
 
 /**
- * GHL Sync Log
- * Audit trail for data synchronization operations
- */
-export const ghlSyncLog = pgTable("ghl_sync_log", {
-  id: serial("id").primaryKey(),
-
-  /** Reference to the connection */
-  connectionId: integer("connectionId")
-    .references(() => ghlConnections.id)
-    .notNull(),
-
-  /** User who owns this connection */
-  userId: integer("userId")
-    .references(() => users.id)
-    .notNull(),
-
-  /** Type of sync operation */
-  syncType: varchar("syncType", { length: 100 }).notNull(),
-  // e.g. 'contacts', 'opportunities', 'campaigns', 'workflows'
-
-  /** Sync direction */
-  direction: varchar("direction", { length: 20 }).notNull().default("pull"),
-  // 'pull' | 'push' | 'bidirectional'
-
-  /** Outcome of the sync */
-  status: varchar("status", { length: 50 }).notNull(),
-  // 'success' | 'partial' | 'failed'
-
-  /** Number of records processed */
-  recordsProcessed: integer("recordsProcessed").default(0),
-
-  /** Number of records that errored */
-  recordsErrored: integer("recordsErrored").default(0),
-
-  /** Additional sync metadata */
-  metadata: jsonb("metadata"),
-
-  /** Error details if failed */
-  errorMessage: text("errorMessage"),
-
-  /** Duration in milliseconds */
-  durationMs: integer("durationMs"),
-
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
-export type GhlSyncLog = typeof ghlSyncLog.$inferSelect;
-export type InsertGhlSyncLog = typeof ghlSyncLog.$inferInsert;
-
-/**
- * GHL Webhook Events
- * Stores incoming webhook events from GoHighLevel for processing and audit
+ * Incoming GHL webhook events
+ * Stores every event received from GHL for processing and audit
  */
 export const ghlWebhookEvents = pgTable("ghl_webhook_events", {
   id: serial("id").primaryKey(),
+  userId: integer("userId").references(() => users.id, { onDelete: "cascade" }).notNull(),
 
-  /** GHL event ID for deduplication */
-  eventId: varchar("eventId", { length: 255 }),
+  // Event identity (for deduplication)
+  eventId: varchar("eventId", { length: 255 }).notNull(),
+  eventType: varchar("eventType", { length: 100 }).notNull(),
+  // e.g. contact.created, contact.updated, opportunity.created, opportunity.updated,
+  //      appointment.booked, appointment.cancelled, etc.
 
-  /** Event type (e.g. 'ContactCreate', 'OpportunityStageUpdate') */
-  eventType: varchar("eventType", { length: 255 }).notNull(),
+  // Location context
+  locationId: varchar("locationId", { length: 255 }).notNull(),
 
-  /** GHL location ID the event belongs to */
-  locationId: varchar("locationId", { length: 255 }),
-
-  /** Raw event payload */
+  // Event payload
   payload: jsonb("payload").notNull(),
+  rawHeaders: jsonb("rawHeaders"),
 
-  /** Processing status */
-  status: varchar("status", { length: 50 }).notNull().default("pending"),
-  // 'pending' | 'processed' | 'failed' | 'dead_letter'
-
-  /** Error message if processing failed */
-  errorMessage: text("errorMessage"),
-
-  /** Number of processing attempts */
-  retryCount: integer("retryCount").default(0),
-
-  /** When the event was received */
-  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
-
-  /** When the event was processed */
+  // Processing state
+  status: varchar("status", { length: 50 }).default("received").notNull(),
+  // received, processing, processed, failed, dead_letter
   processedAt: timestamp("processedAt"),
+  processingError: text("processingError"),
+  retryCount: integer("retryCount").default(0).notNull(),
+  maxRetries: integer("maxRetries").default(3).notNull(),
+  nextRetryAt: timestamp("nextRetryAt"),
 
+  // Result of event handling
+  handlerResult: jsonb("handlerResult"),
+
+  // Timestamps
+  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => ({
+  eventIdIdx: uniqueIndex("ghl_webhook_events_event_id_idx").on(table.eventId),
+  eventTypeIdx: index("ghl_webhook_events_event_type_idx").on(table.eventType),
+  locationIdIdx: index("ghl_webhook_events_location_id_idx").on(table.locationId),
+  statusIdx: index("ghl_webhook_events_status_idx").on(table.status),
+  userIdIdx: index("ghl_webhook_events_user_id_idx").on(table.userId),
+  receivedAtIdx: index("ghl_webhook_events_received_at_idx").on(table.receivedAt),
+  // For DLQ queries
+  statusRetryIdx: index("ghl_webhook_events_status_retry_idx").on(table.status, table.nextRetryAt),
+  // For dedup lookups
+  userEventIdx: index("ghl_webhook_events_user_event_idx").on(table.userId, table.eventId),
+}));
+
+// ========================================
+// TYPE EXPORTS
+// ========================================
 
 export type GhlWebhookEvent = typeof ghlWebhookEvents.$inferSelect;
 export type InsertGhlWebhookEvent = typeof ghlWebhookEvents.$inferInsert;

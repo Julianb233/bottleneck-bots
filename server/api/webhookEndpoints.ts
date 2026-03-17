@@ -6,6 +6,7 @@
 
 import { Router, Request, Response } from "express";
 import { webhookReceiverService } from "../services/webhookReceiver.service";
+import { ghlWebhooksService, type GHLWebhookPayload } from "../services/ghlWebhooks.service";
 
 export const webhookEndpointsRouter = Router();
 
@@ -172,6 +173,122 @@ webhookEndpointsRouter.post("/email/:token", async (req: Request, res: Response)
     return res.status(500).json({ success: false, error: "Internal server error" });
   }
 });
+
+// ========================================
+// GHL Webhook Receiver
+// ========================================
+
+/**
+ * GHL webhook receiver
+ * POST /api/webhooks/ghl
+ *
+ * Receives events from GoHighLevel:
+ * - contact.created, contact.updated, contact.deleted
+ * - opportunity.created, opportunity.updated, opportunity.status_changed
+ * - appointment.booked, appointment.updated, appointment.cancelled
+ *
+ * Verifies HMAC signature, deduplicates by event ID, routes to handlers.
+ */
+webhookEndpointsRouter.post("/ghl", async (req: Request, res: Response) => {
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (typeof value === "string") {
+      headers[key.toLowerCase()] = value;
+    }
+  }
+
+  try {
+    const payload = req.body as GHLWebhookPayload;
+
+    if (!payload || !payload.type) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid payload — missing 'type' field",
+      });
+    }
+
+    // Determine the user for this location.
+    // In production, locationId maps to a user via the integrations table.
+    // For now, extract from query param or use a lookup.
+    const userId = await resolveGHLUserId(payload.locationId);
+    if (!userId) {
+      return res.status(404).json({
+        success: false,
+        error: `No user found for GHL location: ${payload.locationId}`,
+      });
+    }
+
+    const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+
+    const result = await ghlWebhooksService.processWebhook(
+      payload,
+      rawBody,
+      headers,
+      userId
+    );
+
+    if (!result.success) {
+      if (result.error === "Signature verification failed") {
+        return res.status(401).json({ success: false, error: result.error });
+      }
+      return res.status(400).json(result);
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error("[GHL Webhook] Endpoint error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+    });
+  }
+});
+
+/**
+ * GHL webhook verification (GET)
+ * Some GHL webhook configurations send a GET to verify the endpoint.
+ */
+webhookEndpointsRouter.get("/ghl", (_req: Request, res: Response) => {
+  return res.json({
+    success: true,
+    message: "GHL webhook endpoint is active",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/**
+ * Resolve the userId that owns a given GHL locationId.
+ * Looks up the integrations table for an active ghl:<locationId> integration.
+ */
+async function resolveGHLUserId(locationId: string): Promise<number | null> {
+  if (!locationId) return null;
+
+  try {
+    // Dynamic import to avoid circular dependencies
+    const { getDb } = await import("../db");
+    const { integrations } = await import("../../drizzle/schema");
+    const { eq, and } = await import("drizzle-orm");
+
+    const db = await getDb();
+    if (!db) return null;
+
+    const [integration] = await db
+      .select({ userId: integrations.userId })
+      .from(integrations)
+      .where(
+        and(
+          eq(integrations.service, `ghl:${locationId}`),
+          eq(integrations.isActive, "true")
+        )
+      )
+      .limit(1);
+
+    return integration?.userId ?? null;
+  } catch (error) {
+    console.error("[GHL Webhook] Failed to resolve userId for location:", locationId, error);
+    return null;
+  }
+}
 
 /**
  * Helper function to escape XML special characters
