@@ -40,17 +40,14 @@ import { subAccountsRouter } from "./api/routers/subAccounts";
 import { agentPermissionsRouter } from "./api/routers/agentPermissions";
 import { agentMemoryRouter } from "./api/routers/agentMemory";
 import { agentTrainingRouter } from "./api/routers/agentTraining";
-import { agentSkillConfigRouter } from "./api/routers/agentSkillConfig";
 import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
 import { ghlRouter } from "./api/routers/ghl";
-import { ghlContactsRouter } from "./api/routers/ghlContacts";
-import { taskTemplatesRouter } from "./api/routers/taskTemplates";
-import { executionHistoryRouter } from "./api/routers/executionHistory";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
+  // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   ai: aiRouter,
   auth: router({
@@ -141,22 +138,14 @@ export const appRouter = router({
   // Agent Training Configuration (Workflows, Skills, Behavior)
   agentTraining: agentTrainingRouter,
 
-  // Agent Skill Config (focused CRUD for skill toggles, permissions, analytics)
-  agentSkillConfig: agentSkillConfigRouter,
-
   // Multi-Step Workflow Pipelines
   pipelines: pipelinesRouter,
 
-  // GHL Integration
-  ghl: ghlRouter,
-  ghlContacts: ghlContactsRouter,
+  // GHL Automation (48 GoHighLevel browser automation functions)
   ghlAutomation: ghlAutomationRouter,
 
-  // Task Templates (pre-built templates for common agency tasks)
-  taskTemplates: taskTemplatesRouter,
-
-  // Execution History (past executions, timeline, replay, export)
-  executionHistory: executionHistoryRouter,
+  // GHL OAuth & Connection Management
+  ghl: ghlRouter,
 });
 
 export type AppRouter = typeof appRouter;

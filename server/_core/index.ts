@@ -6,6 +6,7 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerGoogleAuthRoutes } from "./google-auth";
+import { registerGHLOAuthRoutes } from "./ghl-oauth";
 import { emailAuthRouter } from "./email-auth";
 import { onboardingRouter } from "./onboarding";
 import { registerSSERoutes } from "./sse-routes";
@@ -27,7 +28,6 @@ import {
   sentryErrorHandler
 } from "../lib/sentry";
 import { createRestApi } from "../api/rest";
-import { registerGhlOAuthRoutes } from "./ghl-oauth";
 
 // Initialize Sentry as early as possible
 initSentry();
@@ -129,15 +129,14 @@ export async function createApp() {
   app.use("/api/auth", emailAuthRouter);
   // Onboarding routes
   app.use("/api/onboarding", onboardingRouter);
-  // GHL OAuth routes for GoHighLevel integration
-  registerGhlOAuthRoutes(app);
+  // GHL OAuth routes (callback + revoke)
+  registerGHLOAuthRoutes(app);
   // SSE routes for real-time streaming
   registerSSERoutes(app);
-  // Stripe webhook route — MUST be before generic webhooks and body parsers
-  // Stripe needs the raw body for signature verification; Express JSON parsing breaks it
-  app.use("/api/webhooks/stripe", stripeWebhookRouter);
   // Webhook endpoints (public, token-authenticated)
   app.use("/api/webhooks", webhookEndpointsRouter);
+  // Stripe webhook route
+  app.use("/api/webhooks/stripe", stripeWebhookRouter);
 
   // Mount REST API v1 routes (includes /api/v1/health, /api/v1/tasks, etc.)
   const restApi = createRestApi();
