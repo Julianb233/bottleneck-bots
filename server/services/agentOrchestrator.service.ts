@@ -21,7 +21,6 @@ import {
   buildTaskPrompt,
   buildObservationPrompt,
   buildErrorRecoveryPrompt,
-  type RAGContext
 } from "./agentPrompts";
 import { AgentSSEEmitter } from "../_core/agent-sse-events";
 import {
@@ -30,6 +29,7 @@ import {
 } from "./agentBrowserTools";
 import { explainError, emitExplainedError } from "./agentErrorExplainer";
 import { ragService } from "./rag.service";
+import { trainingContextService } from "./trainingContext.service";
 import { getToolRegistry, ShellTool, FileTool } from "./tools";
 import {
   getAgentPermissionsService,
@@ -238,6 +238,7 @@ const MAX_TOKENS = 4096;
 export class AgentOrchestratorService {
   private claude: Anthropic;
   private toolRegistry: Map<string, Function>;
+  private currentUserId: number = 0;
 
   constructor() {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -405,6 +406,7 @@ export class AgentOrchestratorService {
           platforms: params.platforms,
           categories: params.categories,
           minSimilarity: 0.5,
+          userId: this.currentUserId,
         });
 
         if (chunks.length === 0) {
@@ -435,6 +437,58 @@ export class AgentOrchestratorService {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to retrieve documentation',
           chunks: [],
+          count: 0,
+        };
+      }
+    });
+
+    // Tool: Search trained workflows from knowledge base
+    this.toolRegistry.set("search_training", async (params: {
+      query: string;
+      platform?: string;
+    }) => {
+      try {
+        const context = await trainingContextService.loadForUser(this.currentUserId);
+        let workflows = context.workflows;
+
+        // Filter by platform if specified
+        if (params.platform) {
+          workflows = workflows.filter(
+            (w) => w.platform.toLowerCase() === params.platform!.toLowerCase()
+          );
+        }
+
+        // Simple keyword matching on name/description
+        if (params.query) {
+          const queryLower = params.query.toLowerCase();
+          workflows = workflows.filter(
+            (w) =>
+              w.name.toLowerCase().includes(queryLower) ||
+              w.description.toLowerCase().includes(queryLower) ||
+              w.steps.some((s) => s.action.toLowerCase().includes(queryLower) || s.description.toLowerCase().includes(queryLower))
+          );
+        }
+
+        return {
+          success: true,
+          workflows: workflows.map((w) => ({
+            id: w.id,
+            name: w.name,
+            description: w.description,
+            platform: w.platform,
+            stepCount: w.steps.length,
+            steps: w.steps,
+          })),
+          count: workflows.length,
+          message: workflows.length > 0
+            ? `Found ${workflows.length} matching trained workflow(s).`
+            : "No matching trained workflows found.",
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to search training workflows",
+          workflows: [],
           count: 0,
         };
       }
@@ -703,6 +757,24 @@ export class AgentOrchestratorService {
               type: "array",
               description: "Filter by documentation categories (e.g., 'api', 'workflows', 'troubleshooting')",
               items: { type: "string" }
+            }
+          },
+          required: ["query"]
+        }
+      },
+      {
+        name: "search_training",
+        description: "Search through trained workflows configured by the user. Use this when you need to find step-by-step instructions for a specific task or platform that the user has previously trained you on.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            query: {
+              type: "string",
+              description: "Search query describing the workflow or task you need"
+            },
+            platform: {
+              type: "string",
+              description: "Optional platform filter (e.g., 'gohighlevel', 'wordpress', 'stripe')"
             }
           },
           required: ["query"]
@@ -1275,34 +1347,47 @@ export class AgentOrchestratorService {
         content: currentPrompt,
       });
 
-      // Fetch RAG context on first iteration
-      let ragContext: RAGContext | undefined;
+      // Fetch RAG context and training context on first iteration
+      let ragDocumentContext = "";
+      let trainingPromptFragment = "";
       if (state.iterations === 0) {
-        try {
-          const ragResult = await ragService.buildSystemPrompt(state.taskDescription, {
+        // Load RAG documentation context and user training context in parallel
+        const [ragResult, trainingResult] = await Promise.allSettled([
+          ragService.buildSystemPrompt(state.taskDescription, {
             maxDocumentationTokens: 3000,
             includeExamples: true,
+            userId: state.userId,
+          }),
+          trainingContextService.loadForUser(state.userId),
+        ]);
+
+        if (ragResult.status === "fulfilled" && ragResult.value.retrievedChunks.length > 0) {
+          // Build a documentation context section from retrieved RAG chunks
+          const chunks = ragResult.value.retrievedChunks;
+          const docSections = chunks.map((chunk, i) => {
+            const similarity = ((chunk.similarity || 0) * 100).toFixed(1);
+            return `### Reference ${i + 1} (${similarity}% relevant)\n${chunk.content}`;
           });
-          ragContext = {
-            relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
-              elementName: 'document',
-              selector: chunk.content.substring(0, 100),
-              reliability: chunk.similarity || 0,
-            })),
-          };
-          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
-        } catch (ragError) {
-          console.warn('[Agent] Failed to load RAG context:', ragError);
-          // Continue without RAG context
+          ragDocumentContext = `\n\n<documentation_context>\n**Retrieved Documentation** (${chunks.length} sources, platforms: ${ragResult.value.detectedPlatforms.join(', ') || 'general'})\n\n${docSections.join('\n\n---\n\n')}\n</documentation_context>`;
+          console.log(`[Agent] RAG context loaded: ${chunks.length} chunks, platforms: ${ragResult.value.detectedPlatforms.join(', ')}`);
+        } else if (ragResult.status === "rejected") {
+          console.warn('[Agent] Failed to load RAG context:', ragResult.reason);
+        }
+
+        if (trainingResult.status === "fulfilled") {
+          trainingPromptFragment = trainingResult.value.promptFragment;
+          const tc = trainingResult.value;
+          console.log(`[Agent] Training context loaded: ${tc.workflows.length} workflows, ${tc.skills.filter(s => s.enabled).length} enabled skills, behavior: ${tc.behavior ? 'custom' : 'default'}`);
+        } else {
+          console.warn('[Agent] Failed to load training context:', trainingResult.reason);
         }
       }
 
-      // Call Claude with function calling
+      // Call Claude with function calling — include RAG docs + training context
       const systemPrompt = buildSystemPrompt({
         userId: state.userId,
         taskDescription: state.taskDescription,
-        ragContext,
-      });
+      }) + ragDocumentContext + trainingPromptFragment;
 
       const apiCallStartTime = Date.now();
       const response = await this.claude.messages.create({
@@ -1577,6 +1662,7 @@ export class AgentOrchestratorService {
     }
 
     const startTime = Date.now();
+    this.currentUserId = userId;
 
     // Create execution record - Note: taskId is required in schema
     // If no taskId provided, we need to create a placeholder task first or update the schema
