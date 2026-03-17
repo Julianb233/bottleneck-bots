@@ -3,7 +3,8 @@ import { TRPCError } from "@trpc/server";
 import { publicProcedure, protectedProcedure, router } from "../../_core/trpc";
 import { getDb } from "../../db";
 import { ai_call_campaigns, ai_calls, leads, lead_lists } from "../../../drizzle/schema-lead-enrichment";
-import { eq, and, desc, sql, count, inArray } from "drizzle-orm";
+import { campaignContacts, campaignEvents } from "../../../drizzle/schema-campaigns";
+import { eq, and, desc, sql, count, inArray, gte, lte, between } from "drizzle-orm";
 import { VapiService } from "../../services/vapi.service";
 import { CreditService } from "../../services/credit.service";
 
@@ -804,5 +805,500 @@ export const aiCallingRouter = router({
       await db.delete(ai_call_campaigns).where(eq(ai_call_campaigns.id, input.campaignId));
 
       return { success: true };
+    }),
+
+  // ========================================
+  // CAMPAIGN CONTACT OPERATIONS
+  // ========================================
+
+  /**
+   * Add contacts (leads) to a campaign
+   */
+  addContacts: protectedProcedure
+    .input(
+      z.object({
+        campaignId: z.number().int(),
+        leadIds: z.array(z.number().int()).min(1).max(500),
+        priority: z.number().int().default(0),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      // Verify campaign ownership
+      const [campaign] = await db
+        .select()
+        .from(ai_call_campaigns)
+        .where(and(eq(ai_call_campaigns.id, input.campaignId), eq(ai_call_campaigns.userId, userId)))
+        .limit(1);
+
+      if (!campaign) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Campaign not found" });
+      }
+
+      // Verify leads belong to user
+      const userLeads = await db
+        .select({ id: leads.id })
+        .from(leads)
+        .where(and(inArray(leads.id, input.leadIds), eq(leads.userId, userId)));
+
+      const validLeadIds = userLeads.map((l) => l.id);
+
+      if (validLeadIds.length === 0) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No valid leads found" });
+      }
+
+      // Insert contacts, skipping duplicates via onConflictDoNothing
+      const values = validLeadIds.map((leadId) => ({
+        campaignId: input.campaignId,
+        leadId,
+        userId,
+        status: "pending" as const,
+        priority: input.priority,
+        addedAt: new Date(),
+      }));
+
+      const inserted = await db
+        .insert(campaignContacts)
+        .values(values)
+        .onConflictDoNothing({ target: [campaignContacts.campaignId, campaignContacts.leadId] })
+        .returning();
+
+      // Log events for added contacts
+      if (inserted.length > 0) {
+        await db.insert(campaignEvents).values(
+          inserted.map((c) => ({
+            campaignId: input.campaignId,
+            contactId: c.id,
+            leadId: c.leadId,
+            userId,
+            eventType: "contact_added",
+            createdAt: new Date(),
+          }))
+        );
+      }
+
+      return {
+        added: inserted.length,
+        skipped: validLeadIds.length - inserted.length,
+        invalidLeadIds: input.leadIds.filter((id) => !validLeadIds.includes(id)),
+      };
+    }),
+
+  /**
+   * Remove contacts from a campaign
+   */
+  removeContacts: protectedProcedure
+    .input(
+      z.object({
+        campaignId: z.number().int(),
+        leadIds: z.array(z.number().int()).min(1).max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      // Verify campaign ownership
+      const [campaign] = await db
+        .select()
+        .from(ai_call_campaigns)
+        .where(and(eq(ai_call_campaigns.id, input.campaignId), eq(ai_call_campaigns.userId, userId)))
+        .limit(1);
+
+      if (!campaign) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Campaign not found" });
+      }
+
+      // Log removal events before deleting
+      const contactsToRemove = await db
+        .select()
+        .from(campaignContacts)
+        .where(
+          and(
+            eq(campaignContacts.campaignId, input.campaignId),
+            inArray(campaignContacts.leadId, input.leadIds)
+          )
+        );
+
+      if (contactsToRemove.length > 0) {
+        await db.insert(campaignEvents).values(
+          contactsToRemove.map((c) => ({
+            campaignId: input.campaignId,
+            contactId: c.id,
+            leadId: c.leadId,
+            userId,
+            eventType: "contact_removed",
+            createdAt: new Date(),
+          }))
+        );
+      }
+
+      // Delete contacts
+      const deleted = await db
+        .delete(campaignContacts)
+        .where(
+          and(
+            eq(campaignContacts.campaignId, input.campaignId),
+            inArray(campaignContacts.leadId, input.leadIds)
+          )
+        )
+        .returning();
+
+      return { removed: deleted.length };
+    }),
+
+  /**
+   * Get contacts for a campaign with their lead data
+   */
+  getContacts: protectedProcedure
+    .input(
+      z.object({
+        campaignId: z.number().int(),
+        status: z.enum(["pending", "contacted", "completed", "skipped", "failed", "opted_out"]).optional(),
+        limit: z.number().int().positive().default(50),
+        offset: z.number().int().nonnegative().default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      // Verify campaign ownership
+      const [campaign] = await db
+        .select()
+        .from(ai_call_campaigns)
+        .where(and(eq(ai_call_campaigns.id, input.campaignId), eq(ai_call_campaigns.userId, userId)))
+        .limit(1);
+
+      if (!campaign) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Campaign not found" });
+      }
+
+      // Build conditions
+      const conditions = [eq(campaignContacts.campaignId, input.campaignId)];
+      if (input.status) {
+        conditions.push(eq(campaignContacts.status, input.status));
+      }
+
+      // Get contacts joined with lead data
+      const contacts = await db
+        .select({
+          contact: campaignContacts,
+          lead: {
+            id: leads.id,
+            rawData: leads.rawData,
+            enrichedData: leads.enrichedData,
+            enrichmentStatus: leads.enrichmentStatus,
+          },
+        })
+        .from(campaignContacts)
+        .innerJoin(leads, eq(campaignContacts.leadId, leads.id))
+        .where(and(...conditions))
+        .orderBy(desc(campaignContacts.priority), campaignContacts.addedAt)
+        .limit(input.limit)
+        .offset(input.offset);
+
+      // Get total count
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(campaignContacts)
+        .where(and(...conditions));
+
+      // Get status breakdown
+      const statusCounts = await db
+        .select({
+          status: campaignContacts.status,
+          count: count(),
+        })
+        .from(campaignContacts)
+        .where(eq(campaignContacts.campaignId, input.campaignId))
+        .groupBy(campaignContacts.status);
+
+      return {
+        contacts,
+        total,
+        hasMore: input.offset + input.limit < total,
+        statusBreakdown: Object.fromEntries(statusCounts.map((s) => [s.status, s.count])),
+      };
+    }),
+
+  /**
+   * Update a campaign contact's status
+   */
+  updateContactStatus: protectedProcedure
+    .input(
+      z.object({
+        campaignId: z.number().int(),
+        leadId: z.number().int(),
+        status: z.enum(["pending", "contacted", "completed", "skipped", "failed", "opted_out"]),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      const updateData: Record<string, unknown> = {
+        status: input.status,
+      };
+      if (input.notes !== undefined) updateData.notes = input.notes;
+      if (input.status === "contacted") updateData.lastContactedAt = new Date();
+      if (input.status === "completed") updateData.completedAt = new Date();
+
+      const result = await db
+        .update(campaignContacts)
+        .set(updateData)
+        .where(
+          and(
+            eq(campaignContacts.campaignId, input.campaignId),
+            eq(campaignContacts.leadId, input.leadId),
+            eq(campaignContacts.userId, userId)
+          )
+        )
+        .returning();
+
+      if (result.length === 0) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Campaign contact not found" });
+      }
+
+      // Log event
+      await db.insert(campaignEvents).values({
+        campaignId: input.campaignId,
+        contactId: result[0].id,
+        leadId: input.leadId,
+        userId,
+        eventType: `status_${input.status}`,
+        metadata: input.notes ? { notes: input.notes } : undefined,
+        createdAt: new Date(),
+      });
+
+      return result[0];
+    }),
+
+  // ========================================
+  // CAMPAIGN ENGAGEMENT TRACKING
+  // ========================================
+
+  /**
+   * Log a campaign engagement event
+   */
+  logEvent: protectedProcedure
+    .input(
+      z.object({
+        campaignId: z.number().int(),
+        leadId: z.number().int().optional(),
+        eventType: z.string().min(1).max(50),
+        metadata: z.record(z.string(), z.any()).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      // Verify campaign ownership
+      const [campaign] = await db
+        .select()
+        .from(ai_call_campaigns)
+        .where(and(eq(ai_call_campaigns.id, input.campaignId), eq(ai_call_campaigns.userId, userId)))
+        .limit(1);
+
+      if (!campaign) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Campaign not found" });
+      }
+
+      // Find contact if leadId provided
+      let contactId: number | undefined;
+      if (input.leadId) {
+        const [contact] = await db
+          .select()
+          .from(campaignContacts)
+          .where(
+            and(
+              eq(campaignContacts.campaignId, input.campaignId),
+              eq(campaignContacts.leadId, input.leadId)
+            )
+          )
+          .limit(1);
+        contactId = contact?.id;
+      }
+
+      const [event] = await db
+        .insert(campaignEvents)
+        .values({
+          campaignId: input.campaignId,
+          contactId: contactId ?? null,
+          leadId: input.leadId ?? null,
+          userId,
+          eventType: input.eventType,
+          metadata: input.metadata ?? null,
+          createdAt: new Date(),
+        })
+        .returning();
+
+      return event;
+    }),
+
+  /**
+   * Get engagement metrics for a campaign
+   */
+  getEngagementMetrics: protectedProcedure
+    .input(
+      z.object({
+        campaignId: z.number().int(),
+        startDate: z.string().datetime().optional(),
+        endDate: z.string().datetime().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      // Verify campaign ownership
+      const [campaign] = await db
+        .select()
+        .from(ai_call_campaigns)
+        .where(and(eq(ai_call_campaigns.id, input.campaignId), eq(ai_call_campaigns.userId, userId)))
+        .limit(1);
+
+      if (!campaign) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Campaign not found" });
+      }
+
+      // Contact status breakdown
+      const contactStats = await db
+        .select({
+          status: campaignContacts.status,
+          count: count(),
+        })
+        .from(campaignContacts)
+        .where(eq(campaignContacts.campaignId, input.campaignId))
+        .groupBy(campaignContacts.status);
+
+      // Total contacts
+      const [{ totalContacts }] = await db
+        .select({ totalContacts: count() })
+        .from(campaignContacts)
+        .where(eq(campaignContacts.campaignId, input.campaignId));
+
+      // Event type breakdown
+      const eventConditions = [eq(campaignEvents.campaignId, input.campaignId)];
+      if (input.startDate) {
+        eventConditions.push(gte(campaignEvents.createdAt, new Date(input.startDate)));
+      }
+      if (input.endDate) {
+        eventConditions.push(lte(campaignEvents.createdAt, new Date(input.endDate)));
+      }
+
+      const eventStats = await db
+        .select({
+          eventType: campaignEvents.eventType,
+          count: count(),
+        })
+        .from(campaignEvents)
+        .where(and(...eventConditions))
+        .groupBy(campaignEvents.eventType);
+
+      // Recent events
+      const recentEvents = await db
+        .select()
+        .from(campaignEvents)
+        .where(eq(campaignEvents.campaignId, input.campaignId))
+        .orderBy(desc(campaignEvents.createdAt))
+        .limit(20);
+
+      // Calculate engagement rate
+      const contactStatusMap = Object.fromEntries(contactStats.map((s) => [s.status, s.count]));
+      const contacted = (contactStatusMap["contacted"] || 0) + (contactStatusMap["completed"] || 0);
+      const engagementRate = totalContacts > 0 ? Math.round((contacted / totalContacts) * 100) : 0;
+
+      // Positive response rate
+      const positiveEvents = eventStats.find((e) => e.eventType === "response_positive")?.count || 0;
+      const totalCallEvents = eventStats.find((e) => e.eventType === "call_completed")?.count || campaign.callsMade || 0;
+      const positiveRate = totalCallEvents > 0 ? Math.round((positiveEvents / totalCallEvents) * 100) : 0;
+
+      return {
+        totalContacts,
+        contactsByStatus: contactStatusMap,
+        eventsByType: Object.fromEntries(eventStats.map((e) => [e.eventType, e.count])),
+        recentEvents,
+        engagementRate,
+        positiveRate,
+        campaign: {
+          callsMade: campaign.callsMade,
+          callsSuccessful: campaign.callsSuccessful,
+          callsFailed: campaign.callsFailed,
+          callsAnswered: campaign.callsAnswered,
+          totalDuration: campaign.totalDuration,
+          costInCredits: campaign.costInCredits,
+        },
+      };
+    }),
+
+  /**
+   * Get event timeline for a campaign
+   */
+  getEventTimeline: protectedProcedure
+    .input(
+      z.object({
+        campaignId: z.number().int(),
+        limit: z.number().int().positive().default(50),
+        offset: z.number().int().nonnegative().default(0),
+        eventType: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.user.id;
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+      }
+
+      const conditions = [
+        eq(campaignEvents.campaignId, input.campaignId),
+        eq(campaignEvents.userId, userId),
+      ];
+
+      if (input.eventType) {
+        conditions.push(eq(campaignEvents.eventType, input.eventType));
+      }
+
+      const events = await db
+        .select()
+        .from(campaignEvents)
+        .where(and(...conditions))
+        .orderBy(desc(campaignEvents.createdAt))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      const [{ total }] = await db
+        .select({ total: count() })
+        .from(campaignEvents)
+        .where(and(...conditions));
+
+      return {
+        events,
+        total,
+        hasMore: input.offset + input.limit < total,
+      };
     }),
 });

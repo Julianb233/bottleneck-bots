@@ -683,6 +683,16 @@ export {
   type InsertCostBudget,
 } from "./schema-costs";
 
+// Campaign Operations (Contacts & Engagement Tracking)
+export {
+  campaignContacts,
+  campaignEvents,
+  type CampaignContact,
+  type InsertCampaignContact,
+  type CampaignEvent,
+  type InsertCampaignEvent,
+} from "./schema-campaigns";
+
 // Authentication Enhancement
 export {
   passwordResetTokens,
