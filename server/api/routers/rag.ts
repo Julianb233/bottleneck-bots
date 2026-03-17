@@ -607,6 +607,89 @@ export const ragRouter = router({
     }),
 
   /**
+   * Re-process a document source (re-chunk and re-embed with latest SOP processing)
+   */
+  reprocessSource: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .mutation(async ({ input }) => {
+      try {
+        const result = await ragService.reprocessSource(input.sourceId);
+
+        return {
+          success: true,
+          sourceId: result.sourceId,
+          chunkCount: result.chunkCount,
+          totalTokens: result.totalTokens,
+          message: `Re-processed document with ${result.chunkCount} chunks`,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Reprocess failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reprocess document: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
+   * Get chunks for a source (for knowledge base browser preview)
+   */
+  getSourceChunks: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .query(async ({ input }) => {
+      try {
+        const result = await ragService.getSourceChunks(input.sourceId);
+
+        return {
+          success: true,
+          chunks: result.chunks,
+          chunkCount: result.chunks.length,
+          sopMetadata: result.sopMetadata || null,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Get source chunks failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to get source chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
+   * Retrieve knowledge for agent task execution (structured SOP + reference context)
+   */
+  retrieveForTask: publicProcedure
+    .input(
+      z.object({
+        taskDescription: z.string().min(1),
+        platforms: z.array(z.string()).optional(),
+        maxTokens: z.number().min(100).max(10000).optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      try {
+        const result = await ragService.retrieveForTask(input.taskDescription, {
+          platforms: input.platforms,
+          maxTokens: input.maxTokens,
+        });
+
+        return {
+          success: true,
+          sopContext: result.sopContext,
+          referenceContext: result.referenceContext,
+          sopSteps: result.sopSteps,
+          chunkCount: result.allChunks.length,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Retrieve for task failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to retrieve task knowledge: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
    * Seed platform keywords (admin operation)
    * This should be called once during initial setup
    */
