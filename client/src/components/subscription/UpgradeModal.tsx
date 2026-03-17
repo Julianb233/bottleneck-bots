@@ -92,24 +92,14 @@ export function UpgradeModal({ isOpen, onClose, currentTierSlug }: UpgradeModalP
   const { data: tiersData, isLoading } = trpc.subscription.getTiers.useQuery();
 
   const updateTier = trpc.subscription.updateTier.useMutation({
-    onSuccess: (data) => {
-      // If Stripe checkout URL is returned, redirect to it
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-        return;
-      }
+    onSuccess: () => {
       onClose();
       window.location.reload();
     },
   });
 
   const createSubscription = trpc.subscription.create.useMutation({
-    onSuccess: (data) => {
-      // If Stripe checkout URL is returned, redirect to it
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-        return;
-      }
+    onSuccess: () => {
       onClose();
       window.location.reload();
     },

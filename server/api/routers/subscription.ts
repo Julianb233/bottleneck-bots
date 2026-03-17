@@ -244,22 +244,30 @@ export const subscriptionRouter = router({
           });
         }
 
-        // Calculate price based on frequency
-        let pricePerPeriod = tier.monthlyPriceCents;
-        let intervalLabel = "month";
+        // Calculate price per billing interval
+        let unitAmount = tier.monthlyPriceCents;
+        let interval: "week" | "month" | "year" = "month";
+        let intervalCount = 1;
+
         switch (input.paymentFrequency) {
           case "weekly":
-            pricePerPeriod = Math.round(tier.monthlyPriceCents * (1 + tier.weeklyPremiumPercent / 100) / 4);
-            intervalLabel = "week";
+            unitAmount = Math.round(tier.monthlyPriceCents * (1 + tier.weeklyPremiumPercent / 100) / 4);
+            interval = "week";
+            intervalCount = 1;
             break;
           case "six_month":
-            pricePerPeriod = Math.round(tier.monthlyPriceCents * 6 * (1 - tier.sixMonthDiscountPercent / 100));
-            intervalLabel = "6 months";
+            unitAmount = Math.round(tier.monthlyPriceCents * (1 - tier.sixMonthDiscountPercent / 100));
+            interval = "month";
+            intervalCount = 1;
             break;
           case "annual":
-            pricePerPeriod = Math.round(tier.monthlyPriceCents * 12 * (1 - tier.annualDiscountPercent / 100));
-            intervalLabel = "year";
+            unitAmount = Math.round(tier.monthlyPriceCents * (1 - tier.annualDiscountPercent / 100));
+            interval = "month";
+            intervalCount = 1;
             break;
+          default:
+            interval = "month";
+            intervalCount = 1;
         }
 
         const stripe = new Stripe(stripeSecretKey, { apiVersion: "2024-12-18.acacia" as any });
@@ -268,7 +276,7 @@ export const subscriptionRouter = router({
         const successUrl = input.successUrl || `${baseUrl}/settings/billing?success=true`;
         const cancelUrl = input.cancelUrl || `${baseUrl}/settings/billing?canceled=true`;
 
-        // Create a one-time checkout that will trigger subscription creation via webhook
+        // Create a subscription checkout so Stripe manages recurring billing
         const session = await stripe.checkout.sessions.create({
           payment_method_types: ["card"],
           line_items: [
@@ -279,12 +287,23 @@ export const subscriptionRouter = router({
                   name: `${tier.name} Plan`,
                   description: `${tier.name} subscription — ${tier.maxAgents} agents, ${tier.monthlyExecutionLimit} executions/mo`,
                 },
-                unit_amount: pricePerPeriod,
+                unit_amount: unitAmount,
+                recurring: {
+                  interval,
+                  interval_count: intervalCount,
+                },
               },
               quantity: 1,
             },
           ],
-          mode: "payment",
+          mode: "subscription",
+          subscription_data: {
+            metadata: {
+              userId: String(ctx.user.id),
+              tierSlug: input.tierSlug,
+              paymentFrequency: input.paymentFrequency,
+            },
+          },
           success_url: successUrl,
           cancel_url: cancelUrl,
           metadata: {
@@ -292,6 +311,7 @@ export const subscriptionRouter = router({
             subscriptionTierSlug: input.tierSlug,
             paymentFrequency: input.paymentFrequency,
           },
+          allow_promotion_codes: true,
         });
 
         return {
@@ -416,28 +436,7 @@ export const subscriptionRouter = router({
           });
         }
 
-        // If Stripe-managed, cancel through Stripe (which fires customer.subscription.updated/deleted)
-        if (currentSub.subscription.stripeSubscriptionId && process.env.STRIPE_SECRET_KEY) {
-          try {
-            const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-              apiVersion: "2024-12-18.acacia" as any,
-            });
-
-            if (input.cancelImmediately) {
-              await stripe.subscriptions.cancel(currentSub.subscription.stripeSubscriptionId);
-            } else {
-              await stripe.subscriptions.update(currentSub.subscription.stripeSubscriptionId, {
-                cancel_at_period_end: true,
-                metadata: { cancellationReason: input.reason || "user_requested" },
-              });
-            }
-          } catch (stripeError) {
-            console.error("Failed to cancel Stripe subscription:", stripeError);
-            // Fall through to local cancellation
-          }
-        }
-
-        // Update local record
+        // cancelSubscription handles both local DB update and Stripe API cancellation
         await service.cancelSubscription(ctx.user.id, input.reason, input.cancelImmediately);
 
         return {
