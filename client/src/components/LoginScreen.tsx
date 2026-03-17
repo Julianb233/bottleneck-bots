@@ -181,6 +181,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, onBac
                   {errors.password}
                 </p>
               )}
+              {!isSignUp && (
+                <div className="text-right mt-1">
+                  <a
+                    href="/forgot-password"
+                    className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline font-medium"
+                  >
+                    Forgot Password?
+                  </a>
+                </div>
+              )}
             </div>
 
             <button
