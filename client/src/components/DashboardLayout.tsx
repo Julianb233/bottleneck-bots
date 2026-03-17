@@ -37,6 +37,7 @@ import {
   Bot,
   GraduationCap,
   LayoutTemplate,
+  Sparkles,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -50,6 +51,7 @@ const menuItems = [
   { icon: Bot, label: "AI Agent", path: "/agent" },
   { icon: GraduationCap, label: "Training", path: "/training" },
   { icon: LayoutTemplate, label: "Templates", path: "/templates" },
+  { icon: Sparkles, label: "Agent Skills", path: "/agent-skills" },
   { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
   { icon: Workflow, label: "Workflow Builder", path: "/workflow-builder" },
