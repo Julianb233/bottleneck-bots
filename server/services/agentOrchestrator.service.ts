@@ -35,6 +35,7 @@ import {
   getAgentPermissionsService,
   PermissionDeniedError,
 } from "./agentPermissions.service";
+import { getAgentSkillConfigService } from "./agentSkillConfig.service";
 import { getSelfCorrectionService, type FailureAttempt } from "./browser/selfCorrection.service";
 import { getConfidenceService } from "./agentConfidence.service";
 import { getStrategyService, type ExecutionStrategy } from "./agentStrategy.service";

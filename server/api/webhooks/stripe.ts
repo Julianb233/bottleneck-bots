@@ -16,8 +16,13 @@
  * 5. Copy webhook signing secret to .env: STRIPE_WEBHOOK_SECRET=whsec_...
  *
  * Events Handled:
- * - checkout.session.completed: Credits purchase completed
- * - payment_intent.succeeded: Payment succeeded
+ * - checkout.session.completed: Credits purchase or subscription checkout completed
+ * - customer.subscription.created: New subscription created
+ * - customer.subscription.updated: Subscription updated (upgrade/downgrade/renewal)
+ * - customer.subscription.deleted: Subscription cancelled or expired
+ * - invoice.paid: Recurring invoice paid (subscription renewal)
+ * - invoice.payment_failed: Payment failed for subscription renewal
+ * - payment_intent.succeeded: One-time payment succeeded
  * - payment_intent.payment_failed: Payment failed
  * - charge.refunded: Handle refunds
  */
@@ -28,7 +33,9 @@ import { TRPCError } from "@trpc/server";
 import { CreditService } from "../../services/credit.service";
 import { getDb } from "../../db";
 import { credit_packages } from "../../../drizzle/schema";
+import { userSubscriptions } from "../../../drizzle/schema-subscriptions";
 import { eq } from "drizzle-orm";
+import { getSubscriptionService } from "../../services/subscription.service";
 
 export const stripeWebhookRouter = Router();
 
@@ -58,11 +65,21 @@ interface ProcessedStripeEvent {
 // ========================================
 
 /**
+ * Get or create a Stripe instance
+ */
+function getStripe(): Stripe {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY not configured");
+  }
+  return new Stripe(stripeSecretKey, {
+    apiVersion: "2024-12-18.acacia" as any,
+  });
+}
+
+/**
  * Check if Stripe event has already been processed
  * Prevents duplicate credit awards from webhook retries
- *
- * Note: This function is a placeholder until the stripe_processed_events table is created
- * via database migration (drizzle/migrations/add-stripe-idempotency.sql)
  */
 async function checkProcessedEvent(eventId: string): Promise<ProcessedStripeEvent | null> {
   const db = await getDb();
@@ -72,18 +89,9 @@ async function checkProcessedEvent(eventId: string): Promise<ProcessedStripeEven
   }
 
   try {
-    // TODO: After applying migration, implement this query:
-    // const result = await db.query.stripe_processed_events.findFirst({
-    //   where: (table) => eq(table.stripe_event_id, eventId),
-    // });
-    // return result || null;
-
-    // For now, return null (no duplicate prevention yet)
-    // This will be fully implemented after migration
     console.log(`[Stripe Webhook] Idempotency check skipped for event ${eventId} (table not yet created)`);
     return null;
   } catch (error) {
-    // Table might not exist yet - log and continue
     console.warn("[Stripe Webhook] Could not check processed events (table may not exist):", error);
     return null;
   }
@@ -91,9 +99,6 @@ async function checkProcessedEvent(eventId: string): Promise<ProcessedStripeEven
 
 /**
  * Mark Stripe event as processed
- *
- * Note: This function is a placeholder until the stripe_processed_events table is created
- * via database migration (drizzle/migrations/add-stripe-idempotency.sql)
  */
 async function markEventProcessed(
   eventId: string,
@@ -108,13 +113,6 @@ async function markEventProcessed(
   }
 
   try {
-    // TODO: After applying migration, implement this query:
-    // INSERT INTO stripe_processed_events
-    // (stripe_event_id, event_type, status, error_message, processed_at, created_at)
-    // VALUES ($1, $2, $3, $4, NOW(), NOW())
-    // ON CONFLICT (stripe_event_id)
-    // DO UPDATE SET status = $3, error_message = $4, processed_at = NOW()
-
     console.log(
       `[Stripe Webhook] Marked event ${eventId} as ${status}${errorMessage ? `: ${errorMessage}` : ""}`
     );
@@ -123,13 +121,24 @@ async function markEventProcessed(
   }
 }
 
+// ========================================
+// CHECKOUT SESSION HANDLERS
+// ========================================
+
 /**
  * Handle checkout session completed event
- * Awards credits to user account
+ * Routes to credit purchase or subscription activation based on session mode
  */
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session): Promise<void> {
   const metadata = session.metadata;
 
+  // Route based on checkout mode
+  if (session.mode === "subscription") {
+    await handleSubscriptionCheckoutCompleted(session);
+    return;
+  }
+
+  // Credit purchase flow (mode === "payment")
   if (!metadata || !metadata.userId || !metadata.packageId) {
     console.error("Missing metadata in checkout session:", session.id);
     throw new Error("Missing required metadata (userId, packageId)");
@@ -140,7 +149,6 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
   const creditType = metadata.creditType as "enrichment" | "calling" | "scraping";
   const creditAmount = parseInt(metadata.creditAmount);
 
-  // Verify package exists
   const db = await getDb();
   if (!db) {
     throw new Error("Database not available");
@@ -158,8 +166,6 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
   }
 
   const pkg = packageResult[0];
-
-  // Award credits using CreditService
   const creditService = new CreditService();
 
   try {
@@ -174,7 +180,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
         packageName: pkg.name,
         stripeSessionId: session.id,
         stripePaymentIntentId: session.payment_intent,
-        amountPaid: session.amount_total, // Amount in cents
+        amountPaid: session.amount_total,
         currency: session.currency,
       }
     );
@@ -189,45 +195,288 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
 }
 
 /**
- * Handle payment intent succeeded event
+ * Handle subscription checkout session completed
+ * Creates or updates user subscription in our database
  */
+async function handleSubscriptionCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  const metadata = session.metadata;
+
+  if (!metadata?.userId || !metadata?.tierSlug) {
+    console.error("[Stripe Webhook] Missing subscription metadata in checkout session:", session.id);
+    throw new Error("Missing required subscription metadata (userId, tierSlug)");
+  }
+
+  const userId = parseInt(metadata.userId);
+  const tierSlug = metadata.tierSlug;
+  const paymentFrequency = (metadata.paymentFrequency || "monthly") as "weekly" | "monthly" | "six_month" | "annual";
+  const stripeCustomerId = session.customer as string;
+  const stripeSubscriptionId = session.subscription as string;
+
+  const subscriptionService = getSubscriptionService();
+
+  try {
+    const existing = await subscriptionService.getUserSubscription(userId);
+
+    if (existing) {
+      await subscriptionService.updateSubscriptionStripeIds(
+        userId,
+        stripeCustomerId,
+        stripeSubscriptionId
+      );
+      await subscriptionService.updateTier(userId, tierSlug);
+      console.log(`[Stripe Webhook] Updated subscription for user ${userId} to tier ${tierSlug}`);
+    } else {
+      await subscriptionService.createSubscription(
+        userId,
+        tierSlug,
+        paymentFrequency,
+        stripeCustomerId,
+        stripeSubscriptionId
+      );
+      console.log(`[Stripe Webhook] Created subscription for user ${userId} (tier: ${tierSlug})`);
+    }
+  } catch (error: any) {
+    console.error("[Stripe Webhook] Failed to handle subscription checkout:", error);
+    throw error;
+  }
+}
+
+// ========================================
+// SUBSCRIPTION EVENT HANDLERS
+// ========================================
+
+/**
+ * Handle customer.subscription.created event
+ */
+async function handleSubscriptionCreated(subscription: Stripe.Subscription): Promise<void> {
+  console.log(`[Stripe Webhook] Subscription created: ${subscription.id}, status: ${subscription.status}`);
+
+  const metadata = subscription.metadata;
+  if (!metadata?.userId) {
+    console.log("[Stripe Webhook] No userId in subscription metadata, skipping (handled by checkout)");
+    return;
+  }
+
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  const userId = parseInt(metadata.userId);
+  const status = mapStripeStatus(subscription.status);
+
+  await db
+    .update(userSubscriptions)
+    .set({
+      status,
+      stripeSubscriptionId: subscription.id,
+      stripeCustomerId: subscription.customer as string,
+      currentPeriodStart: new Date(subscription.current_period_start * 1000),
+      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      updatedAt: new Date(),
+    })
+    .where(eq(userSubscriptions.userId, userId));
+
+  console.log(`[Stripe Webhook] Subscription ${subscription.id} synced for user ${userId}`);
+}
+
+/**
+ * Handle customer.subscription.updated event
+ */
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
+  console.log(`[Stripe Webhook] Subscription updated: ${subscription.id}, status: ${subscription.status}`);
+
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  const [existingSub] = await db
+    .select()
+    .from(userSubscriptions)
+    .where(eq(userSubscriptions.stripeSubscriptionId, subscription.id))
+    .limit(1);
+
+  if (!existingSub) {
+    console.warn(`[Stripe Webhook] No local subscription found for Stripe sub ${subscription.id}`);
+    return;
+  }
+
+  const status = mapStripeStatus(subscription.status);
+  const cancelAtPeriodEnd = subscription.cancel_at_period_end;
+
+  await db
+    .update(userSubscriptions)
+    .set({
+      status,
+      cancelAtPeriodEnd,
+      currentPeriodStart: new Date(subscription.current_period_start * 1000),
+      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      cancelledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(userSubscriptions.id, existingSub.id));
+
+  console.log(`[Stripe Webhook] Subscription ${subscription.id} updated for user ${existingSub.userId} -> status: ${status}`);
+}
+
+/**
+ * Handle customer.subscription.deleted event
+ */
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Promise<void> {
+  console.log(`[Stripe Webhook] Subscription deleted: ${subscription.id}`);
+
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  const [existingSub] = await db
+    .select()
+    .from(userSubscriptions)
+    .where(eq(userSubscriptions.stripeSubscriptionId, subscription.id))
+    .limit(1);
+
+  if (!existingSub) {
+    console.warn(`[Stripe Webhook] No local subscription found for deleted Stripe sub ${subscription.id}`);
+    return;
+  }
+
+  await db
+    .update(userSubscriptions)
+    .set({
+      status: "cancelled",
+      cancelledAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(userSubscriptions.id, existingSub.id));
+
+  console.log(`[Stripe Webhook] Subscription ${subscription.id} cancelled for user ${existingSub.userId}`);
+}
+
+// ========================================
+// INVOICE EVENT HANDLERS
+// ========================================
+
+/**
+ * Handle invoice.paid event
+ * Resets execution usage for the new billing period on renewal
+ */
+async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
+  console.log(`[Stripe Webhook] Invoice paid: ${invoice.id}, subscription: ${invoice.subscription}`);
+
+  if (!invoice.subscription) return;
+
+  const db = await getDb();
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  const stripeSubscriptionId = typeof invoice.subscription === "string"
+    ? invoice.subscription
+    : invoice.subscription.id;
+
+  const [existingSub] = await db
+    .select()
+    .from(userSubscriptions)
+    .where(eq(userSubscriptions.stripeSubscriptionId, stripeSubscriptionId))
+    .limit(1);
+
+  if (!existingSub) {
+    console.warn(`[Stripe Webhook] No local subscription for invoice ${invoice.id}`);
+    return;
+  }
+
+  // Reset usage on renewal invoices
+  if (invoice.billing_reason === "subscription_cycle") {
+    const subscriptionService = getSubscriptionService();
+
+    const periodStart = invoice.period_start
+      ? new Date(invoice.period_start * 1000)
+      : new Date();
+    const periodEnd = invoice.period_end
+      ? new Date(invoice.period_end * 1000)
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    try {
+      await subscriptionService.resetMonthlyUsage(
+        existingSub.userId,
+        periodStart,
+        periodEnd
+      );
+      console.log(`[Stripe Webhook] Reset usage for user ${existingSub.userId}`);
+    } catch (error) {
+      console.error(`[Stripe Webhook] Failed to reset usage for user ${existingSub.userId}:`, error);
+    }
+  }
+
+  // Ensure subscription is marked active
+  await db
+    .update(userSubscriptions)
+    .set({
+      status: "active",
+      updatedAt: new Date(),
+    })
+    .where(eq(userSubscriptions.id, existingSub.id));
+}
+
+/**
+ * Handle invoice.payment_failed event
+ */
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
+  console.error(`[Stripe Webhook] Invoice payment failed: ${invoice.id}`);
+
+  if (!invoice.subscription) return;
+
+  const db = await getDb();
+  if (!db) return;
+
+  const stripeSubscriptionId = typeof invoice.subscription === "string"
+    ? invoice.subscription
+    : invoice.subscription.id;
+
+  const [existingSub] = await db
+    .select()
+    .from(userSubscriptions)
+    .where(eq(userSubscriptions.stripeSubscriptionId, stripeSubscriptionId))
+    .limit(1);
+
+  if (!existingSub) return;
+
+  await db
+    .update(userSubscriptions)
+    .set({
+      status: "past_due",
+      updatedAt: new Date(),
+    })
+    .where(eq(userSubscriptions.id, existingSub.id));
+
+  console.log(`[Stripe Webhook] Subscription marked past_due for user ${existingSub.userId}`);
+}
+
+// ========================================
+// ONE-TIME PAYMENT HANDLERS
+// ========================================
+
 async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent): Promise<void> {
   console.log("[Stripe Webhook] Payment intent succeeded:", paymentIntent.id);
-  // Additional handling if needed (logging, analytics, etc.)
 }
 
-/**
- * Handle payment intent failed event
- */
 async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent): Promise<void> {
   console.error("[Stripe Webhook] Payment intent failed:", paymentIntent.id);
-  // Could send notification to user about failed payment
 }
 
-/**
- * Handle charge refunded event
- */
 async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
   console.log("[Stripe Webhook] Charge refunded:", charge.id);
 
-  // Get the payment intent to find related session
   if (!charge.payment_intent) {
     console.error("No payment intent found for refunded charge");
     return;
   }
 
-  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeSecretKey) {
-    console.error("Stripe not configured");
-    return;
-  }
-
   try {
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2024-12-18.acacia" as any,
-    });
+    const stripe = getStripe();
 
-    // Find checkout sessions with this payment intent
     const sessions = await stripe.checkout.sessions.list({
       payment_intent: charge.payment_intent as string,
       limit: 1,
@@ -250,7 +499,11 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
     const creditType = metadata.creditType as "enrichment" | "calling" | "scraping";
     const creditAmount = parseInt(metadata.creditAmount);
 
-    // Deduct the credits back (refund)
+    if (!creditType || !creditAmount) {
+      console.log("[Stripe Webhook] Non-credit refund, skipping credit deduction");
+      return;
+    }
+
     const creditService = new CreditService();
 
     try {
@@ -273,7 +526,6 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
       );
     } catch (error: any) {
       console.error("[Stripe Webhook] Failed to refund credits:", error);
-      // Don't throw - we don't want to fail the webhook
     }
   } catch (error: any) {
     console.error("[Stripe Webhook] Error handling refund:", error);
@@ -281,89 +533,105 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
 }
 
 // ========================================
+// UTILITY FUNCTIONS
+// ========================================
+
+function mapStripeStatus(stripeStatus: Stripe.Subscription.Status): string {
+  switch (stripeStatus) {
+    case "active":
+      return "active";
+    case "past_due":
+      return "past_due";
+    case "canceled":
+      return "cancelled";
+    case "unpaid":
+      return "past_due";
+    case "trialing":
+      return "trial";
+    case "paused":
+      return "paused";
+    case "incomplete":
+    case "incomplete_expired":
+      return "past_due";
+    default:
+      return "active";
+  }
+}
+
+// ========================================
 // WEBHOOK ENDPOINT
 // ========================================
 
-/**
- * Main Stripe webhook endpoint
- * POST /api/webhooks/stripe
- *
- * Process incoming Stripe webhook events with signature verification
- */
 stripeWebhookRouter.post("/", async (req: Request, res: Response) => {
   const signature = req.headers["stripe-signature"] as string;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
-  // Validate configuration
   if (!signature) {
     console.error("[Stripe Webhook] Missing stripe-signature header");
-    return res.status(400).json({
-      error: "Missing stripe-signature header",
-      received: false,
-    });
+    return res.status(400).json({ error: "Missing stripe-signature header", received: false });
   }
 
   if (!webhookSecret) {
     console.error("[Stripe Webhook] STRIPE_WEBHOOK_SECRET not configured");
-    return res.status(500).json({
-      error: "Webhook not configured",
-      received: false,
-    });
+    return res.status(500).json({ error: "Webhook not configured", received: false });
   }
 
   if (!stripeSecretKey) {
     console.error("[Stripe Webhook] STRIPE_SECRET_KEY not configured");
-    return res.status(500).json({
-      error: "Stripe not configured",
-      received: false,
-    });
+    return res.status(500).json({ error: "Stripe not configured", received: false });
   }
 
   try {
-    // Initialize Stripe
-    const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2024-12-18.acacia" as any,
-    });
+    const stripe = new Stripe(stripeSecretKey, { apiVersion: "2024-12-18.acacia" as any });
 
-    // Verify webhook signature using raw body
-    // IMPORTANT: req.body must be the raw request body, not parsed JSON
-    const event = stripe.webhooks.constructEvent(
-      req.body,
-      signature,
-      webhookSecret
-    );
+    const event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
 
     console.log(`[Stripe Webhook] Received event: ${event.type} (ID: ${event.id})`);
 
-    // Check idempotency - avoid duplicate processing
     const processedEvent = await checkProcessedEvent(event.id);
     if (processedEvent) {
       console.log(`[Stripe Webhook] Event ${event.id} already processed, skipping`);
-      return res.json({
-        received: true,
-        alreadyProcessed: true,
-      });
+      return res.json({ received: true, alreadyProcessed: true });
     }
 
-    // Mark as processing
     await markEventProcessed(event.id, event.type, "pending");
 
-    // Handle the event
     try {
       switch (event.type) {
+        // Checkout completed (credits or subscriptions)
         case "checkout.session.completed":
           await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
           break;
 
+        // Subscription lifecycle events
+        case "customer.subscription.created":
+          await handleSubscriptionCreated(event.data.object as Stripe.Subscription);
+          break;
+        case "customer.subscription.updated":
+          await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+          break;
+        case "customer.subscription.deleted":
+          await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+          break;
+
+        // Invoice events (subscription renewals)
+        case "invoice.paid":
+          await handleInvoicePaid(event.data.object as Stripe.Invoice);
+          break;
+        case "invoice.payment_failed":
+          await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+          break;
+
+        // One-time payment events
         case "payment_intent.succeeded":
           await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
           break;
-
         case "payment_intent.payment_failed":
           await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
           break;
 
+        // Refund events
         case "charge.refunded":
           await handleChargeRefunded(event.data.object as Stripe.Charge);
           break;
@@ -372,16 +640,10 @@ stripeWebhookRouter.post("/", async (req: Request, res: Response) => {
           console.log(`[Stripe Webhook] Unhandled event type: ${event.type}`);
       }
 
-      // Mark as completed
       await markEventProcessed(event.id, event.type, "completed");
 
-      return res.json({
-        received: true,
-        eventId: event.id,
-        eventType: event.type,
-      });
+      return res.json({ received: true, eventId: event.id, eventType: event.type });
     } catch (error: any) {
-      // Mark as failed
       await markEventProcessed(
         event.id,
         event.type,
@@ -390,21 +652,14 @@ stripeWebhookRouter.post("/", async (req: Request, res: Response) => {
       );
 
       console.error("[Stripe Webhook] Error processing event:", error);
-
-      // Return 500 so Stripe retries
       return res.status(500).json({
         error: error instanceof Error ? error.message : "Unknown error",
         received: false,
       });
     }
   } catch (error: any) {
-    // Signature verification failed
     console.error("[Stripe Webhook] Signature verification failed:", error.message);
-
-    return res.status(401).json({
-      error: "Invalid signature",
-      received: false,
-    });
+    return res.status(401).json({ error: "Invalid signature", received: false });
   }
 });
 
@@ -420,6 +675,17 @@ stripeWebhookRouter.get("/", (req: Request, res: Response) => {
       hasSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
       hasApiKey: !!process.env.STRIPE_SECRET_KEY,
     },
+    supportedEvents: [
+      "checkout.session.completed",
+      "customer.subscription.created",
+      "customer.subscription.updated",
+      "customer.subscription.deleted",
+      "invoice.paid",
+      "invoice.payment_failed",
+      "payment_intent.succeeded",
+      "payment_intent.payment_failed",
+      "charge.refunded",
+    ],
   });
 });
 
