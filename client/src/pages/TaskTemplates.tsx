@@ -1,6 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { trpc } from '@/lib/trpc';
-import { Breadcrumb } from '@/components/ui/breadcrumb';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -9,647 +21,489 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
+  UserPlus,
+  Mail,
+  Workflow,
+  Tags,
+  FileBarChart,
+  Sparkles,
   Search,
+  PenLine,
+  Play,
+  Clock,
   LayoutGrid,
   List,
-  Clock,
-  Coins,
-  Play,
-  ChevronRight,
-  Globe,
-  Mail,
-  Bot,
-  FileText,
-  Zap,
-  TrendingUp,
-  BarChart3,
-  Settings2,
   Filter,
   CheckCircle2,
-  AlertCircle,
+  ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
-// ============================================================
-// Category metadata
-// ============================================================
-
-const CATEGORIES = [
-  { key: 'all', label: 'All Templates', icon: LayoutGrid },
-  { key: 'ghl', label: 'GoHighLevel', icon: Zap },
-  { key: 'marketing', label: 'Marketing', icon: TrendingUp },
-  { key: 'sales', label: 'Sales', icon: BarChart3 },
-  { key: 'operations', label: 'Operations', icon: Settings2 },
-] as const;
-
-const CATEGORY_COLORS: Record<string, string> = {
-  ghl: 'bg-blue-50 text-blue-700 border-blue-200',
-  marketing: 'bg-purple-50 text-purple-700 border-purple-200',
-  sales: 'bg-amber-50 text-amber-700 border-amber-200',
-  operations: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+// Map icon names to lucide components
+const ICON_MAP: Record<string, React.ElementType> = {
+  UserPlus,
+  Mail,
+  Workflow,
+  Tags,
+  FileBarChart,
+  Sparkles,
+  Search,
+  PenLine,
 };
 
-const ACTION_ICONS: Record<string, React.ReactNode> = {
-  browser: <Globe className="h-3.5 w-3.5" />,
-  api: <Zap className="h-3.5 w-3.5" />,
-  email: <Mail className="h-3.5 w-3.5" />,
-  ai: <Bot className="h-3.5 w-3.5" />,
-  file: <FileText className="h-3.5 w-3.5" />,
-  wait: <Clock className="h-3.5 w-3.5" />,
+const CATEGORY_STYLES: Record<string, { bg: string; text: string; border: string; badgeBg: string }> = {
+  crm: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', badgeBg: 'bg-blue-100' },
+  marketing: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', badgeBg: 'bg-purple-100' },
+  automation: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', badgeBg: 'bg-amber-100' },
+  reporting: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', badgeBg: 'bg-emerald-100' },
+  ai: { bg: 'bg-pink-50', text: 'text-pink-700', border: 'border-pink-200', badgeBg: 'bg-pink-100' },
 };
 
-const ACTION_COLORS: Record<string, string> = {
-  browser: 'bg-sky-100 text-sky-700',
-  api: 'bg-violet-100 text-violet-700',
-  email: 'bg-rose-100 text-rose-700',
-  ai: 'bg-emerald-100 text-emerald-700',
-  file: 'bg-amber-100 text-amber-700',
-  wait: 'bg-gray-100 text-gray-600',
+const DIFFICULTY_STYLES: Record<string, string> = {
+  easy: 'bg-green-100 text-green-700',
+  medium: 'bg-yellow-100 text-yellow-700',
+  hard: 'bg-red-100 text-red-700',
 };
 
-// ============================================================
-// Component
-// ============================================================
+type Template = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  estimatedTime: string;
+  difficulty: string;
+  inputs: {
+    key: string;
+    label: string;
+    type: string;
+    placeholder?: string;
+    required?: boolean;
+    options?: { value: string; label: string }[];
+    defaultValue?: string;
+  }[];
+  steps: string[];
+  tags: string[];
+};
 
 export default function TaskTemplates() {
-  const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
-  const [showRunDialog, setShowRunDialog] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [formInputs, setFormInputs] = useState<Record<string, string>>({});
+  const [showSuccess, setShowSuccess] = useState(false);
 
-  // Fetch templates
-  const templatesQuery = trpc.taskTemplates.getAll.useQuery(undefined, {
-    refetchOnWindowFocus: false,
-  });
+  const templatesQuery = trpc.taskTemplates.list.useQuery(
+    selectedCategory !== 'all' ? { category: selectedCategory as any } : undefined
+  );
 
-  // Run mutation
-  const runMutation = trpc.taskTemplates.runFromTemplate.useMutation({
+  const createFromTemplate = trpc.taskTemplates.createFromTemplate.useMutation({
     onSuccess: (data) => {
-      toast.success(data.message, {
-        description: `Task ID: ${data.taskId} | Est. ${data.estimatedMinutes} min | ${data.creditCost} credits`,
-      });
-      setShowRunDialog(false);
-      setSelectedTemplate(null);
-      setFormInputs({});
+      toast.success(data.message);
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+        setSelectedTemplate(null);
+        setFormInputs({});
+      }, 2000);
     },
-    onError: (err) => {
-      toast.error('Failed to create task', { description: err.message });
+    onError: (error) => {
+      toast.error(error.message);
     },
   });
 
-  // Filter templates
-  const filtered = useMemo(() => {
-    if (!templatesQuery.data) return [];
-    return templatesQuery.data.filter((t) => {
-      const matchesCategory = activeCategory === 'all' || t.category === activeCategory;
-      const matchesSearch =
-        !search ||
-        t.name.toLowerCase().includes(search.toLowerCase()) ||
-        t.description.toLowerCase().includes(search.toLowerCase()) ||
-        t.tags.some((tag) => tag.toLowerCase().includes(search.toLowerCase()));
-      return matchesCategory && matchesSearch;
+  const openTemplate = (template: Template) => {
+    setSelectedTemplate(template);
+    setShowSuccess(false);
+    // Pre-fill default values
+    const defaults: Record<string, string> = {};
+    template.inputs.forEach((input) => {
+      if (input.defaultValue) {
+        defaults[input.key] = input.defaultValue;
+      }
     });
-  }, [templatesQuery.data, activeCategory, search]);
-
-  // Handlers
-  const openDetail = (template: any) => {
-    setSelectedTemplate(template);
+    setFormInputs(defaults);
   };
 
-  const openRunDialog = (template: any) => {
-    setSelectedTemplate(template);
-    setFormInputs({});
-    setShowRunDialog(true);
-  };
-
-  const handleRun = () => {
+  const handleSubmit = () => {
     if (!selectedTemplate) return;
-    runMutation.mutate({
+    createFromTemplate.mutate({
       templateId: selectedTemplate.id,
       inputs: formInputs,
     });
   };
 
-  const updateInput = (name: string, value: string) => {
-    setFormInputs((prev) => ({ ...prev, [name]: value }));
+  const updateInput = (key: string, value: string) => {
+    setFormInputs((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Stats
-  const totalTemplates = templatesQuery.data?.length ?? 0;
-  const categoryStats = useMemo(() => {
-    if (!templatesQuery.data) return {};
-    const counts: Record<string, number> = {};
-    templatesQuery.data.forEach((t) => {
-      counts[t.category] = (counts[t.category] || 0) + 1;
-    });
-    return counts;
-  }, [templatesQuery.data]);
+  const templates = templatesQuery.data?.templates ?? [];
+  const categories = templatesQuery.data?.categories ?? {};
+
+  // Group templates by category for grid view
+  const groupedTemplates: Record<string, Template[]> = {};
+  templates.forEach((t) => {
+    if (!groupedTemplates[t.category]) groupedTemplates[t.category] = [];
+    groupedTemplates[t.category].push(t);
+  });
+
+  const IconComponent = ({ name }: { name: string }) => {
+    const Icon = ICON_MAP[name] || Sparkles;
+    return <Icon className="w-5 h-5" />;
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <Breadcrumb items={[{ label: 'Dashboard', href: '/' }, { label: 'Task Templates' }]} />
-        <h1 className="text-3xl font-bold tracking-tight mt-4">Task Templates</h1>
-        <p className="text-muted-foreground mt-2">
-          Pre-built templates for common agency tasks. Select a template, fill in the inputs, and run it with your AI agent.
-        </p>
-      </div>
-
-      {/* Stats Row */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
-        <Card>
-          <CardContent className="pt-4 pb-3 px-4">
-            <div className="text-2xl font-bold">{totalTemplates}</div>
-            <p className="text-xs text-muted-foreground">Total Templates</p>
-          </CardContent>
-        </Card>
-        {CATEGORIES.filter((c) => c.key !== 'all').map((cat) => (
-          <Card
-            key={cat.key}
-            className={`cursor-pointer transition-all hover:shadow-md ${
-              activeCategory === cat.key ? 'ring-2 ring-emerald-500' : ''
-            }`}
-            onClick={() => setActiveCategory(activeCategory === cat.key ? 'all' : cat.key)}
-          >
-            <CardContent className="pt-4 pb-3 px-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-2xl font-bold">{categoryStats[cat.key] ?? 0}</div>
-                  <p className="text-xs text-muted-foreground">{cat.label}</p>
-                </div>
-                <cat.icon className="h-5 w-5 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Search + Filters + View Toggle */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search templates by name, description, or tag..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Task Templates</h1>
+          <p className="text-gray-500 mt-1">
+            Pre-built templates for common agency tasks. Pick a template and let your AI agent handle it.
+          </p>
         </div>
-        <div className="flex gap-2">
-          {CATEGORIES.map((cat) => (
-            <Button
-              key={cat.key}
-              variant={activeCategory === cat.key ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setActiveCategory(cat.key)}
-              className="hidden lg:flex"
-            >
-              <cat.icon className="h-4 w-4 mr-1" />
-              {cat.label}
-            </Button>
-          ))}
-          <div className="border-l mx-1" />
+        <div className="flex items-center gap-2">
           <Button
             variant={viewMode === 'grid' ? 'default' : 'outline'}
-            size="icon"
+            size="sm"
             onClick={() => setViewMode('grid')}
-            className="h-9 w-9"
           >
-            <LayoutGrid className="h-4 w-4" />
+            <LayoutGrid className="w-4 h-4" />
           </Button>
           <Button
             variant={viewMode === 'list' ? 'default' : 'outline'}
-            size="icon"
+            size="sm"
             onClick={() => setViewMode('list')}
-            className="h-9 w-9"
           >
-            <List className="h-4 w-4" />
+            <List className="w-4 h-4" />
           </Button>
         </div>
       </div>
 
-      {/* Template Grid / List */}
-      {templatesQuery.isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-4 w-full mt-2" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-4 w-1/2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Filter className="h-10 w-10 text-muted-foreground mb-4" />
-            <p className="text-lg font-medium">No templates found</p>
-            <p className="text-muted-foreground text-sm mt-1">
-              Try adjusting your search or category filter.
-            </p>
+      {/* Category Filter */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant={selectedCategory === 'all' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setSelectedCategory('all')}
+        >
+          <Filter className="w-4 h-4 mr-1" />
+          All Templates
+        </Button>
+        {Object.entries(categories).map(([key, cat]) => {
+          const style = CATEGORY_STYLES[key] || CATEGORY_STYLES.ai;
+          return (
             <Button
-              variant="outline"
-              className="mt-4"
-              onClick={() => {
-                setSearch('');
-                setActiveCategory('all');
-              }}
+              key={key}
+              variant={selectedCategory === key ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelectedCategory(key)}
+              className={selectedCategory !== key ? cn(style.text, 'border', style.border, 'hover:' + style.bg) : ''}
             >
-              Clear filters
+              {(cat as any).label}
             </Button>
+          );
+        })}
+      </div>
+
+      {/* Stats Bar */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <LayoutGrid className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{templates.length}</p>
+                <p className="text-xs text-gray-500">Templates</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
-      ) : viewMode === 'grid' ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((template) => (
-            <Card
-              key={template.id}
-              className="group cursor-pointer hover:shadow-lg transition-all hover:border-emerald-300"
-              onClick={() => openDetail(template)}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <Badge
-                    variant="outline"
-                    className={CATEGORY_COLORS[template.category] || ''}
-                  >
-                    {template.category.toUpperCase()}
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    {template.platform}
-                  </Badge>
-                </div>
-                <CardTitle className="text-base mt-2 group-hover:text-emerald-700 transition-colors">
-                  {template.name}
-                </CardTitle>
-                <CardDescription className="text-sm line-clamp-2">
-                  {template.description}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5" />
-                      {template.estimatedMinutes} min
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Coins className="h-3.5 w-3.5" />
-                      {template.creditCost} credits
-                    </span>
-                  </div>
-                  <span className="flex items-center gap-1">
-                    {template.steps.length} steps
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1 mt-3">
-                  {template.tags.slice(0, 4).map((tag: string) => (
-                    <Badge key={tag} variant="secondary" className="text-xs font-normal">
-                      {tag}
-                    </Badge>
-                  ))}
-                  {template.tags.length > 4 && (
-                    <Badge variant="secondary" className="text-xs font-normal">
-                      +{template.tags.length - 4}
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map((template) => (
-            <Card
-              key={template.id}
-              className="cursor-pointer hover:shadow-md transition-all hover:border-emerald-300"
-              onClick={() => openDetail(template)}
-            >
-              <CardContent className="flex items-center gap-4 py-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium truncate">{template.name}</span>
-                    <Badge
-                      variant="outline"
-                      className={`text-xs ${CATEGORY_COLORS[template.category] || ''}`}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-100 rounded-lg">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{Object.keys(categories).length}</p>
+                <p className="text-xs text-gray-500">Categories</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{templates.filter((t) => t.category === 'ai').length}</p>
+                <p className="text-xs text-gray-500">AI-Powered</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 rounded-lg">
+                <Clock className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">Ready</p>
+                <p className="text-xs text-gray-500">To Run</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Loading State */}
+      {templatesQuery.isLoading && (
+        <div className="text-center py-12 text-gray-500">Loading templates...</div>
+      )}
+
+      {/* Grid View */}
+      {viewMode === 'grid' && !templatesQuery.isLoading && (
+        <div className="space-y-8">
+          {Object.entries(groupedTemplates).map(([category, catTemplates]) => {
+            const catMeta = (categories as any)[category];
+            const style = CATEGORY_STYLES[category] || CATEGORY_STYLES.ai;
+            return (
+              <div key={category}>
+                <h2 className={cn('text-lg font-semibold mb-4', style.text)}>
+                  {catMeta?.label || category}
+                </h2>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {catTemplates.map((template) => (
+                    <Card
+                      key={template.id}
+                      className={cn(
+                        'cursor-pointer transition-all hover:shadow-md border',
+                        style.border,
+                        'hover:' + style.bg
+                      )}
+                      onClick={() => openTemplate(template)}
                     >
-                      {template.category.toUpperCase()}
-                    </Badge>
-                    <Badge variant="secondary" className="text-xs">
-                      {template.platform}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground truncate">
-                    {template.description}
-                  </p>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className={cn('p-2 rounded-lg', style.bg)}>
+                            <div className={style.text}>
+                              <IconComponent name={template.icon} />
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <Badge className={cn('text-xs', DIFFICULTY_STYLES[template.difficulty])}>
+                              {template.difficulty}
+                            </Badge>
+                          </div>
+                        </div>
+                        <CardTitle className="text-base mt-3">{template.name}</CardTitle>
+                        <CardDescription className="text-sm line-clamp-2">
+                          {template.description}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1 text-xs text-gray-500">
+                            <Clock className="w-3 h-3" />
+                            {template.estimatedTime}
+                          </div>
+                          <div className="flex gap-1">
+                            {template.tags.slice(0, 2).map((tag) => (
+                              <Badge key={tag} variant="outline" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground shrink-0">
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5" />
-                    {template.estimatedMinutes}m
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Coins className="h-3.5 w-3.5" />
-                    {template.creditCost}
-                  </span>
-                  <span>{template.steps.length} steps</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openRunDialog(template);
-                    }}
-                  >
-                    <Play className="h-3.5 w-3.5 mr-1" />
-                    Run
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Template Detail Modal */}
-      <Dialog
-        open={!!selectedTemplate && !showRunDialog}
-        onOpenChange={(open) => {
-          if (!open) setSelectedTemplate(null);
-        }}
-      >
+      {/* List View */}
+      {viewMode === 'list' && !templatesQuery.isLoading && (
+        <div className="space-y-2">
+          {templates.map((template) => {
+            const style = CATEGORY_STYLES[template.category] || CATEGORY_STYLES.ai;
+            const catMeta = (categories as any)[template.category];
+            return (
+              <Card
+                key={template.id}
+                className="cursor-pointer transition-all hover:shadow-md"
+                onClick={() => openTemplate(template)}
+              >
+                <CardContent className="py-4">
+                  <div className="flex items-center gap-4">
+                    <div className={cn('p-2 rounded-lg flex-shrink-0', style.bg)}>
+                      <div className={style.text}>
+                        <IconComponent name={template.icon} />
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium truncate">{template.name}</h3>
+                        <Badge className={cn('text-xs flex-shrink-0', style.badgeBg, style.text)}>
+                          {catMeta?.label || template.category}
+                        </Badge>
+                        <Badge className={cn('text-xs flex-shrink-0', DIFFICULTY_STYLES[template.difficulty])}>
+                          {template.difficulty}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-500 truncate mt-0.5">{template.description}</p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <span className="text-xs text-gray-400 hidden sm:inline-flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {template.estimatedTime}
+                      </span>
+                      <ArrowRight className="w-4 h-4 text-gray-400" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Template Detail / Run Modal */}
+      <Dialog open={selectedTemplate !== null} onOpenChange={(open) => !open && setSelectedTemplate(null)}>
         {selectedTemplate && (
-          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <div className="flex items-center gap-2 mb-2">
-                <Badge
-                  variant="outline"
-                  className={CATEGORY_COLORS[selectedTemplate.category] || ''}
-                >
-                  {selectedTemplate.category.toUpperCase()}
-                </Badge>
-                <Badge variant="secondary">{selectedTemplate.platform}</Badge>
+          <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+            {showSuccess ? (
+              <div className="py-8 text-center space-y-4">
+                <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900">Task Created!</h3>
+                <p className="text-gray-500">
+                  Your AI agent is now working on "{selectedTemplate.name}".
+                </p>
               </div>
-              <DialogTitle className="text-xl">{selectedTemplate.name}</DialogTitle>
-              <DialogDescription>{selectedTemplate.description}</DialogDescription>
-            </DialogHeader>
+            ) : (
+              <>
+                <DialogHeader>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={cn('p-2 rounded-lg', CATEGORY_STYLES[selectedTemplate.category]?.bg)}>
+                      <div className={CATEGORY_STYLES[selectedTemplate.category]?.text}>
+                        <IconComponent name={selectedTemplate.icon} />
+                      </div>
+                    </div>
+                    <div>
+                      <DialogTitle>{selectedTemplate.name}</DialogTitle>
+                      <div className="flex gap-1.5 mt-1">
+                        <Badge className={cn('text-xs', CATEGORY_STYLES[selectedTemplate.category]?.badgeBg, CATEGORY_STYLES[selectedTemplate.category]?.text)}>
+                          {(categories as any)[selectedTemplate.category]?.label}
+                        </Badge>
+                        <Badge className={cn('text-xs', DIFFICULTY_STYLES[selectedTemplate.difficulty])}>
+                          {selectedTemplate.difficulty}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          <Clock className="w-3 h-3 mr-1" />
+                          {selectedTemplate.estimatedTime}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                  <DialogDescription>{selectedTemplate.description}</DialogDescription>
+                </DialogHeader>
 
-            <div className="space-y-5 mt-2">
-              {/* Quick stats */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-lg border p-3 text-center">
-                  <Clock className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-                  <div className="text-lg font-semibold">{selectedTemplate.estimatedMinutes} min</div>
-                  <div className="text-xs text-muted-foreground">Estimated time</div>
-                </div>
-                <div className="rounded-lg border p-3 text-center">
-                  <Coins className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-                  <div className="text-lg font-semibold">{selectedTemplate.creditCost}</div>
-                  <div className="text-xs text-muted-foreground">Credit cost</div>
-                </div>
-                <div className="rounded-lg border p-3 text-center">
-                  <Zap className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-                  <div className="text-lg font-semibold">{selectedTemplate.steps.length}</div>
-                  <div className="text-xs text-muted-foreground">Steps</div>
-                </div>
-              </div>
-
-              {/* Platform requirements */}
-              {selectedTemplate.platformRequirements.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Platform Requirements</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedTemplate.platformRequirements.map((req: string) => (
-                      <Badge key={req} variant="outline" className="text-xs">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        {req}
-                      </Badge>
+                {/* Steps Preview */}
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-gray-700">Steps the agent will perform:</h4>
+                  <div className="space-y-1.5">
+                    {selectedTemplate.steps.map((step, i) => (
+                      <div key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs font-medium">
+                          {i + 1}
+                        </span>
+                        {step}
+                      </div>
                     ))}
                   </div>
                 </div>
-              )}
 
-              {/* Required inputs preview */}
-              <div>
-                <h4 className="text-sm font-medium mb-2">
-                  Required Inputs ({selectedTemplate.inputs.filter((i: any) => i.required).length})
-                </h4>
-                <div className="grid gap-2">
-                  {selectedTemplate.inputs.map((inp: any) => (
-                    <div
-                      key={inp.name}
-                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                    >
-                      <span className="font-medium">{inp.label}</span>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs capitalize">
-                          {inp.type}
-                        </Badge>
-                        {inp.required && (
-                          <Badge variant="destructive" className="text-xs">
-                            Required
-                          </Badge>
-                        )}
-                      </div>
+                {/* Input Form */}
+                <div className="space-y-4 border-t pt-4">
+                  <h4 className="text-sm font-medium text-gray-700">Configure task inputs:</h4>
+                  {selectedTemplate.inputs.map((input) => (
+                    <div key={input.key} className="space-y-1.5">
+                      <Label htmlFor={input.key}>
+                        {input.label}
+                        {input.required && <span className="text-red-500 ml-0.5">*</span>}
+                      </Label>
+                      {input.type === 'text' && (
+                        <Input
+                          id={input.key}
+                          placeholder={input.placeholder}
+                          value={formInputs[input.key] || ''}
+                          onChange={(e) => updateInput(input.key, e.target.value)}
+                        />
+                      )}
+                      {input.type === 'textarea' && (
+                        <Textarea
+                          id={input.key}
+                          placeholder={input.placeholder}
+                          value={formInputs[input.key] || ''}
+                          onChange={(e) => updateInput(input.key, e.target.value)}
+                          rows={3}
+                        />
+                      )}
+                      {input.type === 'select' && input.options && (
+                        <Select
+                          value={formInputs[input.key] || ''}
+                          onValueChange={(val) => updateInput(input.key, val)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={`Select ${input.label.toLowerCase()}`} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {input.options.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                   ))}
                 </div>
-              </div>
 
-              {/* Execution steps */}
-              <div>
-                <h4 className="text-sm font-medium mb-2">Execution Steps</h4>
-                <div className="space-y-2">
-                  {selectedTemplate.steps.map((step: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-3 rounded-md border px-3 py-2.5"
-                    >
-                      <div
-                        className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium shrink-0 ${
-                          ACTION_COLORS[step.actionType] || 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {ACTION_ICONS[step.actionType]}
-                        {step.actionType}
-                      </div>
-                      <span className="text-sm">{step.description}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tags */}
-              <div>
-                <h4 className="text-sm font-medium mb-2">Tags</h4>
-                <div className="flex flex-wrap gap-1">
-                  {selectedTemplate.tags.map((tag: string) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <DialogFooter className="mt-4">
-              <Button variant="outline" onClick={() => setSelectedTemplate(null)}>
-                Close
-              </Button>
-              <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
-                onClick={() => {
-                  setShowRunDialog(true);
-                  setFormInputs({});
-                }}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Run from Template
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
-
-      {/* Run from Template Dialog */}
-      <Dialog
-        open={showRunDialog}
-        onOpenChange={(open) => {
-          if (!open) {
-            setShowRunDialog(false);
-            setSelectedTemplate(null);
-            setFormInputs({});
-          }
-        }}
-      >
-        {selectedTemplate && (
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Run: {selectedTemplate.name}</DialogTitle>
-              <DialogDescription>
-                Fill in the required inputs below to create a task from this template.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 mt-2">
-              {/* Cost summary */}
-              <div className="flex items-center gap-4 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-emerald-600" />
-                  <span className="text-emerald-800">
-                    ~{selectedTemplate.estimatedMinutes} min
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Coins className="h-4 w-4 text-emerald-600" />
-                  <span className="text-emerald-800">
-                    {selectedTemplate.creditCost} credits
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span className="text-emerald-800">
-                    {selectedTemplate.steps.length} steps
-                  </span>
-                </div>
-              </div>
-
-              {/* Form fields */}
-              {selectedTemplate.inputs.map((inp: any) => (
-                <div key={inp.name} className="space-y-1.5">
-                  <Label htmlFor={inp.name} className="text-sm font-medium">
-                    {inp.label}
-                    {inp.required && <span className="text-destructive ml-1">*</span>}
-                  </Label>
-
-                  {inp.type === 'textarea' ? (
-                    <Textarea
-                      id={inp.name}
-                      placeholder={inp.placeholder}
-                      value={formInputs[inp.name] || ''}
-                      onChange={(e) => updateInput(inp.name, e.target.value)}
-                      rows={3}
-                    />
-                  ) : inp.type === 'select' && inp.options ? (
-                    <Select
-                      value={formInputs[inp.name] || ''}
-                      onValueChange={(val) => updateInput(inp.name, val)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={inp.placeholder} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {inp.options.map((opt: string) => (
-                          <SelectItem key={opt} value={opt}>
-                            {opt}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      id={inp.name}
-                      type={inp.type === 'email' ? 'email' : inp.type === 'url' ? 'url' : 'text'}
-                      placeholder={inp.placeholder}
-                      value={formInputs[inp.name] || ''}
-                      onChange={(e) => updateInput(inp.name, e.target.value)}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <DialogFooter className="mt-4">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowRunDialog(false);
-                  setSelectedTemplate(null);
-                  setFormInputs({});
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="bg-emerald-600 hover:bg-emerald-700"
-                onClick={handleRun}
-                disabled={runMutation.isPending}
-              >
-                {runMutation.isPending ? (
-                  <>Creating task...</>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4 mr-2" />
-                    Create Task
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setSelectedTemplate(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    onClick={handleSubmit}
+                    disabled={createFromTemplate.isPending}
+                  >
+                    {createFromTemplate.isPending ? (
+                      'Creating...'
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 mr-1" />
+                        Run from Template
+                      </>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
           </DialogContent>
         )}
       </Dialog>

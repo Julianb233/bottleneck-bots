@@ -49,7 +49,7 @@ export function useAuth() {
       if (data.user?.onboardingCompleted === false) {
         setLocation('/onboarding');
       } else {
-        setLocation('/dashboard');
+        setLocation('/');
       }
 
       return data;
@@ -89,7 +89,7 @@ export function useAuth() {
       if (data.user?.onboardingCompleted === false) {
         setLocation('/onboarding');
       } else {
-        setLocation('/dashboard');
+        setLocation('/');
       }
 
       return data;

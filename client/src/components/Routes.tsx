@@ -17,6 +17,8 @@ import AICampaigns from '@/pages/AICampaigns';
 import CampaignDetails from '@/pages/CampaignDetails';
 import CreditPurchase from '@/pages/CreditPurchase';
 import Training from '@/pages/Training';
+import TaskTemplates from '@/pages/TaskTemplates';
+import Help from '@/pages/Help';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { UserManagement } from '@/pages/admin/UserManagement';
 import { SystemHealth } from '@/pages/admin/SystemHealth';
@@ -25,7 +27,6 @@ import { ConfigCenter } from '@/pages/admin/ConfigCenter';
 import { CostsPage } from '@/pages/admin/CostsPage';
 import DashboardLayout from './DashboardLayout';
 import { Toaster } from '@/components/ui/sonner';
-import { FeaturesPage } from '@/components/FeaturesPage';
 
 export function Routes() {
   return (
@@ -33,6 +34,7 @@ export function Routes() {
       <DashboardLayout>
         <Switch>
           <Route path="/" component={DashboardHome} />
+          <Route path="/dashboard" component={DashboardHome} />
           <Route path="/agent" component={AgentDashboard} />
           <Route path="/scheduled-tasks" component={ScheduledTasksPage} />
           <Route path="/workflow-builder" component={WorkflowBuilder} />
@@ -51,6 +53,8 @@ export function Routes() {
           <Route path="/ai-campaigns/:id" component={CampaignDetails} />
           <Route path="/credits" component={CreditPurchase} />
           <Route path="/training" component={Training} />
+          <Route path="/task-templates" component={TaskTemplates} />
+          <Route path="/support" component={Help} />
           {/* Admin routes */}
           <Route path="/admin" component={AdminDashboard} />
           <Route path="/admin/users" component={UserManagement} />
