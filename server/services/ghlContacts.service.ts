@@ -1,26 +1,27 @@
 /**
- * GHL Contact Management Service (FR-007 through FR-014)
+ * GHL Contacts Service
  *
- * Full CRUD + bulk operations for GoHighLevel contacts.
- * Built on top of ghl.service.ts base HTTP client.
+ * Full CRUD + bulk operations for GoHighLevel contacts:
+ * - Create, Get, Update, Delete contacts
+ * - Search with filters
+ * - Bulk import (up to 50K) and export (CSV)
+ * - Tag management (add, remove, list)
+ * - Custom field operations
+ * - Activity timeline
+ * - Contact merging
  *
- * Functions:
- * - contacts.create / get / update / delete
- * - contacts.search (with filters)
- * - contacts.bulkImport / bulkExport
- * - contacts.addTag / removeTag / listTags
- * - contacts.getCustomFields / updateCustomField
- * - contacts.getActivity
- * - contacts.merge
+ * All methods use the GHLService's rate-limited, authenticated HTTP client.
+ *
+ * Linear: AI-2870
  */
 
-import { getGHLService, type GHLApiResponse } from "./ghl.service";
+import { GHLService, type GHLApiResponse } from "./ghl.service";
 
 // ========================================
 // TYPES
 // ========================================
 
-export interface GhlContact {
+export interface GHLContact {
   id: string;
   locationId: string;
   firstName?: string;
@@ -36,18 +37,16 @@ export interface GhlContact {
   country?: string;
   website?: string;
   timezone?: string;
-  source?: string;
-  tags?: string[];
-  customFields?: GhlCustomFieldValue[];
-  dateOfBirth?: string;
   dnd?: boolean;
-  dndSettings?: Record<string, unknown>;
+  tags?: string[];
+  source?: string;
+  customFields?: Array<{ id: string; key?: string; value: unknown }>;
+  dateAdded?: string;
+  dateUpdated?: string;
   assignedTo?: string;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
-export interface GhlContactCreateInput {
+export interface GHLContactCreateData {
   firstName?: string;
   lastName?: string;
   name?: string;
@@ -61,156 +60,158 @@ export interface GhlContactCreateInput {
   country?: string;
   website?: string;
   timezone?: string;
-  source?: string;
-  tags?: string[];
-  customFields?: GhlCustomFieldValue[];
   dnd?: boolean;
+  tags?: string[];
+  source?: string;
+  customFields?: Array<{ id: string; key?: string; field_value: unknown }>;
   assignedTo?: string;
 }
 
-export interface GhlContactUpdateInput extends Partial<GhlContactCreateInput> {}
+export interface GHLContactUpdateData extends Partial<GHLContactCreateData> {}
 
-export interface GhlContactSearchParams {
+export interface GHLContactSearchFilters {
   query?: string;
   email?: string;
   phone?: string;
   tags?: string[];
-  dateAdded?: { startDate?: string; endDate?: string };
-  limit?: number;
   startAfter?: string;
-  startAfterId?: string;
+  startBefore?: string;
+  limit?: number;
+  offset?: number;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
 }
 
-export interface GhlCustomField {
+export interface GHLContactSearchResult {
+  contacts: GHLContact[];
+  total: number;
+  count: number;
+}
+
+export interface GHLBulkImportContact {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  companyName?: string;
+  tags?: string[];
+  source?: string;
+  customFields?: Array<{ id: string; field_value: unknown }>;
+  [key: string]: unknown;
+}
+
+export interface GHLBulkImportResult {
+  uploadId?: string;
+  status: string;
+  totalRecords: number;
+  createdRecords?: number;
+  updatedRecords?: number;
+  failedRecords?: number;
+}
+
+export interface GHLBulkExportResult {
+  exportId?: string;
+  status: string;
+  url?: string;
+}
+
+export interface GHLTag {
+  id: string;
+  name: string;
+  locationId: string;
+}
+
+export interface GHLCustomField {
   id: string;
   name: string;
   fieldKey: string;
   dataType: string;
-  placeholder?: string;
   position?: number;
-  isMultipleFile?: boolean;
-  options?: string[];
+  placeholder?: string;
+  isRequired?: boolean;
 }
 
-export interface GhlCustomFieldValue {
-  id: string;
-  value: unknown;
-}
-
-export interface GhlTag {
-  id?: string;
-  name: string;
-  locationId?: string;
-}
-
-export interface GhlContactActivity {
+export interface GHLContactActivity {
   id: string;
   contactId: string;
   type: string;
-  timestamp: string;
   body?: string;
-  user?: { id: string; name: string };
-  [key: string]: unknown;
-}
-
-export interface GhlBulkImportResult {
-  success: boolean;
-  totalProcessed: number;
-  created: number;
-  updated: number;
-  failed: number;
-  errors?: Array<{ index: number; error: string }>;
-}
-
-export interface GhlContactSearchResult {
-  contacts: GhlContact[];
-  meta?: {
-    total?: number;
-    startAfter?: string;
-    startAfterId?: string;
-  };
+  title?: string;
+  dueDate?: string;
+  completed?: boolean;
+  assignedTo?: string;
+  dateAdded?: string;
 }
 
 // ========================================
-// CONTACT MANAGEMENT SERVICE
+// CONTACTS SERVICE CLASS
 // ========================================
 
-export class GhlContactsService {
-  private ghl = getGHLService();
+export class GHLContactsService {
+  private ghl: GHLService;
+  private locationId: string;
+
+  constructor(ghl: GHLService, locationId: string) {
+    this.ghl = ghl;
+    this.locationId = locationId;
+  }
 
   // ----------------------------------------
   // CRUD Operations
   // ----------------------------------------
 
   /**
-   * Create a new contact (FR-007)
+   * Create a new contact in GHL.
    */
   async create(
-    userId: number,
-    connectionId: number,
-    locationId: string,
-    data: GhlContactCreateInput
-  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
-    return this.ghl.apiRequest(userId, connectionId, "POST", "/contacts/", {
-      body: {
+    data: GHLContactCreateData
+  ): Promise<GHLApiResponse<{ contact: GHLContact }>> {
+    return this.ghl.request<{ contact: GHLContact }>({
+      method: "POST",
+      endpoint: "/contacts/",
+      data: {
         ...data,
-        locationId,
+        locationId: this.locationId,
       },
     });
   }
 
   /**
-   * Get a contact by ID (FR-008)
+   * Get a contact by ID.
    */
   async get(
-    userId: number,
-    connectionId: number,
     contactId: string
-  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "GET",
-      `/contacts/${contactId}`
-    );
+  ): Promise<GHLApiResponse<{ contact: GHLContact }>> {
+    return this.ghl.request<{ contact: GHLContact }>({
+      method: "GET",
+      endpoint: `/contacts/${contactId}`,
+    });
   }
 
   /**
-   * Update a contact (FR-009)
+   * Update an existing contact.
    */
   async update(
-    userId: number,
-    connectionId: number,
     contactId: string,
-    data: GhlContactUpdateInput
-  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "PUT",
-      `/contacts/${contactId}`,
-      {
-        body: data as Record<string, unknown>,
-      }
-    );
+    data: GHLContactUpdateData
+  ): Promise<GHLApiResponse<{ contact: GHLContact }>> {
+    return this.ghl.request<{ contact: GHLContact }>({
+      method: "PUT",
+      endpoint: `/contacts/${contactId}`,
+      data,
+    });
   }
 
   /**
-   * Delete a contact (FR-010)
+   * Delete a contact by ID.
    */
   async delete(
-    userId: number,
-    connectionId: number,
     contactId: string
   ): Promise<GHLApiResponse<{ succeded: boolean }>> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "DELETE",
-      `/contacts/${contactId}`
-    );
+    return this.ghl.request<{ succeded: boolean }>({
+      method: "DELETE",
+      endpoint: `/contacts/${contactId}`,
+    });
   }
 
   // ----------------------------------------
@@ -218,487 +219,201 @@ export class GhlContactsService {
   // ----------------------------------------
 
   /**
-   * Search contacts with filters (FR-011)
+   * Search contacts with query and filters.
    */
   async search(
-    userId: number,
-    connectionId: number,
-    locationId: string,
-    params: GhlContactSearchParams = {}
-  ): Promise<GHLApiResponse<GhlContactSearchResult>> {
-    const query: Record<string, string> = {
-      locationId,
+    filters: GHLContactSearchFilters = {}
+  ): Promise<GHLApiResponse<GHLContactSearchResult>> {
+    const params: Record<string, string> = {
+      locationId: this.locationId,
     };
 
-    if (params.query) query.query = params.query;
-    if (params.email) query.email = params.email;
-    if (params.phone) query.phone = params.phone;
-    if (params.limit) query.limit = String(params.limit);
-    if (params.startAfter) query.startAfter = params.startAfter;
-    if (params.startAfterId) query.startAfterId = params.startAfterId;
-    if (params.sortBy) query.sortBy = params.sortBy;
-    if (params.sortOrder) query.sortOrder = params.sortOrder;
+    if (filters.query) params.query = filters.query;
+    if (filters.email) params.email = filters.email;
+    if (filters.phone) params.phone = filters.phone;
+    if (filters.limit) params.limit = String(filters.limit);
+    if (filters.offset) params.offset = String(filters.offset);
+    if (filters.sortBy) params.sortBy = filters.sortBy;
+    if (filters.sortOrder) params.sortOrder = filters.sortOrder;
+    if (filters.startAfter) params.startAfter = filters.startAfter;
+    if (filters.startBefore) params.startBefore = filters.startBefore;
 
-    return this.ghl.apiRequest(userId, connectionId, "GET", "/contacts/", {
-      query,
+    return this.ghl.request<GHLContactSearchResult>({
+      method: "GET",
+      endpoint: "/contacts/search",
+      params,
     });
   }
 
   // ----------------------------------------
-  // Tags (FR-012)
+  // Bulk Operations
   // ----------------------------------------
 
   /**
-   * Add a tag to a contact
+   * Bulk import contacts (up to 50,000 per batch).
+   */
+  async bulkImport(
+    contacts: GHLBulkImportContact[]
+  ): Promise<GHLApiResponse<GHLBulkImportResult>> {
+    if (contacts.length > 50_000) {
+      throw new Error(
+        `Bulk import supports up to 50,000 contacts per batch. Got ${contacts.length}.`
+      );
+    }
+
+    return this.ghl.request<GHLBulkImportResult>({
+      method: "POST",
+      endpoint: "/contacts/bulk/import",
+      data: {
+        locationId: this.locationId,
+        contacts,
+      },
+    });
+  }
+
+  /**
+   * Bulk export contacts to CSV.
+   */
+  async bulkExport(
+    filters?: GHLContactSearchFilters
+  ): Promise<GHLApiResponse<GHLBulkExportResult>> {
+    return this.ghl.request<GHLBulkExportResult>({
+      method: "POST",
+      endpoint: "/contacts/bulk/export",
+      data: {
+        locationId: this.locationId,
+        ...(filters || {}),
+      },
+    });
+  }
+
+  // ----------------------------------------
+  // Tag Management
+  // ----------------------------------------
+
+  /**
+   * Add a tag to a contact.
    */
   async addTag(
-    userId: number,
-    connectionId: number,
     contactId: string,
     tag: string
   ): Promise<GHLApiResponse<{ tags: string[] }>> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "POST",
-      `/contacts/${contactId}/tags`,
-      {
-        body: { tags: [tag] },
-      }
-    );
+    return this.ghl.request<{ tags: string[] }>({
+      method: "POST",
+      endpoint: `/contacts/${contactId}/tags`,
+      data: { tags: [tag] },
+    });
   }
 
   /**
-   * Remove a tag from a contact
+   * Remove a tag from a contact.
    */
   async removeTag(
-    userId: number,
-    connectionId: number,
     contactId: string,
     tag: string
-  ): Promise<GHLApiResponse> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "DELETE",
-      `/contacts/${contactId}/tags`,
-      {
-        body: { tags: [tag] },
-      }
-    );
+  ): Promise<GHLApiResponse<{ tags: string[] }>> {
+    return this.ghl.request<{ tags: string[] }>({
+      method: "DELETE",
+      endpoint: `/contacts/${contactId}/tags`,
+      data: { tags: [tag] },
+    });
   }
 
   /**
-   * List all tags for a location
+   * List all tags for a location.
    */
-  async listTags(
-    userId: number,
-    connectionId: number,
-    locationId: string
-  ): Promise<GHLApiResponse<{ tags: GhlTag[] }>> {
-    return this.ghl.apiRequest(userId, connectionId, "GET", "/locations/tags", {
-      query: { locationId },
+  async listTags(): Promise<GHLApiResponse<{ tags: GHLTag[] }>> {
+    return this.ghl.request<{ tags: GHLTag[] }>({
+      method: "GET",
+      endpoint: "/locations/tags",
+      params: { locationId: this.locationId },
     });
   }
 
   // ----------------------------------------
-  // Custom Fields (FR-013)
+  // Custom Fields
   // ----------------------------------------
 
   /**
-   * Get all custom fields for a location
+   * Get all custom fields for a location.
    */
-  async getCustomFields(
-    userId: number,
-    connectionId: number,
-    locationId: string
-  ): Promise<GHLApiResponse<{ customFields: GhlCustomField[] }>> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "GET",
-      `/locations/${locationId}/customFields`
-    );
+  async getCustomFields(): Promise<
+    GHLApiResponse<{ customFields: GHLCustomField[] }>
+  > {
+    return this.ghl.request<{ customFields: GHLCustomField[] }>({
+      method: "GET",
+      endpoint: "/locations/customFields",
+      params: { locationId: this.locationId },
+    });
   }
 
   /**
-   * Update a custom field value on a contact
+   * Update a custom field value on a contact.
    */
   async updateCustomField(
-    userId: number,
-    connectionId: number,
     contactId: string,
     fieldId: string,
     value: unknown
-  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "PUT",
-      `/contacts/${contactId}`,
-      {
-        body: {
-          customFields: [{ id: fieldId, value }],
-        },
-      }
-    );
+  ): Promise<GHLApiResponse<{ contact: GHLContact }>> {
+    return this.ghl.request<{ contact: GHLContact }>({
+      method: "PUT",
+      endpoint: `/contacts/${contactId}`,
+      data: {
+        customFields: [{ id: fieldId, field_value: value }],
+      },
+    });
   }
 
   // ----------------------------------------
-  // Activity Timeline (FR-013)
+  // Activity
   // ----------------------------------------
 
   /**
-   * Get activity timeline for a contact
+   * Get activity timeline (tasks) for a contact.
    */
   async getActivity(
-    userId: number,
-    connectionId: number,
     contactId: string
-  ): Promise<GHLApiResponse<{ events: GhlContactActivity[] }>> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "GET",
-      `/contacts/${contactId}/tasks`
-    );
-  }
-
-  /**
-   * Get notes for a contact
-   */
-  async getNotes(
-    userId: number,
-    connectionId: number,
-    contactId: string
-  ): Promise<GHLApiResponse<{ notes: Array<{ id: string; body: string; createdAt: string }> }>> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "GET",
-      `/contacts/${contactId}/notes`
-    );
-  }
-
-  /**
-   * Add a note to a contact
-   */
-  async addNote(
-    userId: number,
-    connectionId: number,
-    contactId: string,
-    body: string
-  ): Promise<GHLApiResponse<{ note: { id: string; body: string } }>> {
-    return this.ghl.apiRequest(
-      userId,
-      connectionId,
-      "POST",
-      `/contacts/${contactId}/notes`,
-      {
-        body: { body },
-      }
-    );
+  ): Promise<GHLApiResponse<{ tasks: GHLContactActivity[] }>> {
+    return this.ghl.request<{ tasks: GHLContactActivity[] }>({
+      method: "GET",
+      endpoint: `/contacts/${contactId}/tasks`,
+    });
   }
 
   // ----------------------------------------
-  // Merge Duplicates (FR-014)
+  // Merge
   // ----------------------------------------
 
   /**
-   * Merge duplicate contacts into a primary contact
-   * The primary contact survives; duplicate contacts are merged in.
+   * Merge duplicate contacts into a primary contact.
+   * The primary contact absorbs data from duplicates, which are then deleted.
    */
   async merge(
-    userId: number,
-    connectionId: number,
-    primaryContactId: string,
-    duplicateContactIds: string[]
-  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
-    // GHL doesn't have a direct merge endpoint.
-    // We implement merge by:
-    // 1. Getting all contacts
-    // 2. Combining their data onto the primary
-    // 3. Deleting the duplicates
-
-    const primaryResult = await this.get(userId, connectionId, primaryContactId);
-    if (!primaryResult.success || !primaryResult.data) {
-      return { success: false, error: "Primary contact not found" };
-    }
-
-    const primary = primaryResult.data.contact;
-    const mergedTags = new Set(primary.tags || []);
-    const mergedCustomFields = new Map(
-      (primary.customFields || []).map((cf) => [cf.id, cf.value])
-    );
-    const notes: string[] = [];
-
-    // Gather data from duplicates
-    for (const dupId of duplicateContactIds) {
-      const dupResult = await this.get(userId, connectionId, dupId);
-      if (!dupResult.success || !dupResult.data) continue;
-
-      const dup = dupResult.data.contact;
-
-      // Merge tags
-      (dup.tags || []).forEach((tag) => mergedTags.add(tag));
-
-      // Merge custom fields (keep existing, add new)
-      (dup.customFields || []).forEach((cf) => {
-        if (!mergedCustomFields.has(cf.id)) {
-          mergedCustomFields.set(cf.id, cf.value);
-        }
-      });
-
-      // Collect notes about the merge
-      notes.push(
-        `Merged from contact ${dup.name || dup.email || dupId} (${dupId})`
-      );
-    }
-
-    // Update primary with merged data
-    const updateData: GhlContactUpdateInput = {
-      tags: Array.from(mergedTags),
-      customFields: Array.from(mergedCustomFields).map(([id, value]) => ({
-        id,
-        value,
-      })),
-    };
-
-    const updateResult = await this.update(
-      userId,
-      connectionId,
-      primaryContactId,
-      updateData
-    );
-
-    // Add merge notes
-    for (const note of notes) {
-      await this.addNote(userId, connectionId, primaryContactId, note);
-    }
-
-    // Delete duplicates
-    for (const dupId of duplicateContactIds) {
-      await this.delete(userId, connectionId, dupId);
-    }
-
-    return updateResult;
-  }
-
-  // ----------------------------------------
-  // Bulk Operations (FR-014)
-  // ----------------------------------------
-
-  /**
-   * Bulk import contacts (up to 50K)
-   * Processes in batches of 100 to respect rate limits
-   */
-  async bulkImport(
-    userId: number,
-    connectionId: number,
-    locationId: string,
-    contacts: GhlContactCreateInput[],
-    options?: {
-      batchSize?: number;
-      onProgress?: (processed: number, total: number) => void;
-    }
-  ): Promise<GhlBulkImportResult> {
-    const batchSize = options?.batchSize || 100;
-    let created = 0;
-    let updated = 0;
-    let failed = 0;
-    const errors: Array<{ index: number; error: string }> = [];
-
-    for (let i = 0; i < contacts.length; i += batchSize) {
-      const batch = contacts.slice(i, i + batchSize);
-
-      for (let j = 0; j < batch.length; j++) {
-        const contact = batch[j];
-        const index = i + j;
-
-        try {
-          // Try to find existing contact by email or phone
-          let existingId: string | undefined;
-
-          if (contact.email) {
-            const searchResult = await this.search(
-              userId,
-              connectionId,
-              locationId,
-              { email: contact.email, limit: 1 }
-            );
-            if (
-              searchResult.success &&
-              searchResult.data?.contacts?.length
-            ) {
-              existingId = searchResult.data.contacts[0].id;
-            }
-          }
-
-          if (existingId) {
-            // Update existing
-            const result = await this.update(
-              userId,
-              connectionId,
-              existingId,
-              contact
-            );
-            if (result.success) {
-              updated++;
-            } else {
-              failed++;
-              errors.push({ index, error: result.error || "Update failed" });
-            }
-          } else {
-            // Create new
-            const result = await this.create(
-              userId,
-              connectionId,
-              locationId,
-              contact
-            );
-            if (result.success) {
-              created++;
-            } else {
-              failed++;
-              errors.push({ index, error: result.error || "Create failed" });
-            }
-          }
-        } catch (err) {
-          failed++;
-          errors.push({
-            index,
-            error: err instanceof Error ? err.message : "Unknown error",
-          });
-        }
-      }
-
-      // Report progress
-      const processed = Math.min(i + batchSize, contacts.length);
-      options?.onProgress?.(processed, contacts.length);
-    }
-
-    return {
-      success: failed === 0,
-      totalProcessed: contacts.length,
-      created,
-      updated,
-      failed,
-      errors: errors.length > 0 ? errors : undefined,
-    };
-  }
-
-  /**
-   * Bulk export contacts to a flat array
-   * Paginates through all contacts for the location
-   */
-  async bulkExport(
-    userId: number,
-    connectionId: number,
-    locationId: string,
-    filters?: GhlContactSearchParams,
-    options?: {
-      maxContacts?: number;
-      onProgress?: (fetched: number) => void;
-    }
-  ): Promise<{
-    success: boolean;
-    contacts: GhlContact[];
-    total: number;
-  }> {
-    const maxContacts = options?.maxContacts || 50000;
-    const allContacts: GhlContact[] = [];
-    let startAfterId: string | undefined;
-    const pageSize = 100;
-
-    while (allContacts.length < maxContacts) {
-      const searchParams: GhlContactSearchParams = {
-        ...filters,
-        limit: pageSize,
-      };
-
-      if (startAfterId) {
-        searchParams.startAfterId = startAfterId;
-      }
-
-      const result = await this.search(
-        userId,
-        connectionId,
-        locationId,
-        searchParams
-      );
-
-      if (!result.success || !result.data?.contacts?.length) {
-        break;
-      }
-
-      allContacts.push(...result.data.contacts);
-      options?.onProgress?.(allContacts.length);
-
-      // Get the last contact ID for pagination
-      const lastContact =
-        result.data.contacts[result.data.contacts.length - 1];
-      if (!lastContact?.id || result.data.contacts.length < pageSize) {
-        break; // No more pages
-      }
-
-      startAfterId = lastContact.id;
-    }
-
-    return {
-      success: true,
-      contacts: allContacts,
-      total: allContacts.length,
-    };
-  }
-
-  /**
-   * Convert contacts to CSV format
-   */
-  contactsToCsv(contacts: GhlContact[]): string {
-    if (contacts.length === 0) return "";
-
-    const headers = [
-      "id",
-      "firstName",
-      "lastName",
-      "email",
-      "phone",
-      "companyName",
-      "address1",
-      "city",
-      "state",
-      "postalCode",
-      "country",
-      "website",
-      "source",
-      "tags",
-      "createdAt",
-    ];
-
-    const rows = contacts.map((c) =>
-      headers
-        .map((h) => {
-          const val = c[h as keyof GhlContact];
-          if (Array.isArray(val)) return `"${val.join(", ")}"`;
-          if (val === undefined || val === null) return "";
-          return `"${String(val).replace(/"/g, '""')}"`;
-        })
-        .join(",")
-    );
-
-    return [headers.join(","), ...rows].join("\n");
+    primaryId: string,
+    duplicateIds: string[]
+  ): Promise<GHLApiResponse<{ contact: GHLContact }>> {
+    return this.ghl.request<{ contact: GHLContact }>({
+      method: "POST",
+      endpoint: `/contacts/${primaryId}/merge`,
+      data: {
+        contactIds: duplicateIds,
+        locationId: this.locationId,
+      },
+    });
   }
 }
 
 // ========================================
-// SINGLETON
+// FACTORY
 // ========================================
 
-let contactsServiceInstance: GhlContactsService | null = null;
-
-export function getGhlContactsService(): GhlContactsService {
-  if (!contactsServiceInstance) {
-    contactsServiceInstance = new GhlContactsService();
-  }
-  return contactsServiceInstance;
+/**
+ * Create a GHL Contacts service instance.
+ * Uses an existing GHLService for authenticated, rate-limited requests.
+ */
+export function createGHLContactsService(
+  ghl: GHLService,
+  locationId: string
+): GHLContactsService {
+  return new GHLContactsService(ghl, locationId);
 }

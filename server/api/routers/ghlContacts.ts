@@ -1,18 +1,72 @@
 /**
  * GHL Contacts tRPC Router
- * Full CRUD + bulk operations for GoHighLevel contacts (FR-007 through FR-014)
+ *
+ * Typed RPC endpoints for GHL contact management:
+ * - CRUD: create, get, update, delete
+ * - Search with filters
+ * - Bulk import/export
+ * - Tag management
+ * - Custom fields
+ * - Activity timeline
+ * - Contact merging
+ *
+ * Linear: AI-2870
  */
 
 import { z } from "zod";
 import { router, protectedProcedure } from "../../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { getGhlContactsService } from "../../services/ghlContacts.service";
+import { GHLService, GHLError } from "../../services/ghl.service";
+import { GHLContactsService } from "../../services/ghlContacts.service";
 
 // ========================================
-// INPUT SCHEMAS
+// Shared helpers
 // ========================================
 
-const contactInputSchema = z.object({
+function getContactsService(locationId: string, userId: number) {
+  const ghl = new GHLService(locationId, userId);
+  return new GHLContactsService(ghl, locationId);
+}
+
+function handleGHLError(err: unknown, fallbackMessage: string): never {
+  if (err instanceof GHLError) {
+    throw new TRPCError({
+      code:
+        err.category === "auth"
+          ? "UNAUTHORIZED"
+          : err.category === "rate_limit"
+            ? "TOO_MANY_REQUESTS"
+            : err.category === "client"
+              ? "BAD_REQUEST"
+              : "INTERNAL_SERVER_ERROR",
+      message: err.message,
+    });
+  }
+  throw new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: err instanceof Error ? err.message : fallbackMessage,
+  });
+}
+
+// ========================================
+// Zod schemas
+// ========================================
+
+const locationInput = z.object({
+  locationId: z.string().min(1, "locationId is required"),
+});
+
+const contactIdInput = locationInput.extend({
+  contactId: z.string().min(1, "contactId is required"),
+});
+
+const customFieldSchema = z.object({
+  id: z.string(),
+  key: z.string().optional(),
+  field_value: z.unknown(),
+});
+
+const contactDataSchema = z.object({
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   name: z.string().optional(),
@@ -26,457 +80,272 @@ const contactInputSchema = z.object({
   country: z.string().optional(),
   website: z.string().optional(),
   timezone: z.string().optional(),
-  source: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-  customFields: z
-    .array(z.object({ id: z.string(), value: z.unknown() }))
-    .optional(),
   dnd: z.boolean().optional(),
+  tags: z.array(z.string()).optional(),
+  source: z.string().optional(),
+  customFields: z.array(customFieldSchema).optional(),
   assignedTo: z.string().optional(),
 });
 
-const connectionInputSchema = z.object({
-  connectionId: z.number().int(),
-  locationId: z.string(),
+const searchFiltersSchema = z.object({
+  query: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  startAfter: z.string().optional(),
+  startBefore: z.string().optional(),
+  limit: z.number().min(1).max(100).optional(),
+  offset: z.number().min(0).optional(),
+  sortBy: z.string().optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
 });
 
+const bulkImportContactSchema = z.object({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  companyName: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  source: z.string().optional(),
+  customFields: z
+    .array(z.object({ id: z.string(), field_value: z.unknown() }))
+    .optional(),
+}).passthrough();
+
 // ========================================
-// GHL CONTACTS ROUTER
+// Router
 // ========================================
 
 export const ghlContactsRouter = router({
   /**
-   * Create a new contact
+   * Create a new contact.
    */
   create: protectedProcedure
-    .input(connectionInputSchema.extend({ data: contactInputSchema }))
+    .input(locationInput.extend({ data: contactDataSchema }))
     .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.create(
-        ctx.user.id,
-        input.connectionId,
-        input.locationId,
-        input.data
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to create contact",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.create(input.data);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to create contact");
       }
-
-      return result.data;
     }),
 
   /**
-   * Get a contact by ID
+   * Get a contact by ID.
    */
   get: protectedProcedure
-    .input(
-      z.object({
-        connectionId: z.number().int(),
-        contactId: z.string(),
-      })
-    )
+    .input(contactIdInput)
     .query(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.get(
-        ctx.user.id,
-        input.connectionId,
-        input.contactId
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: result.error || "Contact not found",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.get(input.contactId);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to get contact");
       }
-
-      return result.data;
     }),
 
   /**
-   * Update a contact
+   * Update an existing contact.
    */
   update: protectedProcedure
-    .input(
-      z.object({
-        connectionId: z.number().int(),
-        contactId: z.string(),
-        data: contactInputSchema,
-      })
-    )
+    .input(contactIdInput.extend({ data: contactDataSchema }))
     .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.update(
-        ctx.user.id,
-        input.connectionId,
-        input.contactId,
-        input.data
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to update contact",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.update(input.contactId, input.data);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to update contact");
       }
-
-      return result.data;
     }),
 
   /**
-   * Delete a contact
+   * Delete a contact by ID.
    */
   delete: protectedProcedure
-    .input(
-      z.object({
-        connectionId: z.number().int(),
-        contactId: z.string(),
-      })
-    )
+    .input(contactIdInput)
     .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.delete(
-        ctx.user.id,
-        input.connectionId,
-        input.contactId
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to delete contact",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.delete(input.contactId);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to delete contact");
       }
-
-      return { success: true };
     }),
 
   /**
-   * Search contacts
+   * Search contacts with filters.
    */
   search: protectedProcedure
-    .input(
-      connectionInputSchema.extend({
-        query: z.string().optional(),
-        email: z.string().optional(),
-        phone: z.string().optional(),
-        tags: z.array(z.string()).optional(),
-        limit: z.number().int().min(1).max(100).optional(),
-        startAfterId: z.string().optional(),
-        sortBy: z.string().optional(),
-        sortOrder: z.enum(["asc", "desc"]).optional(),
-      })
-    )
+    .input(locationInput.extend({ filters: searchFiltersSchema.optional() }))
     .query(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const { connectionId, locationId, ...searchParams } = input;
-
-      const result = await svc.search(
-        ctx.user.id,
-        connectionId,
-        locationId,
-        searchParams
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Search failed",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.search(input.filters || {});
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to search contacts");
       }
-
-      return result.data;
     }),
 
   /**
-   * Add a tag to a contact
+   * Bulk import contacts (up to 50,000).
+   */
+  bulkImport: protectedProcedure
+    .input(
+      locationInput.extend({
+        contacts: z
+          .array(bulkImportContactSchema)
+          .min(1)
+          .max(50_000, "Maximum 50,000 contacts per import"),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.bulkImport(input.contacts);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to bulk import contacts");
+      }
+    }),
+
+  /**
+   * Bulk export contacts to CSV.
+   */
+  bulkExport: protectedProcedure
+    .input(locationInput.extend({ filters: searchFiltersSchema.optional() }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.bulkExport(input.filters || undefined);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to bulk export contacts");
+      }
+    }),
+
+  /**
+   * Add a tag to a contact.
    */
   addTag: protectedProcedure
-    .input(
-      z.object({
-        connectionId: z.number().int(),
-        contactId: z.string(),
-        tag: z.string(),
-      })
-    )
+    .input(contactIdInput.extend({ tag: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.addTag(
-        ctx.user.id,
-        input.connectionId,
-        input.contactId,
-        input.tag
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to add tag",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.addTag(input.contactId, input.tag);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to add tag");
       }
-
-      return result.data;
     }),
 
   /**
-   * Remove a tag from a contact
+   * Remove a tag from a contact.
    */
   removeTag: protectedProcedure
-    .input(
-      z.object({
-        connectionId: z.number().int(),
-        contactId: z.string(),
-        tag: z.string(),
-      })
-    )
+    .input(contactIdInput.extend({ tag: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.removeTag(
-        ctx.user.id,
-        input.connectionId,
-        input.contactId,
-        input.tag
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to remove tag",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.removeTag(input.contactId, input.tag);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to remove tag");
       }
-
-      return { success: true };
     }),
 
   /**
-   * List all tags for a location
+   * List all tags for a location.
    */
   listTags: protectedProcedure
-    .input(connectionInputSchema)
+    .input(locationInput)
     .query(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.listTags(
-        ctx.user.id,
-        input.connectionId,
-        input.locationId
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to list tags",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.listTags();
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to list tags");
       }
-
-      return result.data;
     }),
 
   /**
-   * Get custom fields for a location
+   * Get custom fields for a location.
    */
   getCustomFields: protectedProcedure
-    .input(connectionInputSchema)
+    .input(locationInput)
     .query(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.getCustomFields(
-        ctx.user.id,
-        input.connectionId,
-        input.locationId
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to get custom fields",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.getCustomFields();
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to get custom fields");
       }
-
-      return result.data;
     }),
 
   /**
-   * Update a custom field on a contact
+   * Update a custom field on a contact.
    */
   updateCustomField: protectedProcedure
     .input(
-      z.object({
-        connectionId: z.number().int(),
-        contactId: z.string(),
-        fieldId: z.string(),
+      contactIdInput.extend({
+        fieldId: z.string().min(1),
         value: z.unknown(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.updateCustomField(
-        ctx.user.id,
-        input.connectionId,
-        input.contactId,
-        input.fieldId,
-        input.value
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to update custom field",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.updateCustomField(
+          input.contactId,
+          input.fieldId,
+          input.value
+        );
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to update custom field");
       }
-
-      return result.data;
     }),
 
   /**
-   * Get contact activity / notes
+   * Get activity timeline for a contact.
    */
   getActivity: protectedProcedure
-    .input(
-      z.object({
-        connectionId: z.number().int(),
-        contactId: z.string(),
-      })
-    )
+    .input(contactIdInput)
     .query(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-
-      const [activityResult, notesResult] = await Promise.all([
-        svc.getActivity(ctx.user.id, input.connectionId, input.contactId),
-        svc.getNotes(ctx.user.id, input.connectionId, input.contactId),
-      ]);
-
-      return {
-        events: activityResult.data?.events || [],
-        notes: notesResult.data?.notes || [],
-      };
-    }),
-
-  /**
-   * Add a note to a contact
-   */
-  addNote: protectedProcedure
-    .input(
-      z.object({
-        connectionId: z.number().int(),
-        contactId: z.string(),
-        body: z.string().min(1),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.addNote(
-        ctx.user.id,
-        input.connectionId,
-        input.contactId,
-        input.body
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to add note",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.getActivity(input.contactId);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to get contact activity");
       }
-
-      return result.data;
     }),
 
   /**
-   * Merge duplicate contacts into a primary contact
+   * Merge duplicate contacts into a primary contact.
    */
   merge: protectedProcedure
     .input(
-      z.object({
-        connectionId: z.number().int(),
-        primaryContactId: z.string(),
-        duplicateContactIds: z.array(z.string()).min(1),
+      locationInput.extend({
+        primaryId: z.string().min(1),
+        duplicateIds: z.array(z.string().min(1)).min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.merge(
-        ctx.user.id,
-        input.connectionId,
-        input.primaryContactId,
-        input.duplicateContactIds
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: result.error || "Failed to merge contacts",
-        });
+      try {
+        const svc = getContactsService(input.locationId, ctx.user.id);
+        const result = await svc.merge(input.primaryId, input.duplicateIds);
+        return result.data;
+      } catch (err) {
+        handleGHLError(err, "Failed to merge contacts");
       }
-
-      return result.data;
-    }),
-
-  /**
-   * Bulk import contacts
-   */
-  bulkImport: protectedProcedure
-    .input(
-      connectionInputSchema.extend({
-        contacts: z.array(contactInputSchema).min(1).max(50000),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const result = await svc.bulkImport(
-        ctx.user.id,
-        input.connectionId,
-        input.locationId,
-        input.contacts
-      );
-
-      return result;
-    }),
-
-  /**
-   * Bulk export contacts (returns CSV string)
-   */
-  bulkExport: protectedProcedure
-    .input(
-      connectionInputSchema.extend({
-        query: z.string().optional(),
-        tags: z.array(z.string()).optional(),
-        maxContacts: z.number().int().max(50000).optional(),
-        format: z.enum(["json", "csv"]).optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const svc = getGhlContactsService();
-      const { connectionId, locationId, maxContacts, format, ...filters } =
-        input;
-
-      const result = await svc.bulkExport(
-        ctx.user.id,
-        connectionId,
-        locationId,
-        filters,
-        { maxContacts }
-      );
-
-      if (!result.success) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Export failed",
-        });
-      }
-
-      if (format === "csv") {
-        return {
-          csv: svc.contactsToCsv(result.contacts),
-          total: result.total,
-        };
-      }
-
-      return {
-        contacts: result.contacts,
-        total: result.total,
-      };
     }),
 });
