@@ -234,19 +234,19 @@ export function AgentDashboard() {
             <div className="grid grid-cols-3 gap-2 mb-3">
               <div className="bg-gray-50 rounded-lg p-2 text-center">
                 <div className="text-lg font-bold text-gray-900">{stats.total}</div>
-                <div className="text-[10px] text-gray-500">Total</div>
+                <div className="text-[11px] text-gray-500">Total</div>
               </div>
               <div className="bg-green-50 rounded-lg p-2 text-center">
                 <div className="text-lg font-bold text-green-600">
                   {Math.round(stats.successRate * 100)}%
                 </div>
-                <div className="text-[10px] text-gray-500">Success</div>
+                <div className="text-[11px] text-gray-500">Success</div>
               </div>
               <div className="bg-blue-50 rounded-lg p-2 text-center">
                 <div className="text-lg font-bold text-blue-600">
                   {stats.averageDuration ? `${Math.round(stats.averageDuration / 1000)}s` : '-'}
                 </div>
-                <div className="text-[10px] text-gray-500">Avg Time</div>
+                <div className="text-[11px] text-gray-500">Avg Time</div>
               </div>
             </div>
           )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -35,12 +35,72 @@ type UserTier = 'STARTER' | 'GROWTH' | 'WHITELABEL';
 // Admin email for preview access
 const ADMIN_EMAIL = 'julian@aiacrobatics.com';
 
+// Map URL paths to view states
+const PATH_TO_VIEW: Record<string, ViewState> = {
+  '/': 'LANDING',
+  '/login': 'LOGIN',
+  '/features': 'FEATURES',
+  '/privacy': 'PRIVACY',
+  '/terms': 'TERMS',
+  '/dashboard': 'DASHBOARD',
+  '/onboarding': 'ONBOARDING',
+  '/api/oauth/callback': 'OAUTH_CALLBACK',
+};
+
+const VIEW_TO_PATH: Partial<Record<ViewState, string>> = {
+  LANDING: '/',
+  LOGIN: '/login',
+  FEATURES: '/features',
+  PRIVACY: '/privacy',
+  TERMS: '/terms',
+  DASHBOARD: '/dashboard',
+  ONBOARDING: '/onboarding',
+};
+
+// Get initial view from current URL
+const getViewFromPath = (): ViewState => {
+  const path = window.location.pathname;
+  if (PATH_TO_VIEW[path]) return PATH_TO_VIEW[path];
+  // Handle protected routes
+  const protectedPrefixes = ['/dashboard', '/agent', '/settings', '/lead-lists', '/ai-campaigns', '/browser-sessions'];
+  if (protectedPrefixes.some(p => path.startsWith(p))) return 'DASHBOARD';
+  if (path === '/auth/callback') return 'LANDING'; // handled separately
+  return 'LANDING';
+};
+
 function App() {
-  // NOTE: Defaulting to LANDING as requested by user
-  const [currentView, setCurrentView] = useState<ViewState>('LANDING');
-  const [userTier, setUserTier] = useState<UserTier>('STARTER'); // Default tier for new users
-  const [credits, setCredits] = useState(100); // Default credits for new users
+  const [currentView, setCurrentViewState] = useState<ViewState>(getViewFromPath);
+  const [userTier, setUserTier] = useState<UserTier>('STARTER');
+  const [credits, setCredits] = useState(100);
   const [isAdminPreview, setIsAdminPreview] = useState(false);
+
+  // Navigate to a view and update the URL
+  const navigate = useCallback((view: ViewState, replace = false) => {
+    setCurrentViewState(view);
+    const targetPath = VIEW_TO_PATH[view];
+    if (targetPath && window.location.pathname !== targetPath) {
+      if (replace) {
+        window.history.replaceState({ view }, '', targetPath);
+      } else {
+        window.history.pushState({ view }, '', targetPath);
+      }
+    }
+  }, []);
+
+  // Listen for browser back/forward
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state?.view) {
+        setCurrentViewState(e.state.view);
+      } else {
+        setCurrentViewState(getViewFromPath());
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    // Replace current state so back button works from the start
+    window.history.replaceState({ view: currentView }, '', window.location.pathname);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check for active session
   const { data: user, isLoading: isAuthLoading, error: authError, refetch: refetchUser } = trpc.auth.me.useQuery(undefined, {
@@ -57,7 +117,7 @@ function App() {
 
     // Handle OAuth popup callback (for integration OAuth flows)
     if (path === '/api/oauth/callback') {
-      setCurrentView('OAUTH_CALLBACK');
+      navigate('OAUTH_CALLBACK', true);
       return;
     }
 
@@ -65,8 +125,7 @@ function App() {
     const error = params.get('error');
     if (error) {
       console.error('[OAuth] Authentication error:', error);
-      setCurrentView('LOGIN');
-      // Clear error from URL without reloading
+      navigate('LOGIN', true);
       window.history.replaceState({}, '', path);
       return;
     }
@@ -76,83 +135,67 @@ function App() {
     const isProtectedPath = protectedPaths.some(p => path.startsWith(p));
 
     if (isProtectedPath && !isAuthLoading && !user) {
-      // Not logged in, redirect to login
-      setCurrentView('LOGIN');
+      navigate('LOGIN', true);
       return;
     }
 
-    // Handle public page routes
-    if (path === '/features') {
-      setCurrentView('FEATURES');
-      return;
-    }
-    if (path === '/privacy') {
-      setCurrentView('PRIVACY');
-      return;
-    }
-    if (path === '/terms') {
-      setCurrentView('TERMS');
-      return;
-    }
-    if (path === '/login') {
-      setCurrentView('LOGIN');
-      return;
-    }
+    // Handle public page routes - sync URL to state on first load
+    if (path === '/features') { navigate('FEATURES', true); return; }
+    if (path === '/privacy') { navigate('PRIVACY', true); return; }
+    if (path === '/terms') { navigate('TERMS', true); return; }
+    if (path === '/login') { navigate('LOGIN', true); return; }
 
     // Legacy support: Handle /auth/callback route (if still used)
-    // The server now sets cookies directly, but this handles any edge cases
     if (path === '/auth/callback') {
       const sessionToken = params.get('sessionToken');
       if (sessionToken) {
         document.cookie = `app_session_id=${sessionToken}; path=/; max-age=31536000; SameSite=Lax`;
-        // Clear the URL and redirect to home
         window.history.replaceState({}, '', '/');
         refetchUser();
       } else {
-        // No token in callback, just redirect to home and let auth check handle it
         window.history.replaceState({}, '', '/');
         refetchUser();
       }
     }
-  }, [refetchUser, isAuthLoading, user]);
+  }, [refetchUser, isAuthLoading, user, navigate]);
 
   useEffect(() => {
     if (user) {
-      // User is logged in - check if onboarding is completed
       if (user.onboardingCompleted === false) {
-        setCurrentView('ONBOARDING');
+        navigate('ONBOARDING', true);
       } else {
-        setCurrentView('DASHBOARD');
+        navigate('DASHBOARD', true);
       }
     }
-  }, [user]);
+  }, [user, navigate]);
 
   // Toggle between landing and dashboard for admin preview
   const toggleAdminPreview = () => {
     if (!isAdmin) return;
     if (currentView === 'DASHBOARD') {
       setIsAdminPreview(true);
-      setCurrentView('LANDING');
+      navigate('LANDING');
     } else {
       setIsAdminPreview(false);
-      setCurrentView('DASHBOARD');
+      navigate('DASHBOARD');
     }
   };
 
   const handleLogin = (tier: UserTier, needsOnboarding?: boolean) => {
     setUserTier(tier);
-    // Set credits based on tier
     if (tier === 'STARTER') setCredits(500);
     if (tier === 'GROWTH') setCredits(1500);
     if (tier === 'WHITELABEL') setCredits(5000);
 
-    // Route to onboarding if needed, otherwise go to dashboard
     if (needsOnboarding) {
-      setCurrentView('ONBOARDING');
+      navigate('ONBOARDING');
     } else {
-      setCurrentView('DASHBOARD');
+      navigate('DASHBOARD');
     }
   };
+
+  // Page transition key for animation
+  const transitionKey = currentView;
 
   if (isAuthLoading) {
     return (
@@ -190,25 +233,25 @@ function App() {
             )}
 
             <Suspense fallback={<LoadingSpinner />}>
+              <div key={transitionKey} className="animate-fade-in">
               {currentView === 'OAUTH_CALLBACK' && (
                 <OAuthCallback />
               )}
 
               {currentView === 'ALEX_RAMOZY' && (
-                <AlexRamozyPage onDemoClick={() => setCurrentView('LOGIN')} />
+                <AlexRamozyPage onDemoClick={() => navigate('LOGIN')} />
               )}
               {currentView === 'LANDING' && (
                 <LandingPage
                   onLogin={() => {
                     if (isAdminPreview && isAdmin) {
-                      // Admin in preview mode - go back to dashboard
                       setIsAdminPreview(false);
-                      setCurrentView('DASHBOARD');
+                      navigate('DASHBOARD');
                     } else {
-                      setCurrentView('LOGIN');
+                      navigate('LOGIN');
                     }
                   }}
-                  onNavigateToFeatures={() => setCurrentView('FEATURES')}
+                  onNavigateToFeatures={() => navigate('FEATURES')}
                 />
               )}
 
@@ -216,28 +259,26 @@ function App() {
                 <FeaturesPage
                   onGetStarted={() => {
                     if (user && !isAdminPreview) {
-                      // User is logged in - go to dashboard
-                      setCurrentView('DASHBOARD');
+                      navigate('DASHBOARD');
                     } else {
-                      setCurrentView('LOGIN');
+                      navigate('LOGIN');
                     }
                   }}
-                  onNavigateHome={() => setCurrentView('LANDING')}
+                  onNavigateHome={() => navigate('LANDING')}
                 />
               )}
 
               {currentView === 'LOGIN' && (
                 <LoginScreen
                   onAuthenticated={handleLogin}
-                  onBack={() => setCurrentView('LANDING')}
+                  onBack={() => navigate('LANDING')}
                 />
               )}
 
               {currentView === 'ONBOARDING' && (
                 <OnboardingFlow onComplete={async () => {
-                  // Refetch user data to get updated onboardingCompleted status
                   await refetchUser();
-                  setCurrentView('DASHBOARD');
+                  navigate('DASHBOARD');
                 }} />
               )}
 
@@ -248,12 +289,13 @@ function App() {
               )}
 
               {currentView === 'PRIVACY' && (
-                <PrivacyPolicy onBack={() => setCurrentView('LANDING')} />
+                <PrivacyPolicy onBack={() => navigate('LANDING')} />
               )}
 
               {currentView === 'TERMS' && (
-                <TermsOfService onBack={() => setCurrentView('LANDING')} />
+                <TermsOfService onBack={() => navigate('LANDING')} />
               )}
+              </div>
             </Suspense>
             </TourProvider>
           </NotificationProvider>

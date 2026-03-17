@@ -124,7 +124,7 @@ function MessageBubble({ message }: { message: OperatorMessage }) {
           </Button>
         )}
 
-        <p className="text-[10px] text-slate-400 mt-1">
+        <p className="text-[11px] text-slate-400 mt-1">
           {message.timestamp.toLocaleTimeString()}
         </p>
       </div>

@@ -38,12 +38,12 @@ export const TrustBadges: React.FC<TrustBadgesProps> = ({
             isDark ? 'text-green-400' : 'text-green-600'
           }`} />
           <div className="text-left">
-            <div className={`text-[10px] sm:text-xs font-bold leading-tight ${
+            <div className={`text-[11px] sm:text-xs font-bold leading-tight ${
               isDark ? 'text-white' : 'text-slate-800'
             }`}>
               {badge.label}
             </div>
-            <div className={`text-[9px] sm:text-[10px] leading-tight ${
+            <div className={`text-[11px] sm:text-[11px] leading-tight ${
               isDark ? 'text-slate-400' : 'text-slate-500'
             }`}>
               {badge.sublabel}
