@@ -57,6 +57,7 @@ import { cn } from '@/lib/utils';
 import WorkflowsTab from '@/components/training/WorkflowsTab';
 import SkillsTab from '@/components/training/SkillsTab';
 import BehaviorTab from '@/components/training/BehaviorTab';
+import KnowledgeBaseBrowser from '@/components/training/KnowledgeBaseBrowser';
 
 const CATEGORIES = [
   { value: 'training', label: 'Training Docs' },
@@ -281,10 +282,14 @@ export default function Training() {
 
       {/* Tabbed Interface */}
       <Tabs defaultValue="documents" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
           <TabsTrigger value="documents" className="gap-1.5">
             <FileText className="w-4 h-4" />
             <span className="hidden sm:inline">Documents</span>
+          </TabsTrigger>
+          <TabsTrigger value="knowledge" className="gap-1.5">
+            <Database className="w-4 h-4" />
+            <span className="hidden sm:inline">Knowledge Base</span>
           </TabsTrigger>
           <TabsTrigger value="workflows" className="gap-1.5">
             <Workflow className="w-4 h-4" />
@@ -703,6 +708,11 @@ export default function Training() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Knowledge Base Browser Tab */}
+        <TabsContent value="knowledge">
+          <KnowledgeBaseBrowser />
         </TabsContent>
 
         {/* Workflows Tab */}

@@ -575,138 +575,48 @@ export const ragRouter = router({
     }),
 
   /**
-   * Upload and ingest a document with SOP-aware processing
-   * Detects document category, extracts SOP steps, and assigns priority
+   * Re-process an existing document with updated SOP processing
    */
-  uploadDocumentWithSOPProcessing: protectedProcedure
-    .input(
-      z.object({
-        fileContent: z.string().min(1),
-        filename: z.string().min(1),
-        mimeType: z.string().optional(),
-        platform: z.string().min(1).max(50).default("general"),
-        category: z.string().min(1).max(50).default("training"),
-        title: z.string().optional(),
-      })
-    )
-    .mutation(async ({ input, ctx }) => {
-      try {
-        const buffer = Buffer.from(input.fileContent, "base64");
-        const maxSize = 10 * 1024 * 1024;
-        if (buffer.length > maxSize) {
-          throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "File size exceeds maximum of 10MB" });
-        }
-
-        const parsed = await documentParserService.parse(buffer, input.mimeType, input.filename);
-        if (!parsed.text || parsed.text.length < 10) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Could not extract text from document." });
-        }
-
-        const title = input.title || parsed.metadata.title || input.filename;
-
-        const result = await ragService.ingestWithSOPProcessing({
-          platform: input.platform,
-          category: input.category,
-          title,
-          content: parsed.text,
-          sourceType: parsed.metadata.format as "markdown" | "html" | "pdf" | "docx",
-          userId: ctx.user.id,
-        });
-
-        return {
-          success: true,
-          sourceId: result.sourceId,
-          chunkCount: result.chunkCount,
-          totalTokens: result.totalTokens,
-          detectedCategory: result.detectedCategory,
-          sopSteps: result.sopSteps,
-          metadata: parsed.metadata,
-          message: `Processed "${title}" as ${result.detectedCategory}: ${result.chunkCount} chunks${result.sopSteps ? `, ${result.sopSteps.length} SOP steps` : ""}`,
-        };
-      } catch (error) {
-        if (error instanceof TRPCError) throw error;
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to upload document: ${error instanceof Error ? error.message : "Unknown error"}`,
-        });
-      }
-    }),
-
-  /**
-   * Get chunks for a specific source (for chunk preview in knowledge browser)
-   */
-  getSourceChunks: protectedProcedure
-    .input(z.object({ sourceId: z.number() }))
-    .query(async ({ input }) => {
-      try {
-        const chunks = await ragService.getSourceChunks(input.sourceId);
-        return {
-          success: true,
-          chunks,
-          count: chunks.length,
-        };
-      } catch (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to get chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
-        });
-      }
-    }),
-
-  /**
-   * Re-process a document with SOP-aware processing
-   * Deletes existing chunks and re-ingests with category detection and step extraction
-   */
-  reprocessDocument: protectedProcedure
+  reprocessSource: protectedProcedure
     .input(z.object({ sourceId: z.number() }))
     .mutation(async ({ input }) => {
       try {
-        const result = await ragService.reprocessDocument(input.sourceId);
+        const result = await ragService.reprocessSource(input.sourceId);
+
         return {
           success: true,
           sourceId: result.sourceId,
           chunkCount: result.chunkCount,
           totalTokens: result.totalTokens,
-          detectedCategory: result.detectedCategory,
-          sopSteps: result.sopSteps,
-          message: `Re-processed document as ${result.detectedCategory}: ${result.chunkCount} chunks${result.sopSteps ? `, ${result.sopSteps.length} SOP steps` : ""}`,
+          message: `Reprocessed document: ${result.chunkCount} chunks created`,
         };
       } catch (error) {
+        console.error("[RAG Router] Reprocess failed:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to re-process document: ${error instanceof Error ? error.message : "Unknown error"}`,
+          message: `Failed to reprocess document: ${error instanceof Error ? error.message : "Unknown error"}`,
         });
       }
     }),
 
   /**
-   * Retrieve with priority-weighted scoring (SOPs boosted)
+   * Get knowledge base summary (categorized counts, SOP data, top priority docs)
    */
-  retrieveWithPriority: publicProcedure
-    .input(
-      z.object({
-        query: z.string().min(1),
-        topK: z.number().min(1).max(20).optional(),
-        platforms: z.array(z.string()).optional(),
-        categories: z.array(z.string()).optional(),
-        minSimilarity: z.number().min(0).max(1).optional(),
-        prioritizeSOPs: z.boolean().optional(),
-      })
-    )
-    .query(async ({ input }) => {
+  knowledgeSummary: protectedProcedure
+    .input(z.object({}).optional())
+    .query(async ({ ctx }) => {
       try {
-        const chunks = await ragService.retrieveWithPriority(input.query, {
-          topK: input.topK,
-          platforms: input.platforms,
-          categories: input.categories,
-          minSimilarity: input.minSimilarity,
-          prioritizeSOPs: input.prioritizeSOPs,
-        });
-        return { success: true, chunks, count: chunks.length };
+        const summary = await ragService.getKnowledgeSummary(ctx.user.id);
+
+        return {
+          success: true,
+          ...summary,
+        };
       } catch (error) {
+        console.error("[RAG Router] Knowledge summary failed:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to retrieve: ${error instanceof Error ? error.message : "Unknown error"}`,
+          message: `Failed to get knowledge summary: ${error instanceof Error ? error.message : "Unknown error"}`,
         });
       }
     }),

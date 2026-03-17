@@ -392,21 +392,19 @@ export class AgentOrchestratorService {
       }
     });
 
-    // Tool: Retrieve documentation from knowledge base (RAG) with SOP priority
+    // Tool: Retrieve documentation from knowledge base (RAG)
     this.toolRegistry.set("retrieve_documentation", async (params: {
       query: string;
       topK?: number;
       platforms?: string[];
       categories?: string[];
-      prioritizeSOPs?: boolean;
     }) => {
       try {
-        const chunks = await ragService.retrieveWithPriority(params.query, {
+        const chunks = await ragService.retrieve(params.query, {
           topK: params.topK || 5,
           platforms: params.platforms,
           categories: params.categories,
           minSimilarity: 0.5,
-          prioritizeSOPs: params.prioritizeSOPs !== false, // default true
         });
 
         if (chunks.length === 0) {
@@ -418,13 +416,11 @@ export class AgentOrchestratorService {
           };
         }
 
-        // Format chunks for agent consumption with category and priority info
+        // Format chunks for agent consumption
         const formattedChunks = chunks.slice(0, params.topK || 5).map((chunk, index) => ({
           index: index + 1,
           content: chunk.content,
           relevance: chunk.similarity ? `${(chunk.similarity * 100).toFixed(1)}%` : 'N/A',
-          category: (chunk.metadata as any)?.documentCategory || 'general',
-          priority: (chunk.metadata as any)?.priority || 0,
           metadata: chunk.metadata,
         }));
 
@@ -1279,45 +1275,65 @@ export class AgentOrchestratorService {
         content: currentPrompt,
       });
 
-      // Fetch RAG context on first iteration with SOP-priority retrieval
+      // Fetch RAG context on first iteration (enhanced with SOP knowledge)
       let ragContext: RAGContext | undefined;
       if (state.iterations === 0) {
         try {
-          // Use priority-weighted retrieval to boost SOPs and process docs
-          const priorityChunks = await ragService.retrieveWithPriority(state.taskDescription, {
-            topK: 10,
-            minSimilarity: 0.5,
-            prioritizeSOPs: true,
-          });
-
+          // Retrieve RAG documentation context
           const ragResult = await ragService.buildSystemPrompt(state.taskDescription, {
-            maxDocumentationTokens: 4000,
+            maxDocumentationTokens: 3000,
             includeExamples: true,
           });
 
-          // Build enhanced RAG context with document knowledge
+          // Also retrieve SOP-specific knowledge with priority-weighted results
+          const sopChunks = await ragService.retrieve(state.taskDescription, {
+            topK: 5,
+            categories: ['sop', 'process', 'policy'],
+            minSimilarity: 0.5,
+          });
+
+          // Extract SOP action sequences from chunk metadata
+          const actionSequences: RAGContext['actionSequences'] = [];
+          for (const chunk of sopChunks) {
+            const meta = (chunk.metadata as Record<string, any>) || {};
+            if (meta.knowledgeCategory === 'sop' || meta.knowledgeCategory === 'process') {
+              actionSequences.push({
+                sequenceId: `sop-${chunk.id}`,
+                name: meta.title || 'SOP Document',
+                successRate: (meta.priority || 5) / 10,
+                steps: [chunk.content.substring(0, 200)],
+              });
+            }
+          }
+
+          // Build SOP documents context from high-priority chunks
+          const sopDocuments = sopChunks
+            .filter(chunk => {
+              const meta = (chunk.metadata as Record<string, any>) || {};
+              return meta.priority >= 6;
+            })
+            .map(chunk => {
+              const meta = (chunk.metadata as Record<string, any>) || {};
+              return {
+                title: meta.title || 'Training Document',
+                category: meta.knowledgeCategory || meta.category || 'general',
+                content: chunk.content,
+                priority: meta.priority || 5,
+              };
+            });
+
           ragContext = {
             relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
               elementName: 'document',
               selector: chunk.content.substring(0, 100),
               reliability: chunk.similarity || 0,
             })),
+            actionSequences: actionSequences.length > 0 ? actionSequences : undefined,
+            sopDocuments: sopDocuments.length > 0 ? sopDocuments : undefined,
           };
 
-          // Add action sequences from SOP chunks
-          const sopChunks = priorityChunks.filter(c =>
-            (c.metadata as any)?.documentCategory === 'sop' || (c.metadata as any)?.documentCategory === 'process'
-          );
-          if (sopChunks.length > 0) {
-            ragContext.actionSequences = sopChunks.map((chunk, idx) => ({
-              sequenceId: `sop-${chunk.sourceId}-${chunk.chunkIndex}`,
-              name: (chunk.metadata as any)?.title || `SOP Document ${idx + 1}`,
-              successRate: (chunk.metadata as any)?.priority || 0.8,
-              steps: chunk.content.split('\n').filter((l: string) => l.trim()).slice(0, 10),
-            }));
-          }
-
-          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks (${sopChunks.length} SOPs), platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+          const sopCount = sopChunks.length;
+          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} doc chunks, ${sopCount} SOP chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
         } catch (ragError) {
           console.warn('[Agent] Failed to load RAG context:', ragError);
           // Continue without RAG context
