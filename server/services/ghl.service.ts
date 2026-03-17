@@ -865,6 +865,179 @@ export class GHLService {
   }
 
   // ========================================
+  // APPOINTMENT MANAGEMENT (FR-040 through FR-043)
+  // ========================================
+
+  /**
+   * Create an appointment in GHL
+   */
+  async createAppointment(
+    userId: number,
+    locationId: string,
+    data: {
+      calendarId: string;
+      contactId: string;
+      title: string;
+      startTime: string;
+      endTime: string;
+      appointmentStatus?: string;
+      assignedUserId?: string;
+      notes?: string;
+    }
+  ): Promise<Record<string, unknown>> {
+    const response = await this.request<Record<string, unknown>>({
+      method: "POST",
+      endpoint: "/calendars/events",
+      locationId,
+      userId,
+      data: {
+        calendarId: data.calendarId,
+        locationId,
+        contactId: data.contactId,
+        title: data.title,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        appointmentStatus: data.appointmentStatus || "confirmed",
+        assignedUserId: data.assignedUserId,
+        notes: data.notes,
+      },
+    });
+
+    await this.logSync({
+      userId,
+      locationId,
+      operation: "create",
+      entityType: "appointment",
+      entityId: (response.data as any)?.id || null,
+      direction: "outbound",
+      status: "success",
+    });
+
+    return response.data;
+  }
+
+  /**
+   * Get an appointment by ID
+   */
+  async getAppointment(
+    userId: number,
+    locationId: string,
+    appointmentId: string
+  ): Promise<Record<string, unknown>> {
+    const response = await this.request<Record<string, unknown>>({
+      method: "GET",
+      endpoint: `/calendars/events/${appointmentId}`,
+      locationId,
+      userId,
+    });
+    return response.data;
+  }
+
+  /**
+   * Update an appointment
+   */
+  async updateAppointment(
+    userId: number,
+    locationId: string,
+    appointmentId: string,
+    data: Partial<{
+      title: string;
+      startTime: string;
+      endTime: string;
+      appointmentStatus: string;
+      assignedUserId: string;
+      notes: string;
+    }>
+  ): Promise<Record<string, unknown>> {
+    const response = await this.request<Record<string, unknown>>({
+      method: "PUT",
+      endpoint: `/calendars/events/${appointmentId}`,
+      locationId,
+      userId,
+      data,
+    });
+
+    await this.logSync({
+      userId,
+      locationId,
+      operation: "update",
+      entityType: "appointment",
+      entityId: appointmentId,
+      direction: "outbound",
+      status: "success",
+    });
+
+    return response.data;
+  }
+
+  /**
+   * Delete an appointment
+   */
+  async deleteAppointment(
+    userId: number,
+    locationId: string,
+    appointmentId: string
+  ): Promise<void> {
+    await this.request({
+      method: "DELETE",
+      endpoint: `/calendars/events/${appointmentId}`,
+      locationId,
+      userId,
+    });
+
+    await this.logSync({
+      userId,
+      locationId,
+      operation: "delete",
+      entityType: "appointment",
+      entityId: appointmentId,
+      direction: "outbound",
+      status: "success",
+    });
+  }
+
+  /**
+   * Get calendar availability (free slots)
+   */
+  async getAvailability(
+    userId: number,
+    locationId: string,
+    calendarId: string,
+    startDate: string,
+    endDate?: string
+  ): Promise<Array<{ startTime: string; endTime: string }>> {
+    const params: Record<string, string> = { startDate };
+    if (endDate) params.endDate = endDate;
+
+    const response = await this.request<{ slots: Array<{ startTime: string; endTime: string }> }>({
+      method: "GET",
+      endpoint: `/calendars/${calendarId}/free-slots`,
+      locationId,
+      userId,
+      params,
+    });
+
+    return response.data?.slots || [];
+  }
+
+  /**
+   * List calendars for a location
+   */
+  async listCalendars(
+    userId: number,
+    locationId: string
+  ): Promise<Array<{ id: string; name: string; isActive: boolean }>> {
+    const response = await this.request<{ calendars: Array<{ id: string; name: string; isActive: boolean }> }>({
+      method: "GET",
+      endpoint: "/calendars/",
+      locationId,
+      userId,
+    });
+
+    return response.data?.calendars || [];
+  }
+
+  // ========================================
   // UTILITIES
   // ========================================
 

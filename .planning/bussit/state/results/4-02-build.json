@@ -1,0 +1,24 @@
+{
+  "task": "4-02-build",
+  "title": "Execution History + Replay",
+  "status": "complete",
+  "completedAt": "2026-03-17T00:00:00.000Z",
+  "deliverables": {
+    "router": "server/api/routers/executionHistory.ts",
+    "page": "client/src/pages/ExecutionHistory.tsx",
+    "routeRegistered": "client/src/components/Routes.tsx",
+    "sidebarLink": "client/src/components/DashboardLayout.tsx",
+    "routerRegistered": "server/routers.ts"
+  },
+  "features": {
+    "executionHistoryList": "Filterable, paginated list of past executions with status badges, duration, step counts",
+    "filters": "Filter by status (success/failed/cancelled/running/timeout/needs_input), task type, search query",
+    "statsCards": "Overview stats: total executions, success rate, avg duration, successful count",
+    "detailDialog": "Full execution detail with 4 tabs: Overview, Timeline, Replay, Export",
+    "timeline": "Step-by-step timeline with tool names, reasoning, parameters, results, errors, screenshots",
+    "browserbaseReplay": "Link to BrowserBase replay URL, embedded iframe, direct recording link, debug URL",
+    "exportReport": "Downloadable HTML report with execution summary, step timeline, error details (printable to PDF)"
+  },
+  "buildVerified": true,
+  "notes": "Uses existing taskExecutions and agencyTasks schema from schema-webhooks.ts. Router uses protectedProcedure for auth. rrweb is in dependencies but BrowserBase replay via iframe/link is the primary approach since rrweb data is not stored in the DB."
+}
