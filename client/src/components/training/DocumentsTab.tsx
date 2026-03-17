@@ -8,7 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Upload, FileText, Trash2, RefreshCw, Link2, Database, BookOpen, Sparkles, CheckCircle2, ChevronDown, ChevronRight, RotateCcw, Eye, ListOrdered, Tag } from 'lucide-react';
+import { Upload, FileText, Trash2, RefreshCw, Link2, Database, BookOpen, Sparkles, CheckCircle2, ChevronDown, ChevronRight, RotateCcw, Eye, ListOrdered, Tag, Search, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -67,6 +67,13 @@ export function DocumentsTab() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
+  const similarityQuery = trpc.rag.similaritySearch.useQuery(
+    { query: searchQuery, topK: 5, minSimilarity: 0.5 },
+    { enabled: isSearching && searchQuery.length > 0 }
+  );
 
   const sourcesQuery = trpc.rag.listSources.useQuery({ limit: 50, isActive: true, ...(filterCategory !== 'all' ? { category: filterCategory } : {}) });
   const uploadMutation = trpc.rag.uploadDocument.useMutation({
@@ -196,6 +203,59 @@ export function DocumentsTab() {
                 </>);
               })}</TableBody>
             </Table></div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Similarity Search */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2"><Search className="w-4 h-4" />Knowledge Search</CardTitle>
+          <CardDescription>Test which training documents would be retrieved for a given query. This is exactly what your agent sees during task execution.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 mb-4">
+            <Input
+              placeholder="Enter a query to test retrieval (e.g., 'how to add a contact to GHL')..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(false); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && searchQuery.trim()) setIsSearching(true); }}
+            />
+            <Button
+              onClick={() => { if (searchQuery.trim()) setIsSearching(true); }}
+              disabled={!searchQuery.trim() || similarityQuery.isFetching}
+              className="shrink-0"
+            >
+              {similarityQuery.isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              <span className="ml-1.5 hidden sm:inline">Search</span>
+            </Button>
+          </div>
+          {isSearching && similarityQuery.data && (
+            <div className="space-y-2">
+              <p className="text-sm text-gray-500">{similarityQuery.data.count} chunks found for &ldquo;{similarityQuery.data.query}&rdquo;</p>
+              {similarityQuery.data.results.map((result: any) => {
+                const meta = result.metadata || {};
+                const similarity = ((result.similarity || 0) * 100).toFixed(1);
+                return (
+                  <div key={result.id} className="border rounded-lg p-3 bg-white text-sm">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <Badge className="bg-emerald-100 text-emerald-700 text-xs">{similarity}% match</Badge>
+                      <Badge variant="outline" className="text-xs">Chunk {result.chunkIndex + 1}</Badge>
+                      <Badge variant="outline" className="text-xs">{result.tokenCount} tokens</Badge>
+                      {meta.knowledgeCategory && <Badge className={cn('text-xs', CATEGORY_COLORS[meta.knowledgeCategory] || CATEGORY_COLORS.general)}>{meta.knowledgeCategory}</Badge>}
+                      {(meta.priority || 5) >= 7 && <Badge className="bg-amber-100 text-amber-700 text-xs">Priority {meta.priority}</Badge>}
+                    </div>
+                    <p className="text-gray-600 whitespace-pre-wrap line-clamp-4">{result.content}</p>
+                  </div>
+                );
+              })}
+              {similarityQuery.data.count === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">No relevant chunks found. Upload training documents to improve agent knowledge.</p>
+              )}
+            </div>
+          )}
+          {!isSearching && (
+            <p className="text-sm text-gray-400 text-center py-4">Enter a query and press Search to test what your agent would retrieve from the knowledge base.</p>
           )}
         </CardContent>
       </Card>
