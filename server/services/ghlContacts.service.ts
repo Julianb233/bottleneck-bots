@@ -14,7 +14,7 @@
  * - contacts.merge
  */
 
-import { getGhlService, type GhlApiResponse } from "./ghl.service";
+import { getGHLService, type GHLApiResponse } from "./ghl.service";
 
 // ========================================
 // TYPES
@@ -138,7 +138,7 @@ export interface GhlContactSearchResult {
 // ========================================
 
 export class GhlContactsService {
-  private ghl = getGhlService();
+  private ghl = getGHLService();
 
   // ----------------------------------------
   // CRUD Operations
@@ -152,7 +152,7 @@ export class GhlContactsService {
     connectionId: number,
     locationId: string,
     data: GhlContactCreateInput
-  ): Promise<GhlApiResponse<{ contact: GhlContact }>> {
+  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
     return this.ghl.apiRequest(userId, connectionId, "POST", "/contacts/", {
       body: {
         ...data,
@@ -168,7 +168,7 @@ export class GhlContactsService {
     userId: number,
     connectionId: number,
     contactId: string
-  ): Promise<GhlApiResponse<{ contact: GhlContact }>> {
+  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -185,7 +185,7 @@ export class GhlContactsService {
     connectionId: number,
     contactId: string,
     data: GhlContactUpdateInput
-  ): Promise<GhlApiResponse<{ contact: GhlContact }>> {
+  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -204,7 +204,7 @@ export class GhlContactsService {
     userId: number,
     connectionId: number,
     contactId: string
-  ): Promise<GhlApiResponse<{ succeded: boolean }>> {
+  ): Promise<GHLApiResponse<{ succeded: boolean }>> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -225,7 +225,7 @@ export class GhlContactsService {
     connectionId: number,
     locationId: string,
     params: GhlContactSearchParams = {}
-  ): Promise<GhlApiResponse<GhlContactSearchResult>> {
+  ): Promise<GHLApiResponse<GhlContactSearchResult>> {
     const query: Record<string, string> = {
       locationId,
     };
@@ -256,7 +256,7 @@ export class GhlContactsService {
     connectionId: number,
     contactId: string,
     tag: string
-  ): Promise<GhlApiResponse<{ tags: string[] }>> {
+  ): Promise<GHLApiResponse<{ tags: string[] }>> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -276,7 +276,7 @@ export class GhlContactsService {
     connectionId: number,
     contactId: string,
     tag: string
-  ): Promise<GhlApiResponse> {
+  ): Promise<GHLApiResponse> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -295,7 +295,7 @@ export class GhlContactsService {
     userId: number,
     connectionId: number,
     locationId: string
-  ): Promise<GhlApiResponse<{ tags: GhlTag[] }>> {
+  ): Promise<GHLApiResponse<{ tags: GhlTag[] }>> {
     return this.ghl.apiRequest(userId, connectionId, "GET", "/locations/tags", {
       query: { locationId },
     });
@@ -312,7 +312,7 @@ export class GhlContactsService {
     userId: number,
     connectionId: number,
     locationId: string
-  ): Promise<GhlApiResponse<{ customFields: GhlCustomField[] }>> {
+  ): Promise<GHLApiResponse<{ customFields: GhlCustomField[] }>> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -330,7 +330,7 @@ export class GhlContactsService {
     contactId: string,
     fieldId: string,
     value: unknown
-  ): Promise<GhlApiResponse<{ contact: GhlContact }>> {
+  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -355,7 +355,7 @@ export class GhlContactsService {
     userId: number,
     connectionId: number,
     contactId: string
-  ): Promise<GhlApiResponse<{ events: GhlContactActivity[] }>> {
+  ): Promise<GHLApiResponse<{ events: GhlContactActivity[] }>> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -371,7 +371,7 @@ export class GhlContactsService {
     userId: number,
     connectionId: number,
     contactId: string
-  ): Promise<GhlApiResponse<{ notes: Array<{ id: string; body: string; createdAt: string }> }>> {
+  ): Promise<GHLApiResponse<{ notes: Array<{ id: string; body: string; createdAt: string }> }>> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -388,7 +388,7 @@ export class GhlContactsService {
     connectionId: number,
     contactId: string,
     body: string
-  ): Promise<GhlApiResponse<{ note: { id: string; body: string } }>> {
+  ): Promise<GHLApiResponse<{ note: { id: string; body: string } }>> {
     return this.ghl.apiRequest(
       userId,
       connectionId,
@@ -413,7 +413,7 @@ export class GhlContactsService {
     connectionId: number,
     primaryContactId: string,
     duplicateContactIds: string[]
-  ): Promise<GhlApiResponse<{ contact: GhlContact }>> {
+  ): Promise<GHLApiResponse<{ contact: GhlContact }>> {
     // GHL doesn't have a direct merge endpoint.
     // We implement merge by:
     // 1. Getting all contacts
