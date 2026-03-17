@@ -378,6 +378,119 @@ export const pipelinesRouter = router({
     }),
 
   /**
+   * Get all execution history across all pipelines for the authenticated user.
+   * Supports pagination, status filtering, and returns pipeline name alongside each run.
+   */
+  getAllExecutions: protectedProcedure
+    .input(
+      z.object({
+        status: z.enum(["pending", "running", "completed", "failed", "cancelled"]).optional(),
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0),
+      }).optional()
+    )
+    .query(async ({ input, ctx }) => {
+      const userId = ctx.user.id;
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not initialized" });
+      }
+
+      const params = input || { limit: 20, offset: 0 };
+      const conditions = [eq(pipelineExecutions.userId, userId)];
+      if (params.status) {
+        conditions.push(eq(pipelineExecutions.status, params.status));
+      }
+
+      const executions = await db
+        .select({
+          id: pipelineExecutions.id,
+          pipelineId: pipelineExecutions.pipelineId,
+          pipelineName: workflowPipelines.name,
+          status: pipelineExecutions.status,
+          input: pipelineExecutions.input,
+          output: pipelineExecutions.output,
+          error: pipelineExecutions.error,
+          currentStepIndex: pipelineExecutions.currentStepIndex,
+          totalSteps: pipelineExecutions.totalSteps,
+          stepResults: pipelineExecutions.stepResults,
+          startedAt: pipelineExecutions.startedAt,
+          completedAt: pipelineExecutions.completedAt,
+          duration: pipelineExecutions.duration,
+          createdAt: pipelineExecutions.createdAt,
+        })
+        .from(pipelineExecutions)
+        .innerJoin(workflowPipelines, eq(pipelineExecutions.pipelineId, workflowPipelines.id))
+        .where(and(...conditions))
+        .orderBy(desc(pipelineExecutions.startedAt))
+        .limit(params.limit)
+        .offset(params.offset);
+
+      return executions;
+    }),
+
+  /**
+   * Replay (re-execute) a past pipeline execution with same input variables
+   */
+  replayExecution: protectedProcedure
+    .input(z.object({ executionId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.user.id;
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not initialized" });
+      }
+
+      // Fetch the original execution
+      const [original] = await db
+        .select()
+        .from(pipelineExecutions)
+        .where(and(
+          eq(pipelineExecutions.id, input.executionId),
+          eq(pipelineExecutions.userId, userId)
+        ))
+        .limit(1);
+
+      if (!original) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Execution not found" });
+      }
+
+      // Verify the pipeline still exists and belongs to user
+      const [pipeline] = await db
+        .select()
+        .from(workflowPipelines)
+        .where(and(
+          eq(workflowPipelines.id, original.pipelineId),
+          eq(workflowPipelines.userId, userId)
+        ))
+        .limit(1);
+
+      if (!pipeline) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pipeline no longer exists" });
+      }
+
+      try {
+        const result = await executePipeline({
+          pipelineId: original.pipelineId,
+          userId,
+          variables: (original.input as Record<string, unknown>) || undefined,
+        });
+
+        return {
+          success: true,
+          executionId: result.executionId,
+          pipelineId: result.pipelineId,
+          status: result.status,
+        };
+      } catch (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Replay failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
    * Cancel a running pipeline execution
    */
   cancelExecution: protectedProcedure
