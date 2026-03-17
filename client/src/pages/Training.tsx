@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -36,14 +37,19 @@ import {
   Trash2,
   RefreshCw,
   CheckCircle2,
-  AlertCircle,
   Link2,
   Database,
   BookOpen,
   Sparkles,
+  Workflow,
+  Zap,
+  MessageSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import WorkflowsTab from '@/components/training/WorkflowsTab';
+import SkillsTab from '@/components/training/SkillsTab';
+import BehaviorTab from '@/components/training/BehaviorTab';
 
 const CATEGORIES = [
   { value: 'training', label: 'Training Docs' },
@@ -240,273 +246,315 @@ export default function Training() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Agent Training</h1>
           <p className="text-gray-500 mt-1">
-            Upload documents to train your AI agent with business knowledge
+            Train your AI agent with documents, workflows, skills, and behavior settings
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => sourcesQuery.refetch()}
-          disabled={sourcesQuery.isRefetching}
-        >
-          <RefreshCw className={cn('w-4 h-4 mr-2', sourcesQuery.isRefetching && 'animate-spin')} />
-          Refresh
-        </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Database className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{sourcesQuery.data?.count || 0}</p>
-                <p className="text-xs text-gray-500">Documents</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-100 rounded-lg">
-                <BookOpen className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {sourcesQuery.data?.sources?.reduce((acc, s) => acc + (s.chunkCount || 0), 0) || 0}
-                </p>
-                <p className="text-xs text-gray-500">Chunks</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Sparkles className="w-5 h-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">RAG</p>
-                <p className="text-xs text-gray-500">Enabled</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-100 rounded-lg">
-                <CheckCircle2 className="w-5 h-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">Active</p>
-                <p className="text-xs text-gray-500">Status</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Tabbed Interface */}
+      <Tabs defaultValue="documents" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+          <TabsTrigger value="documents" className="gap-1.5">
+            <FileText className="w-4 h-4" />
+            <span className="hidden sm:inline">Documents</span>
+          </TabsTrigger>
+          <TabsTrigger value="workflows" className="gap-1.5">
+            <Workflow className="w-4 h-4" />
+            <span className="hidden sm:inline">Workflows</span>
+          </TabsTrigger>
+          <TabsTrigger value="skills" className="gap-1.5">
+            <Zap className="w-4 h-4" />
+            <span className="hidden sm:inline">Skills</span>
+          </TabsTrigger>
+          <TabsTrigger value="behavior" className="gap-1.5">
+            <MessageSquare className="w-4 h-4" />
+            <span className="hidden sm:inline">Behavior</span>
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Upload Section */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* File Upload */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Upload className="w-5 h-5" />
-              Upload Documents
-            </CardTitle>
-            <CardDescription>
-              Drag & drop or click to upload PDFs, Word docs, Markdown, or text files
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Category & Platform selectors */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Category</label>
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((cat) => (
-                      <SelectItem key={cat.value} value={cat.value}>
-                        {cat.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Platform</label>
-                <Select value={selectedPlatform} onValueChange={setSelectedPlatform}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PLATFORMS.map((p) => (
-                      <SelectItem key={p.value} value={p.value}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+        {/* Documents Tab - existing functionality */}
+        <TabsContent value="documents" className="space-y-6">
+          {/* Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Database className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{sourcesQuery.data?.count || 0}</p>
+                    <p className="text-xs text-gray-500">Documents</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-100 rounded-lg">
+                    <BookOpen className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">
+                      {sourcesQuery.data?.sources?.reduce((acc: number, s: any) => acc + (s.chunkCount || 0), 0) || 0}
+                    </p>
+                    <p className="text-xs text-gray-500">Chunks</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <Sparkles className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">RAG</p>
+                    <p className="text-xs text-gray-500">Enabled</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-lg">
+                    <CheckCircle2 className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">Active</p>
+                    <p className="text-xs text-gray-500">Status</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-            {/* Drop zone */}
-            <div
-              className={cn(
-                'border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer',
-                isDragging
-                  ? 'border-emerald-500 bg-emerald-50'
-                  : 'border-gray-300 hover:border-emerald-400'
+          {/* Upload Section */}
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* File Upload */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Upload className="w-5 h-5" />
+                  Upload Documents
+                </CardTitle>
+                <CardDescription>
+                  Drag & drop or click to upload PDFs, Word docs, Markdown, or text files
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Category & Platform selectors */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Category</label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIES.map((cat) => (
+                          <SelectItem key={cat.value} value={cat.value}>
+                            {cat.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Platform</label>
+                    <Select value={selectedPlatform} onValueChange={setSelectedPlatform}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PLATFORMS.map((p) => (
+                          <SelectItem key={p.value} value={p.value}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Drop zone */}
+                <div
+                  className={cn(
+                    'border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer',
+                    isDragging
+                      ? 'border-emerald-500 bg-emerald-50'
+                      : 'border-gray-300 hover:border-emerald-400'
+                  )}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => document.getElementById('file-upload')?.click()}
+                >
+                  <input
+                    id="file-upload"
+                    type="file"
+                    multiple
+                    accept=".pdf,.docx,.txt,.md,.markdown,.html"
+                    className="hidden"
+                    onChange={(e) => handleFileUpload(e.target.files)}
+                  />
+                  <Upload className="w-10 h-10 mx-auto text-gray-400 mb-3" />
+                  <p className="text-sm text-gray-600 mb-1">
+                    {isDragging ? 'Drop files here' : 'Drag & drop files or click to browse'}
+                  </p>
+                  <p className="text-xs text-gray-400">PDF, DOCX, TXT, MD (max 10MB each)</p>
+                </div>
+
+                {/* Upload progress */}
+                {isUploading && (
+                  <div className="space-y-2">
+                    <Progress value={uploadProgress} className="h-2" />
+                    <p className="text-xs text-gray-500 text-center">Uploading... {uploadProgress}%</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* URL Ingestion */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Link2 className="w-5 h-5" />
+                  Import from URL
+                </CardTitle>
+                <CardDescription>
+                  Fetch and process documentation from a web page
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">URL</label>
+                  <Input
+                    placeholder="https://example.com/documentation"
+                    value={urlToIngest}
+                    onChange={(e) => setUrlToIngest(e.target.value)}
+                  />
+                </div>
+                <Button
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  onClick={handleIngestUrl}
+                  disabled={ingestUrlMutation.isPending}
+                >
+                  {ingestUrlMutation.isPending ? 'Importing...' : 'Import URL'}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Documents List */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Training Documents
+                </CardTitle>
+                <CardDescription>
+                  Documents that your AI agent uses for context during tasks
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => sourcesQuery.refetch()}
+                disabled={sourcesQuery.isRefetching}
+              >
+                <RefreshCw className={cn('w-4 h-4 mr-2', sourcesQuery.isRefetching && 'animate-spin')} />
+                Refresh
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {sourcesQuery.isLoading ? (
+                <div className="text-center py-8 text-gray-500">Loading...</div>
+              ) : !sourcesQuery.data?.sources?.length ? (
+                <div className="text-center py-8">
+                  <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                  <p className="text-gray-500">No documents uploaded yet</p>
+                  <p className="text-sm text-gray-400">Upload your first document above</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead className="hidden md:table-cell">Category</TableHead>
+                        <TableHead className="hidden md:table-cell">Platform</TableHead>
+                        <TableHead className="text-center">Chunks</TableHead>
+                        <TableHead className="hidden sm:table-cell">Added</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sourcesQuery.data.sources.map((source: any) => (
+                        <TableRow key={source.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <span className="font-medium truncate max-w-[200px]">{source.title}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <Badge variant="secondary" className="text-xs">
+                              {source.category}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <Badge variant="outline" className="text-xs">
+                              {source.platform}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                              {source.chunkCount}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="hidden sm:table-cell text-gray-500 text-sm">
+                            {formatDate(source.createdAt)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => setDeleteId(source.id)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => document.getElementById('file-upload')?.click()}
-            >
-              <input
-                id="file-upload"
-                type="file"
-                multiple
-                accept=".pdf,.docx,.txt,.md,.markdown,.html"
-                className="hidden"
-                onChange={(e) => handleFileUpload(e.target.files)}
-              />
-              <Upload className="w-10 h-10 mx-auto text-gray-400 mb-3" />
-              <p className="text-sm text-gray-600 mb-1">
-                {isDragging ? 'Drop files here' : 'Drag & drop files or click to browse'}
-              </p>
-              <p className="text-xs text-gray-400">PDF, DOCX, TXT, MD (max 10MB each)</p>
-            </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            {/* Upload progress */}
-            {isUploading && (
-              <div className="space-y-2">
-                <Progress value={uploadProgress} className="h-2" />
-                <p className="text-xs text-gray-500 text-center">Uploading... {uploadProgress}%</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Workflows Tab */}
+        <TabsContent value="workflows">
+          <WorkflowsTab />
+        </TabsContent>
 
-        {/* URL Ingestion */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Link2 className="w-5 h-5" />
-              Import from URL
-            </CardTitle>
-            <CardDescription>
-              Fetch and process documentation from a web page
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">URL</label>
-              <Input
-                placeholder="https://example.com/documentation"
-                value={urlToIngest}
-                onChange={(e) => setUrlToIngest(e.target.value)}
-              />
-            </div>
-            <Button
-              className="w-full bg-emerald-600 hover:bg-emerald-700"
-              onClick={handleIngestUrl}
-              disabled={ingestUrlMutation.isPending}
-            >
-              {ingestUrlMutation.isPending ? 'Importing...' : 'Import URL'}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+        {/* Skills Tab */}
+        <TabsContent value="skills">
+          <SkillsTab />
+        </TabsContent>
 
-      {/* Documents List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <FileText className="w-5 h-5" />
-            Training Documents
-          </CardTitle>
-          <CardDescription>
-            Documents that your AI agent uses for context during tasks
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {sourcesQuery.isLoading ? (
-            <div className="text-center py-8 text-gray-500">Loading...</div>
-          ) : !sourcesQuery.data?.sources?.length ? (
-            <div className="text-center py-8">
-              <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500">No documents uploaded yet</p>
-              <p className="text-sm text-gray-400">Upload your first document above</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead className="hidden md:table-cell">Category</TableHead>
-                    <TableHead className="hidden md:table-cell">Platform</TableHead>
-                    <TableHead className="text-center">Chunks</TableHead>
-                    <TableHead className="hidden sm:table-cell">Added</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sourcesQuery.data.sources.map((source: any) => (
-                    <TableRow key={source.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                          <span className="font-medium truncate max-w-[200px]">{source.title}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <Badge variant="secondary" className="text-xs">
-                          {source.category}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <Badge variant="outline" className="text-xs">
-                          {source.platform}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-                          {source.chunkCount}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell text-gray-500 text-sm">
-                        {formatDate(source.createdAt)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => setDeleteId(source.id)}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {/* Behavior Tab */}
+        <TabsContent value="behavior">
+          <BehaviorTab />
+        </TabsContent>
+      </Tabs>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
