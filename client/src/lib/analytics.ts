@@ -63,11 +63,15 @@ interface ConversionParams {
 /**
  * Track a Google Ads conversion event
  */
+// Google Ads Conversion ID — set via VITE_GOOGLE_ADS_ID env var
+const GOOGLE_ADS_ID = import.meta.env.VITE_GOOGLE_ADS_ID || '';
+
 export function trackConversion(
   event: ConversionEvent,
   params: ConversionParams = {}
 ): void {
   if (typeof window === 'undefined') return;
+  if (!GOOGLE_ADS_ID) return; // Skip if no real conversion ID configured
 
   const label = CONVERSION_LABELS[event];
 
@@ -75,7 +79,7 @@ export function trackConversion(
   if (window.gtag) {
     try {
       window.gtag('event', 'conversion', {
-        send_to: `AW-XXXXXXXXX/${label}`, // Replace AW-XXXXXXXXX with actual conversion ID
+        send_to: `${GOOGLE_ADS_ID}/${label}`,
         value: params.value || 0,
         currency: params.currency || 'USD',
         transaction_id: params.transaction_id,

@@ -1,1140 +1,824 @@
 /**
- * GoHighLevel Service
+ * GoHighLevel (GHL) Core Service
  *
- * OAuth 2.0 token management, auto-refresh, rate limiting, and typed API client wrapper.
- * Uses credentialVault.service.ts for encrypted token storage and oauthState.service.ts for PKCE.
+ * Production-ready GHL API client with:
+ * - OAuth 2.0 token management (stored encrypted via credentialVault)
+ * - Automatic token refresh (checks expiry before each call, refreshes 5 min early)
+ * - Rate limiter (token bucket: 100 requests/min per location)
+ * - Base HTTP client with retry (3 attempts, exponential backoff)
+ * - Error categorization (auth errors vs rate limits vs server errors)
+ * - Multi-location support
+ *
+ * Linear: AI-2877
  */
 
-import { ENV } from "../_core/env";
 import { getCredentialVault } from "./credentialVault.service";
-import { oauthStateService } from "./oauthState.service";
 import { getDb } from "../db";
+import { integrations } from "../../drizzle/schema";
 import { eq, and } from "drizzle-orm";
-import {
-  ghlConnections,
-  ghlSyncLog,
-  type InsertGhlConnection,
-} from "../../drizzle/schema-ghl";
+
+// ========================================
+// CONSTANTS
+// ========================================
+
+const GHL_API_BASE = "https://services.leadconnectorhq.com";
+const GHL_AUTH_BASE = "https://marketplace.gohighlevel.com";
+const GHL_TOKEN_URL = "https://services.leadconnectorhq.com/oauth/token";
+
+/** Refresh tokens 5 minutes before expiry */
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
+
+/** Rate limit: 100 requests per minute per location */
+const RATE_LIMIT_MAX_TOKENS = 100;
+const RATE_LIMIT_REFILL_INTERVAL_MS = 60_000;
+
+/** Retry config */
+const MAX_RETRIES = 3;
+const INITIAL_BACKOFF_MS = 1_000;
+const MAX_BACKOFF_MS = 10_000;
 
 // ========================================
 // TYPES
 // ========================================
 
-export interface GHLTokenData {
+export type GHLScope =
+  | "contacts.readonly"
+  | "contacts.write"
+  | "opportunities.readonly"
+  | "opportunities.write"
+  | "campaigns.readonly"
+  | "campaigns.write"
+  | "workflows.readonly"
+  | "workflows.write"
+  | "locations.readonly"
+  | "locations.write"
+  | "calendars.readonly"
+  | "calendars.write"
+  | "forms.readonly"
+  | "conversations.readonly"
+  | "conversations.write"
+  | "users.readonly"
+  | "medias.readonly"
+  | "medias.write";
+
+export interface GHLTokenSet {
   accessToken: string;
   refreshToken: string;
-  expiresAt: number; // Unix timestamp in ms
+  expiresAt: number; // epoch ms
   tokenType: string;
   scope: string;
   locationId: string;
-  companyId?: string;
-  userType?: string;
-}
-
-export interface GHLApiResponse<T> {
-  data: T;
-  statusCode: number;
-  rateLimitRemaining?: number;
-  rateLimitReset?: number;
+  companyId: string;
+  userId: string;
 }
 
 export interface GHLRequestConfig {
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   endpoint: string;
-  locationId: string;
-  userId: number;
   data?: unknown;
   params?: Record<string, string>;
 }
 
-interface RateLimitBucket {
-  tokens: number;
-  lastRefill: number;
+export interface GHLApiResponse<T = unknown> {
+  data: T;
+  status: number;
+  rateLimit: {
+    remaining: number | null;
+    reset: number | null;
+    limit: number | null;
+  };
 }
 
-interface CircuitBreakerState {
-  failures: number;
-  state: "closed" | "open" | "half-open";
-  lastFailure: number;
-  nextRetry: number;
-}
+export type GHLErrorCategory = "auth" | "rate_limit" | "server" | "client" | "network";
 
-// ========================================
-// GHL SERVICE
-// ========================================
-
-export class GHLService {
-  private rateLimitBuckets: Map<string, RateLimitBucket> = new Map();
-  private circuitBreakers: Map<string, CircuitBreakerState> = new Map();
-  private requestQueues: Map<string, Array<() => void>> = new Map();
-
-  // Rate limit: 100 requests per minute per location
-  private readonly MAX_TOKENS = 100;
-  private readonly REFILL_INTERVAL_MS = 60_000; // 1 minute
-
-  // Circuit breaker settings
-  private readonly CB_FAILURE_THRESHOLD = 5;
-  private readonly CB_RESET_TIMEOUT_MS = 30_000; // 30 seconds
-
-  // Retry settings
-  private readonly MAX_RETRIES = 3;
-  private readonly BASE_RETRY_DELAY_MS = 1_000;
-
-  // ========================================
-  // OAUTH MANAGER
-  // ========================================
-
-  /**
-   * Generate authorization URL with PKCE for GHL OAuth
-   */
-  async initiateAuthorization(
-    userId: number,
-    scopes: string[] = [
-      "contacts.readonly",
-      "contacts.write",
-      "locations.readonly",
-      "opportunities.readonly",
-      "opportunities.write",
-      "campaigns.readonly",
-      "workflows.readonly",
-    ]
-  ): Promise<{ authorizationUrl: string }> {
-    if (!ENV.ghlClientId) {
-      throw new Error("GHL_CLIENT_ID is not configured");
-    }
-    if (!ENV.ghlRedirectUri) {
-      throw new Error("GHL_REDIRECT_URI is not configured");
-    }
-
-    // Generate PKCE parameters
-    const state = oauthStateService.generateState();
-    const codeVerifier = oauthStateService.generateCodeVerifier();
-    const codeChallenge = oauthStateService.generateCodeChallenge(codeVerifier);
-
-    // Store state for callback verification
-    oauthStateService.set(state, {
-      userId: String(userId),
-      provider: "ghl",
-      codeVerifier,
-    });
-
-    // Build authorization URL
-    const params = new URLSearchParams({
-      response_type: "code",
-      client_id: ENV.ghlClientId,
-      redirect_uri: ENV.ghlRedirectUri,
-      scope: scopes.join(" "),
-      state,
-      code_challenge: codeChallenge,
-      code_challenge_method: "S256",
-    });
-
-    const authorizationUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?${params.toString()}`;
-
-    console.log(
-      `[GHL] Authorization initiated for user ${userId} with scopes: ${scopes.join(", ")}`
-    );
-
-    return { authorizationUrl };
-  }
-
-  /**
-   * Handle OAuth callback - exchange code for tokens
-   */
-  async handleCallback(
-    code: string,
-    state: string
-  ): Promise<{
-    success: boolean;
-    locationId?: string;
-    locationName?: string;
-    error?: string;
-  }> {
-    // Verify and consume state
-    const stateData = oauthStateService.consume(state);
-    if (!stateData) {
-      return {
-        success: false,
-        error: "Invalid or expired OAuth state. Please try connecting again.",
-      };
-    }
-
-    if (stateData.provider !== "ghl") {
-      return { success: false, error: "Invalid OAuth provider" };
-    }
-
-    const userId = parseInt(stateData.userId, 10);
-
-    try {
-      // Exchange code for tokens
-      const tokenResponse = await fetch(
-        `${ENV.ghlApiBaseUrl}/oauth/token`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "authorization_code",
-            client_id: ENV.ghlClientId,
-            client_secret: ENV.ghlClientSecret,
-            code,
-            redirect_uri: ENV.ghlRedirectUri,
-            code_verifier: stateData.codeVerifier,
-          }).toString(),
-        }
-      );
-
-      if (!tokenResponse.ok) {
-        const errorBody = await tokenResponse.text();
-        console.error("[GHL] Token exchange failed:", errorBody);
-        return {
-          success: false,
-          error: `Token exchange failed: ${tokenResponse.status}`,
-        };
-      }
-
-      const tokenData = await tokenResponse.json();
-
-      const tokens: GHLTokenData = {
-        accessToken: tokenData.access_token,
-        refreshToken: tokenData.refresh_token,
-        expiresAt: Date.now() + tokenData.expires_in * 1000,
-        tokenType: tokenData.token_type || "Bearer",
-        scope: tokenData.scope || "",
-        locationId: tokenData.locationId || "",
-        companyId: tokenData.companyId || "",
-        userType: tokenData.userType || "",
-      };
-
-      if (!tokens.locationId) {
-        return { success: false, error: "No locationId returned from GHL" };
-      }
-
-      // Store tokens in credential vault
-      const vault = getCredentialVault();
-      const credentialId = await vault.storeCredential(userId, {
-        name: `GHL - ${tokens.locationId}`,
-        service: "ghl",
-        type: "oauth_token",
-        data: {
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
-        },
-        metadata: {
-          expiresAt: tokens.expiresAt,
-          locationId: tokens.locationId,
-          companyId: tokens.companyId,
-          scope: tokens.scope,
-          userType: tokens.userType,
-        },
-      });
-
-      // Store connection record
-      const db = await getDb();
-      if (db) {
-        // Check for existing connection to this location
-        const existing = await db
-          .select()
-          .from(ghlConnections)
-          .where(
-            and(
-              eq(ghlConnections.userId, userId),
-              eq(ghlConnections.locationId, tokens.locationId)
-            )
-          )
-          .limit(1);
-
-        if (existing.length > 0) {
-          // Update existing connection
-          await db
-            .update(ghlConnections)
-            .set({
-              status: "connected",
-              credentialId,
-              companyId: tokens.companyId || null,
-              scopes: tokens.scope,
-              connectedAt: new Date(),
-              lastError: null,
-              updatedAt: new Date(),
-            })
-            .where(eq(ghlConnections.id, existing[0].id));
-        } else {
-          // Create new connection
-          await db.insert(ghlConnections).values({
-            userId,
-            locationId: tokens.locationId,
-            companyId: tokens.companyId || null,
-            locationName: null, // Will be fetched via API later
-            status: "connected",
-            scopes: tokens.scope,
-            credentialId,
-            connectedAt: new Date(),
-          } as InsertGhlConnection);
-        }
-      }
-
-      console.log(
-        `[GHL] Successfully connected location ${tokens.locationId} for user ${userId}`
-      );
-
-      return {
-        success: true,
-        locationId: tokens.locationId,
-      };
-    } catch (error) {
-      console.error("[GHL] OAuth callback error:", error);
-      return {
-        success: false,
-        error:
-          error instanceof Error ? error.message : "Unknown error during OAuth",
-      };
-    }
-  }
-
-  /**
-   * Revoke access and disconnect a GHL location
-   */
-  async revokeAccess(userId: number, locationId: string): Promise<void> {
-    const db = await getDb();
-    if (!db) throw new Error("Database not available");
-
-    // Find the connection
-    const [connection] = await db
-      .select()
-      .from(ghlConnections)
-      .where(
-        and(
-          eq(ghlConnections.userId, userId),
-          eq(ghlConnections.locationId, locationId)
-        )
-      )
-      .limit(1);
-
-    if (!connection) {
-      throw new Error("GHL connection not found");
-    }
-
-    // Delete credential from vault if exists
-    if (connection.credentialId) {
-      try {
-        const vault = getCredentialVault();
-        await vault.deleteCredential(userId, connection.credentialId);
-      } catch (error) {
-        console.warn("[GHL] Failed to delete credential from vault:", error);
-      }
-    }
-
-    // Update connection status
-    await db
-      .update(ghlConnections)
-      .set({
-        status: "disconnected",
-        updatedAt: new Date(),
-      })
-      .where(eq(ghlConnections.id, connection.id));
-
-    console.log(
-      `[GHL] Revoked access for location ${locationId}, user ${userId}`
-    );
-  }
-
-  // ========================================
-  // TOKEN MANAGER
-  // ========================================
-
-  /**
-   * Get a valid access token, auto-refreshing if needed
-   */
-  async getAccessToken(
-    userId: number,
-    locationId: string
-  ): Promise<string> {
-    const db = await getDb();
-    if (!db) throw new Error("Database not available");
-
-    // Find the connection
-    const [connection] = await db
-      .select()
-      .from(ghlConnections)
-      .where(
-        and(
-          eq(ghlConnections.userId, userId),
-          eq(ghlConnections.locationId, locationId),
-        )
-      )
-      .limit(1);
-
-    if (!connection || !connection.credentialId) {
-      throw new Error(`No GHL connection found for location ${locationId}`);
-    }
-
-    if (connection.status === "disconnected") {
-      throw new Error(`GHL connection for location ${locationId} is disconnected`);
-    }
-
-    // Retrieve tokens from vault
-    const vault = getCredentialVault();
-    const credential = await vault.retrieveCredential(
-      userId,
-      connection.credentialId
-    );
-
-    const metadata = credential.metadata as Record<string, unknown> | undefined;
-    const expiresAt = (metadata?.expiresAt as number) || 0;
-
-    // Auto-refresh if within 5 minutes of expiry
-    const REFRESH_BUFFER_MS = 5 * 60 * 1000;
-    if (Date.now() >= expiresAt - REFRESH_BUFFER_MS) {
-      console.log(
-        `[GHL] Token expiring soon for location ${locationId}, refreshing...`
-      );
-      return this.refreshToken(userId, locationId);
-    }
-
-    return credential.data.accessToken || "";
-  }
-
-  /**
-   * Refresh the access token using the refresh token
-   */
-  async refreshToken(
-    userId: number,
-    locationId: string
-  ): Promise<string> {
-    const db = await getDb();
-    if (!db) throw new Error("Database not available");
-
-    const [connection] = await db
-      .select()
-      .from(ghlConnections)
-      .where(
-        and(
-          eq(ghlConnections.userId, userId),
-          eq(ghlConnections.locationId, locationId),
-        )
-      )
-      .limit(1);
-
-    if (!connection || !connection.credentialId) {
-      throw new Error(`No GHL connection found for location ${locationId}`);
-    }
-
-    const vault = getCredentialVault();
-    const credential = await vault.retrieveCredential(
-      userId,
-      connection.credentialId
-    );
-
-    try {
-      const response = await fetch(
-        `${ENV.ghlApiBaseUrl}/oauth/token`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "refresh_token",
-            client_id: ENV.ghlClientId,
-            client_secret: ENV.ghlClientSecret,
-            refresh_token: credential.data.refreshToken || "",
-          }).toString(),
-        }
-      );
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        console.error("[GHL] Token refresh failed:", errorBody);
-
-        // Mark connection as needing re-auth
-        await db
-          .update(ghlConnections)
-          .set({
-            status: "needs_reauth",
-            lastError: `Token refresh failed: ${response.status}`,
-            updatedAt: new Date(),
-          })
-          .where(eq(ghlConnections.id, connection.id));
-
-        throw new Error(`Token refresh failed: ${response.status}`);
-      }
-
-      const tokenData = await response.json();
-
-      const newExpiresAt = Date.now() + tokenData.expires_in * 1000;
-
-      // Delete old credential and store new one
-      await vault.deleteCredential(userId, connection.credentialId);
-      const newCredentialId = await vault.storeCredential(userId, {
-        name: `GHL - ${locationId}`,
-        service: "ghl",
-        type: "oauth_token",
-        data: {
-          accessToken: tokenData.access_token,
-          refreshToken: tokenData.refresh_token,
-        },
-        metadata: {
-          expiresAt: newExpiresAt,
-          locationId,
-          companyId: connection.companyId,
-          scope: connection.scopes,
-        },
-      });
-
-      // Update connection with new credential ID
-      await db
-        .update(ghlConnections)
-        .set({
-          credentialId: newCredentialId,
-          status: "connected",
-          lastError: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(ghlConnections.id, connection.id));
-
-      console.log(
-        `[GHL] Token refreshed for location ${locationId}, user ${userId}`
-      );
-
-      return tokenData.access_token;
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.startsWith("Token refresh failed")
-      ) {
-        throw error;
-      }
-
-      console.error("[GHL] Token refresh error:", error);
-      throw new Error(
-        `Failed to refresh GHL token: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    }
-  }
-
-  // ========================================
-  // RATE LIMITER
-  // ========================================
-
-  /**
-   * Acquire a rate limit token for a location.
-   * Returns immediately if tokens available, otherwise waits.
-   */
-  private async acquireRateToken(locationId: string): Promise<void> {
-    const now = Date.now();
-    let bucket = this.rateLimitBuckets.get(locationId);
-
-    if (!bucket) {
-      bucket = { tokens: this.MAX_TOKENS, lastRefill: now };
-      this.rateLimitBuckets.set(locationId, bucket);
-    }
-
-    // Refill tokens based on elapsed time
-    const elapsed = now - bucket.lastRefill;
-    if (elapsed >= this.REFILL_INTERVAL_MS) {
-      bucket.tokens = this.MAX_TOKENS;
-      bucket.lastRefill = now;
-    } else {
-      // Proportional refill
-      const refillAmount = Math.floor(
-        (elapsed / this.REFILL_INTERVAL_MS) * this.MAX_TOKENS
-      );
-      bucket.tokens = Math.min(this.MAX_TOKENS, bucket.tokens + refillAmount);
-      if (refillAmount > 0) {
-        bucket.lastRefill = now;
-      }
-    }
-
-    if (bucket.tokens > 0) {
-      bucket.tokens--;
-      return;
-    }
-
-    // Wait for next refill
-    const waitTime = this.REFILL_INTERVAL_MS - (now - bucket.lastRefill);
-    console.log(
-      `[GHL] Rate limit reached for location ${locationId}, waiting ${waitTime}ms`
-    );
-
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const b = this.rateLimitBuckets.get(locationId);
-        if (b) {
-          b.tokens = this.MAX_TOKENS - 1;
-          b.lastRefill = Date.now();
-        }
-        resolve();
-      }, waitTime);
-    });
-  }
-
-  // ========================================
-  // CIRCUIT BREAKER
-  // ========================================
-
-  private getCircuitBreaker(locationId: string): CircuitBreakerState {
-    let cb = this.circuitBreakers.get(locationId);
-    if (!cb) {
-      cb = { failures: 0, state: "closed", lastFailure: 0, nextRetry: 0 };
-      this.circuitBreakers.set(locationId, cb);
-    }
-    return cb;
-  }
-
-  private checkCircuitBreaker(locationId: string): void {
-    const cb = this.getCircuitBreaker(locationId);
-
-    if (cb.state === "open") {
-      if (Date.now() >= cb.nextRetry) {
-        cb.state = "half-open";
-        console.log(
-          `[GHL] Circuit breaker half-open for location ${locationId}`
-        );
-      } else {
-        throw new Error(
-          `Circuit breaker OPEN for GHL location ${locationId}. Retry after ${new Date(cb.nextRetry).toISOString()}`
-        );
-      }
-    }
-  }
-
-  private recordSuccess(locationId: string): void {
-    const cb = this.getCircuitBreaker(locationId);
-    cb.failures = 0;
-    cb.state = "closed";
-  }
-
-  private recordFailure(locationId: string): void {
-    const cb = this.getCircuitBreaker(locationId);
-    cb.failures++;
-    cb.lastFailure = Date.now();
-
-    if (cb.failures >= this.CB_FAILURE_THRESHOLD) {
-      cb.state = "open";
-      cb.nextRetry = Date.now() + this.CB_RESET_TIMEOUT_MS;
-      console.error(
-        `[GHL] Circuit breaker OPEN for location ${locationId} after ${cb.failures} failures`
-      );
-    }
-  }
-
-  /**
-   * Get all circuit breaker statuses (for UI monitoring)
-   */
-  getCircuitBreakerStatuses(): Array<{
-    locationId: string;
-    state: "closed" | "open" | "half-open";
-    failures: number;
-    lastFailure: number;
-    nextRetry: number;
-  }> {
-    const statuses: Array<{
-      locationId: string;
-      state: "closed" | "open" | "half-open";
-      failures: number;
-      lastFailure: number;
-      nextRetry: number;
-    }> = [];
-    for (const [locationId, cb] of this.circuitBreakers.entries()) {
-      if (cb.state !== "closed" || cb.failures > 0) {
-        statuses.push({
-          locationId,
-          state: cb.state,
-          failures: cb.failures,
-          lastFailure: cb.lastFailure,
-          nextRetry: cb.nextRetry,
-        });
-      }
-    }
-    return statuses;
-  }
-
-  // ========================================
-  // API CLIENT
-  // ========================================
-
-  /**
-   * Make an authenticated API request to GHL
-   */
-  async request<T>(config: GHLRequestConfig): Promise<GHLApiResponse<T>> {
-    const { method, endpoint, locationId, userId, data, params } = config;
-
-    // Check circuit breaker
-    this.checkCircuitBreaker(locationId);
-
-    // Acquire rate limit token
-    await this.acquireRateToken(locationId);
-
-    // Get access token (auto-refreshes if needed)
-    const accessToken = await this.getAccessToken(userId, locationId);
-
-    // Build URL
-    const url = new URL(`${ENV.ghlApiBaseUrl}${endpoint}`);
-    if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        url.searchParams.set(key, value);
-      }
-    }
-
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt <= this.MAX_RETRIES; attempt++) {
-      try {
-        const headers: Record<string, string> = {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-          Version: "2021-07-28", // GHL API version
-        };
-
-        const fetchConfig: RequestInit = {
-          method,
-          headers,
-        };
-
-        if (data && method !== "GET") {
-          fetchConfig.body = JSON.stringify(data);
-        }
-
-        const response = await fetch(url.toString(), fetchConfig);
-
-        // Parse rate limit headers
-        const rateLimitRemaining = parseInt(
-          response.headers.get("x-ratelimit-remaining") || "100",
-          10
-        );
-        const rateLimitReset = parseInt(
-          response.headers.get("x-ratelimit-reset") || "0",
-          10
-        );
-
-        // Update our rate limiter with server feedback
-        if (rateLimitRemaining !== undefined) {
-          const bucket = this.rateLimitBuckets.get(locationId);
-          if (bucket) {
-            bucket.tokens = Math.min(bucket.tokens, rateLimitRemaining);
-          }
-        }
-
-        // Handle 429 (rate limited)
-        if (response.status === 429) {
-          const retryAfter = parseInt(
-            response.headers.get("retry-after") || "60",
-            10
-          );
-          console.warn(
-            `[GHL] Rate limited for location ${locationId}, retrying after ${retryAfter}s`
-          );
-
-          if (attempt < this.MAX_RETRIES) {
-            await this.sleep(retryAfter * 1000);
-            continue;
-          }
-        }
-
-        // Handle 5xx (server error)
-        if (response.status >= 500 && attempt < this.MAX_RETRIES) {
-          const delay =
-            this.BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
-          console.warn(
-            `[GHL] Server error ${response.status} for location ${locationId}, retrying in ${delay}ms`
-          );
-          this.recordFailure(locationId);
-          await this.sleep(delay);
-          continue;
-        }
-
-        if (!response.ok) {
-          const errorBody = await response.text();
-          this.recordFailure(locationId);
-          throw new Error(
-            `GHL API error ${response.status}: ${errorBody}`
-          );
-        }
-
-        // Success
-        this.recordSuccess(locationId);
-
-        const responseData = (await response.json()) as T;
-
-        return {
-          data: responseData,
-          statusCode: response.status,
-          rateLimitRemaining,
-          rateLimitReset,
-        };
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-
-        if (attempt < this.MAX_RETRIES) {
-          const delay =
-            this.BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
-          await this.sleep(delay);
-        }
-      }
-    }
-
-    this.recordFailure(config.locationId);
-    throw lastError || new Error("GHL API request failed after max retries");
-  }
-
-  /**
-   * Execute multiple requests serially with rate limit awareness
-   */
-  async batchRequest<T>(
-    requests: GHLRequestConfig[]
-  ): Promise<GHLApiResponse<T>[]> {
-    const results: GHLApiResponse<T>[] = [];
-
-    for (const req of requests) {
-      const result = await this.request<T>(req);
-      results.push(result);
-    }
-
-    return results;
-  }
-
-  // ========================================
-  // CONNECTION MANAGEMENT
-  // ========================================
-
-  /**
-   * Get all connections for a user
-   */
-  async getConnections(
-    userId: number
-  ): Promise<Array<typeof ghlConnections.$inferSelect>> {
-    const db = await getDb();
-    if (!db) return [];
-
-    return db
-      .select()
-      .from(ghlConnections)
-      .where(eq(ghlConnections.userId, userId));
-  }
-
-  /**
-   * Get connection status summary
-   */
-  async getConnectionStatus(userId: number): Promise<
-    Array<{
-      locationId: string;
-      locationName: string | null;
-      status: string;
-      connectedAt: Date;
-      lastSyncAt: Date | null;
-      lastError: string | null;
-    }>
-  > {
-    const connections = await this.getConnections(userId);
-
-    return connections.map((c) => ({
-      locationId: c.locationId,
-      locationName: c.locationName,
-      status: c.status,
-      connectedAt: c.connectedAt,
-      lastSyncAt: c.lastSyncAt,
-      lastError: c.lastError,
-    }));
-  }
-
-  /**
-   * Test a connection by making a simple API call
-   */
-  async testConnection(
-    userId: number,
-    locationId: string
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      await this.request({
-        method: "GET",
-        endpoint: "/contacts/v1/",
-        locationId,
-        userId,
-        params: { limit: "1" },
-      });
-
-      // Update last sync time
-      const db = await getDb();
-      if (db) {
-        await db
-          .update(ghlConnections)
-          .set({ lastSyncAt: new Date(), updatedAt: new Date() })
-          .where(
-            and(
-              eq(ghlConnections.userId, userId),
-              eq(ghlConnections.locationId, locationId)
-            )
-          );
-      }
-
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error:
-          error instanceof Error ? error.message : "Connection test failed",
-      };
-    }
-  }
-
-  // ========================================
-  // SYNC LOGGING
-  // ========================================
-
-  /**
-   * Log a sync operation.
-   * Accepts a simplified interface and maps to the ghlSyncLog schema.
-   */
-  async logSync(params: {
-    userId: number;
-    locationId: string;
-    operation: string;
-    entityType: string;
-    entityId?: string | null;
-    direction: string;
-    status: string;
-    error?: string;
-  }): Promise<void> {
-    const db = await getDb();
-    if (!db) return;
-
-    try {
-      // Look up the connectionId for this user+location
-      const [connection] = await db
-        .select({ id: ghlConnections.id })
-        .from(ghlConnections)
-        .where(
-          and(
-            eq(ghlConnections.userId, params.userId),
-            eq(ghlConnections.locationId, params.locationId)
-          )
-        )
-        .limit(1);
-
-      if (!connection) {
-        console.warn(`[GHL] No connection found for sync log: user=${params.userId}, location=${params.locationId}`);
-        return;
-      }
-
-      await db.insert(ghlSyncLog).values({
-        connectionId: connection.id,
-        userId: params.userId,
-        syncType: `${params.operation}:${params.entityType}`,
-        direction: params.direction === "outbound" ? "push" : "pull",
-        status: params.status,
-        errorMessage: params.error || null,
-        metadata: params.entityId ? { entityId: params.entityId } : null,
-      });
-    } catch (error) {
-      console.error("[GHL] Failed to log sync:", error);
-    }
-  }
-
-  // ========================================
-  // APPOINTMENT MANAGEMENT (FR-040 through FR-043)
-  // ========================================
-
-  /**
-   * Create an appointment in GHL
-   */
-  async createAppointment(
-    userId: number,
-    locationId: string,
-    data: {
-      calendarId: string;
-      contactId: string;
-      title: string;
-      startTime: string;
-      endTime: string;
-      appointmentStatus?: string;
-      assignedUserId?: string;
-      notes?: string;
-    }
-  ): Promise<Record<string, unknown>> {
-    const response = await this.request<Record<string, unknown>>({
-      method: "POST",
-      endpoint: "/calendars/events",
-      locationId,
-      userId,
-      data: {
-        calendarId: data.calendarId,
-        locationId,
-        contactId: data.contactId,
-        title: data.title,
-        startTime: data.startTime,
-        endTime: data.endTime,
-        appointmentStatus: data.appointmentStatus || "confirmed",
-        assignedUserId: data.assignedUserId,
-        notes: data.notes,
-      },
-    });
-
-    await this.logSync({
-      userId,
-      locationId,
-      operation: "create",
-      entityType: "appointment",
-      entityId: (response.data as any)?.id || null,
-      direction: "outbound",
-      status: "success",
-    });
-
-    return response.data;
-  }
-
-  /**
-   * Get an appointment by ID
-   */
-  async getAppointment(
-    userId: number,
-    locationId: string,
-    appointmentId: string
-  ): Promise<Record<string, unknown>> {
-    const response = await this.request<Record<string, unknown>>({
-      method: "GET",
-      endpoint: `/calendars/events/${appointmentId}`,
-      locationId,
-      userId,
-    });
-    return response.data;
-  }
-
-  /**
-   * Update an appointment
-   */
-  async updateAppointment(
-    userId: number,
-    locationId: string,
-    appointmentId: string,
-    data: Partial<{
-      title: string;
-      startTime: string;
-      endTime: string;
-      appointmentStatus: string;
-      assignedUserId: string;
-      notes: string;
-    }>
-  ): Promise<Record<string, unknown>> {
-    const response = await this.request<Record<string, unknown>>({
-      method: "PUT",
-      endpoint: `/calendars/events/${appointmentId}`,
-      locationId,
-      userId,
-      data,
-    });
-
-    await this.logSync({
-      userId,
-      locationId,
-      operation: "update",
-      entityType: "appointment",
-      entityId: appointmentId,
-      direction: "outbound",
-      status: "success",
-    });
-
-    return response.data;
-  }
-
-  /**
-   * Delete an appointment
-   */
-  async deleteAppointment(
-    userId: number,
-    locationId: string,
-    appointmentId: string
-  ): Promise<void> {
-    await this.request({
-      method: "DELETE",
-      endpoint: `/calendars/events/${appointmentId}`,
-      locationId,
-      userId,
-    });
-
-    await this.logSync({
-      userId,
-      locationId,
-      operation: "delete",
-      entityType: "appointment",
-      entityId: appointmentId,
-      direction: "outbound",
-      status: "success",
-    });
-  }
-
-  /**
-   * Get calendar availability (free slots)
-   */
-  async getAvailability(
-    userId: number,
-    locationId: string,
-    calendarId: string,
-    startDate: string,
-    endDate?: string
-  ): Promise<Array<{ startTime: string; endTime: string }>> {
-    const params: Record<string, string> = { startDate };
-    if (endDate) params.endDate = endDate;
-
-    const response = await this.request<{ slots: Array<{ startTime: string; endTime: string }> }>({
-      method: "GET",
-      endpoint: `/calendars/${calendarId}/free-slots`,
-      locationId,
-      userId,
-      params,
-    });
-
-    return response.data?.slots || [];
-  }
-
-  /**
-   * List calendars for a location
-   */
-  async listCalendars(
-    userId: number,
-    locationId: string
-  ): Promise<Array<{ id: string; name: string; isActive: boolean }>> {
-    const response = await this.request<{ calendars: Array<{ id: string; name: string; isActive: boolean }> }>({
-      method: "GET",
-      endpoint: "/calendars/",
-      locationId,
-      userId,
-    });
-
-    return response.data?.calendars || [];
-  }
-
-  // ========================================
-  // UTILITIES
-  // ========================================
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-}
-
-// ========================================
-// SINGLETON
-// ========================================
-
-let ghlServiceInstance: GHLService | null = null;
-
-export function getGHLService(): GHLService {
-  if (!ghlServiceInstance) {
-    ghlServiceInstance = new GHLService();
-  }
-  return ghlServiceInstance;
-}
-
-/** Lowercase alias for backwards compatibility */
-export const getGhlService = getGHLService;
-
-/** Error class for GHL-specific errors */
 export class GHLError extends Error {
+  category: GHLErrorCategory;
+  status: number;
+  retryable: boolean;
+  retryAfter?: number;
+
   constructor(
     message: string,
-    public category: "auth" | "rate_limit" | "api" | "network" | "unknown" = "unknown",
-    public statusCode?: number
+    category: GHLErrorCategory,
+    status: number,
+    retryable: boolean,
+    retryAfter?: number
   ) {
     super(message);
     this.name = "GHLError";
+    this.category = category;
+    this.status = status;
+    this.retryable = retryable;
+    this.retryAfter = retryAfter;
   }
+}
+
+export interface GHLConnectionStatus {
+  connected: boolean;
+  locationId: string | null;
+  companyId: string | null;
+  tokenExpiresAt: number | null;
+  lastRefreshedAt: number | null;
+  scopes: string[];
+}
+
+export interface GHLLocation {
+  id: string;
+  name: string;
+  companyId: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  phone?: string;
+  email?: string;
+}
+
+// ========================================
+// TOKEN BUCKET RATE LIMITER
+// ========================================
+
+class TokenBucketRateLimiter {
+  private tokens: number;
+  private maxTokens: number;
+  private refillIntervalMs: number;
+  private lastRefill: number;
+
+  constructor(maxTokens: number, refillIntervalMs: number) {
+    this.maxTokens = maxTokens;
+    this.tokens = maxTokens;
+    this.refillIntervalMs = refillIntervalMs;
+    this.lastRefill = Date.now();
+  }
+
+  private refill(): void {
+    const now = Date.now();
+    const elapsed = now - this.lastRefill;
+    const tokensToAdd = Math.floor(
+      (elapsed / this.refillIntervalMs) * this.maxTokens
+    );
+    if (tokensToAdd > 0) {
+      this.tokens = Math.min(this.maxTokens, this.tokens + tokensToAdd);
+      this.lastRefill = now;
+    }
+  }
+
+  async acquire(): Promise<void> {
+    this.refill();
+    if (this.tokens > 0) {
+      this.tokens--;
+      return;
+    }
+    // Wait until a token is available
+    const waitMs = Math.ceil(
+      (this.refillIntervalMs / this.maxTokens) * (1 - this.tokens)
+    );
+    await new Promise((resolve) => setTimeout(resolve, Math.max(waitMs, 100)));
+    this.refill();
+    if (this.tokens > 0) {
+      this.tokens--;
+      return;
+    }
+    throw new GHLError(
+      "Rate limit exceeded — too many requests to GHL",
+      "rate_limit",
+      429,
+      true,
+      waitMs / 1000
+    );
+  }
+
+  get remaining(): number {
+    this.refill();
+    return this.tokens;
+  }
+}
+
+// ========================================
+// PER-LOCATION RATE LIMITERS
+// ========================================
+
+const rateLimiters = new Map<string, TokenBucketRateLimiter>();
+
+function getRateLimiter(locationId: string): TokenBucketRateLimiter {
+  if (!rateLimiters.has(locationId)) {
+    rateLimiters.set(
+      locationId,
+      new TokenBucketRateLimiter(RATE_LIMIT_MAX_TOKENS, RATE_LIMIT_REFILL_INTERVAL_MS)
+    );
+  }
+  return rateLimiters.get(locationId)!;
+}
+
+// ========================================
+// GHL SERVICE CLASS
+// ========================================
+
+export class GHLService {
+  private locationId: string;
+  private userId: number;
+  private cachedToken: { accessToken: string; expiresAt: number } | null = null;
+
+  constructor(locationId: string, userId: number) {
+    this.locationId = locationId;
+    this.userId = userId;
+  }
+
+  // ----------------------------------------
+  // OAuth 2.0 helpers
+  // ----------------------------------------
+
+  /**
+   * Build the GHL OAuth authorization URL
+   */
+  static buildAuthorizationUrl(params: {
+    clientId: string;
+    redirectUri: string;
+    scopes: GHLScope[];
+    state: string;
+  }): string {
+    const url = new URL("/oauth/chooselocation", GHL_AUTH_BASE);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("client_id", params.clientId);
+    url.searchParams.set("redirect_uri", params.redirectUri);
+    url.searchParams.set("scope", params.scopes.join(" "));
+    url.searchParams.set("state", params.state);
+    return url.toString();
+  }
+
+  /**
+   * Exchange an authorization code for tokens
+   */
+  static async exchangeCodeForTokens(params: {
+    code: string;
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+  }): Promise<{
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    token_type: string;
+    scope: string;
+    locationId: string;
+    companyId: string;
+    userId: string;
+  }> {
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code: params.code,
+      client_id: params.clientId,
+      client_secret: params.clientSecret,
+      redirect_uri: params.redirectUri,
+    });
+
+    const response = await fetch(GHL_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new GHLError(
+        `Token exchange failed (${response.status}): ${text}`,
+        "auth",
+        response.status,
+        false
+      );
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Refresh an access token using a refresh token
+   */
+  static async refreshAccessToken(params: {
+    refreshToken: string;
+    clientId: string;
+    clientSecret: string;
+  }): Promise<{
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    token_type: string;
+    scope: string;
+  }> {
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: params.refreshToken,
+      client_id: params.clientId,
+      client_secret: params.clientSecret,
+    });
+
+    const response = await fetch(GHL_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new GHLError(
+        `Token refresh failed (${response.status}): ${text}`,
+        "auth",
+        response.status,
+        false
+      );
+    }
+
+    return response.json();
+  }
+
+  // ----------------------------------------
+  // Token management
+  // ----------------------------------------
+
+  /**
+   * Get a valid access token, refreshing automatically if within 5 min of expiry.
+   */
+  async getAccessToken(): Promise<string> {
+    // Check in-memory cache first
+    if (
+      this.cachedToken &&
+      this.cachedToken.expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS
+    ) {
+      return this.cachedToken.accessToken;
+    }
+
+    // Fetch from DB
+    const db = await getDb();
+    if (!db) throw new GHLError("Database not available", "server", 500, false);
+
+    const [integration] = await db
+      .select()
+      .from(integrations)
+      .where(
+        and(
+          eq(integrations.userId, this.userId),
+          eq(integrations.service, `ghl:${this.locationId}`),
+          eq(integrations.isActive, "true")
+        )
+      )
+      .limit(1);
+
+    if (!integration) {
+      throw new GHLError(
+        `No GHL connection found for location ${this.locationId}`,
+        "auth",
+        401,
+        false
+      );
+    }
+
+    // Parse metadata for expiry info
+    const metadata = integration.metadata
+      ? JSON.parse(integration.metadata)
+      : {};
+    const expiresAt = integration.expiresAt
+      ? new Date(integration.expiresAt).getTime()
+      : 0;
+
+    // If token is still fresh, decrypt and return
+    if (expiresAt > Date.now() + TOKEN_REFRESH_BUFFER_MS) {
+      // Retrieve via credential vault if stored there, otherwise use integration table
+      const vault = getCredentialVault();
+      if (metadata.credentialId) {
+        const cred = await vault.retrieveCredential(
+          this.userId,
+          metadata.credentialId
+        );
+        this.cachedToken = {
+          accessToken: cred.data.accessToken!,
+          expiresAt,
+        };
+        return cred.data.accessToken!;
+      }
+
+      // Fallback: access token stored directly in integrations table
+      if (integration.accessToken) {
+        this.cachedToken = {
+          accessToken: integration.accessToken,
+          expiresAt,
+        };
+        return integration.accessToken;
+      }
+    }
+
+    // Token expired or about to expire — refresh
+    const clientId = process.env.GHL_CLIENT_ID;
+    const clientSecret = process.env.GHL_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      throw new GHLError(
+        "GHL_CLIENT_ID and GHL_CLIENT_SECRET must be set",
+        "auth",
+        500,
+        false
+      );
+    }
+
+    // Get the refresh token
+    let refreshToken: string | null = null;
+    if (metadata.credentialId) {
+      const vault = getCredentialVault();
+      const cred = await vault.retrieveCredential(
+        this.userId,
+        metadata.credentialId
+      );
+      refreshToken = cred.data.refreshToken || null;
+    }
+    if (!refreshToken) {
+      refreshToken = integration.refreshToken || null;
+    }
+    if (!refreshToken) {
+      throw new GHLError(
+        "No refresh token available — user must re-authorize",
+        "auth",
+        401,
+        false
+      );
+    }
+
+    console.log(
+      `[GHL] Refreshing token for location ${this.locationId}, user ${this.userId}`
+    );
+
+    const tokens = await GHLService.refreshAccessToken({
+      refreshToken,
+      clientId,
+      clientSecret,
+    });
+
+    const newExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+
+    // Persist updated tokens
+    if (metadata.credentialId) {
+      const vault = getCredentialVault();
+      await vault.storeCredential(this.userId, {
+        name: `ghl:${this.locationId}`,
+        service: "gohighlevel",
+        type: "oauth_token",
+        data: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+        },
+        metadata: { locationId: this.locationId, scope: tokens.scope },
+      });
+    }
+
+    // Always update the integrations table
+    await db
+      .update(integrations)
+      .set({
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: newExpiresAt,
+        updatedAt: new Date(),
+        metadata: JSON.stringify({
+          ...metadata,
+          scope: tokens.scope,
+          lastRefreshedAt: new Date().toISOString(),
+        }),
+      })
+      .where(
+        and(
+          eq(integrations.userId, this.userId),
+          eq(integrations.service, `ghl:${this.locationId}`)
+        )
+      );
+
+    this.cachedToken = {
+      accessToken: tokens.access_token,
+      expiresAt: newExpiresAt.getTime(),
+    };
+
+    console.log(
+      `[GHL] Token refreshed for location ${this.locationId}, expires ${newExpiresAt.toISOString()}`
+    );
+
+    return tokens.access_token;
+  }
+
+  // ----------------------------------------
+  // HTTP client with retry
+  // ----------------------------------------
+
+  /**
+   * Make an authenticated request to the GHL API with rate limiting and retry.
+   */
+  async request<T = unknown>(
+    config: GHLRequestConfig
+  ): Promise<GHLApiResponse<T>> {
+    const limiter = getRateLimiter(this.locationId);
+    let lastError: GHLError | null = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // Acquire rate limit token
+        await limiter.acquire();
+
+        // Get fresh access token (auto-refreshes if needed)
+        const accessToken = await this.getAccessToken();
+
+        // Build URL
+        const url = new URL(config.endpoint, GHL_API_BASE);
+        if (config.params) {
+          for (const [key, value] of Object.entries(config.params)) {
+            url.searchParams.set(key, value);
+          }
+        }
+
+        // Make request
+        const fetchOptions: RequestInit = {
+          method: config.method,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+            Version: "2021-07-28",
+            ...(config.data ? { "Content-Type": "application/json" } : {}),
+          },
+        };
+
+        if (config.data && config.method !== "GET") {
+          fetchOptions.body = JSON.stringify(config.data);
+        }
+
+        const response = await fetch(url.toString(), fetchOptions);
+
+        // Parse rate limit headers
+        const rateLimit = {
+          remaining: response.headers.get("x-ratelimit-remaining")
+            ? parseInt(response.headers.get("x-ratelimit-remaining")!, 10)
+            : null,
+          reset: response.headers.get("x-ratelimit-reset")
+            ? parseInt(response.headers.get("x-ratelimit-reset")!, 10)
+            : null,
+          limit: response.headers.get("x-ratelimit-limit")
+            ? parseInt(response.headers.get("x-ratelimit-limit")!, 10)
+            : null,
+        };
+
+        // Handle errors
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "");
+          const error = categorizeError(response.status, errorText);
+
+          if (error.retryable && attempt < MAX_RETRIES) {
+            lastError = error;
+            const backoff = Math.min(
+              INITIAL_BACKOFF_MS * Math.pow(2, attempt),
+              MAX_BACKOFF_MS
+            );
+            const jitter = Math.random() * backoff * 0.1;
+            console.log(
+              `[GHL] Request failed (${error.status}), retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
+            );
+            await new Promise((resolve) =>
+              setTimeout(resolve, backoff + jitter)
+            );
+            continue;
+          }
+
+          throw error;
+        }
+
+        // Parse response
+        const data = (await response.json().catch(() => ({}))) as T;
+
+        return { data, status: response.status, rateLimit };
+      } catch (error) {
+        if (error instanceof GHLError) {
+          if (!error.retryable || attempt >= MAX_RETRIES) {
+            throw error;
+          }
+          lastError = error;
+        } else {
+          // Network error — retryable
+          const networkError = new GHLError(
+            `Network error: ${error instanceof Error ? error.message : "Unknown"}`,
+            "network",
+            0,
+            true
+          );
+          if (attempt >= MAX_RETRIES) {
+            throw networkError;
+          }
+          lastError = networkError;
+        }
+
+        const backoff = Math.min(
+          INITIAL_BACKOFF_MS * Math.pow(2, attempt),
+          MAX_BACKOFF_MS
+        );
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+      }
+    }
+
+    throw lastError || new GHLError("Max retries exceeded", "server", 500, false);
+  }
+
+  // ----------------------------------------
+  // Connection status
+  // ----------------------------------------
+
+  /**
+   * Check GHL connection health for this location.
+   */
+  async getConnectionStatus(): Promise<GHLConnectionStatus> {
+    const db = await getDb();
+    if (!db) {
+      return {
+        connected: false,
+        locationId: this.locationId,
+        companyId: null,
+        tokenExpiresAt: null,
+        lastRefreshedAt: null,
+        scopes: [],
+      };
+    }
+
+    const [integration] = await db
+      .select()
+      .from(integrations)
+      .where(
+        and(
+          eq(integrations.userId, this.userId),
+          eq(integrations.service, `ghl:${this.locationId}`),
+          eq(integrations.isActive, "true")
+        )
+      )
+      .limit(1);
+
+    if (!integration) {
+      return {
+        connected: false,
+        locationId: this.locationId,
+        companyId: null,
+        tokenExpiresAt: null,
+        lastRefreshedAt: null,
+        scopes: [],
+      };
+    }
+
+    const metadata = integration.metadata
+      ? JSON.parse(integration.metadata)
+      : {};
+
+    return {
+      connected: true,
+      locationId: this.locationId,
+      companyId: metadata.companyId || null,
+      tokenExpiresAt: integration.expiresAt
+        ? new Date(integration.expiresAt).getTime()
+        : null,
+      lastRefreshedAt: metadata.lastRefreshedAt
+        ? new Date(metadata.lastRefreshedAt).getTime()
+        : null,
+      scopes: metadata.scope ? metadata.scope.split(" ") : [],
+    };
+  }
+
+  /**
+   * Revoke tokens and mark integration as inactive.
+   */
+  async disconnect(): Promise<void> {
+    const db = await getDb();
+    if (!db) throw new GHLError("Database not available", "server", 500, false);
+
+    await db
+      .update(integrations)
+      .set({
+        isActive: "false",
+        accessToken: null,
+        refreshToken: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(integrations.userId, this.userId),
+          eq(integrations.service, `ghl:${this.locationId}`)
+        )
+      );
+
+    // Clear cached token
+    this.cachedToken = null;
+
+    // Remove rate limiter
+    rateLimiters.delete(this.locationId);
+
+    console.log(
+      `[GHL] Disconnected location ${this.locationId} for user ${this.userId}`
+    );
+  }
+
+  // ----------------------------------------
+  // Static helpers for listing locations
+  // ----------------------------------------
+
+  /**
+   * List all connected GHL locations for a user.
+   */
+  static async listLocations(
+    userId: number
+  ): Promise<
+    Array<{
+      locationId: string;
+      companyId: string | null;
+      connected: boolean;
+      expiresAt: Date | null;
+      scopes: string[];
+    }>
+  > {
+    const db = await getDb();
+    if (!db) return [];
+
+    const results = await db
+      .select()
+      .from(integrations)
+      .where(
+        and(eq(integrations.userId, userId), eq(integrations.isActive, "true"))
+      );
+
+    return results
+      .filter((r) => r.service.startsWith("ghl:"))
+      .map((r) => {
+        const metadata = r.metadata ? JSON.parse(r.metadata) : {};
+        return {
+          locationId: r.service.replace("ghl:", ""),
+          companyId: metadata.companyId || null,
+          connected: true,
+          expiresAt: r.expiresAt,
+          scopes: metadata.scope ? metadata.scope.split(" ") : [],
+        };
+      });
+  }
+}
+
+// ========================================
+// ERROR CATEGORIZATION
+// ========================================
+
+function categorizeError(status: number, body: string): GHLError {
+  if (status === 401 || status === 403) {
+    return new GHLError(
+      `GHL auth error (${status}): ${body}`,
+      "auth",
+      status,
+      status === 401
+    );
+  }
+
+  if (status === 429) {
+    let retryAfter = 60;
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed.retryAfter) retryAfter = parsed.retryAfter;
+    } catch {
+      // ignore
+    }
+    return new GHLError(
+      `GHL rate limit hit: ${body}`,
+      "rate_limit",
+      429,
+      true,
+      retryAfter
+    );
+  }
+
+  if (status >= 500) {
+    return new GHLError(
+      `GHL server error (${status}): ${body}`,
+      "server",
+      status,
+      true
+    );
+  }
+
+  return new GHLError(
+    `GHL client error (${status}): ${body}`,
+    "client",
+    status,
+    false
+  );
+}
+
+// ========================================
+// FACTORY
+// ========================================
+
+/**
+ * Create a GHL service instance for a given location and user.
+ */
+export function createGHLService(
+  locationId: string,
+  userId: number
+): GHLService {
+  return new GHLService(locationId, userId);
 }

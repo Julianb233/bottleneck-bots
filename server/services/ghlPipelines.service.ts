@@ -1,35 +1,37 @@
 /**
- * GHL Pipeline, Campaign, Workflow & Messaging Service (FR-015 through FR-039)
+ * GHL Pipelines, Campaigns, Workflows & Messaging Service
  *
- * Pipeline operations, opportunity management, campaigns,
- * workflow triggers, SMS/email messaging, and template management.
- * Built on top of GHLService.request() base HTTP client.
+ * Wraps the GHL API for:
+ * - Pipelines & Opportunities (FR-015 to FR-021)
+ * - Campaigns (FR-022 to FR-025)
+ * - Workflows (FR-026, FR-027)
+ * - Messaging: SMS & Email (FR-028, FR-029)
+ *
+ * All methods use the rate-limited, auto-refreshing HTTP client from GHLService.
+ *
+ * Linear: AI-2870
  */
 
-import { getGHLService, type GHLApiResponse } from "./ghl.service";
+import { GHLService } from "./ghl.service";
 
 // ========================================
-// TYPES -- PIPELINES & OPPORTUNITIES
+// TYPES — Pipelines & Opportunities
 // ========================================
 
-export interface GhlPipeline {
-  id: string;
-  name: string;
-  locationId: string;
-  stages: GhlPipelineStage[];
-  showInFunnel?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface GhlPipelineStage {
+export interface GHLPipelineStage {
   id: string;
   name: string;
   position: number;
-  showInFunnel?: boolean;
 }
 
-export interface GhlOpportunity {
+export interface GHLPipeline {
+  id: string;
+  name: string;
+  stages: GHLPipelineStage[];
+  locationId: string;
+}
+
+export interface GHLOpportunity {
   id: string;
   name: string;
   pipelineId: string;
@@ -38,432 +40,377 @@ export interface GhlOpportunity {
   contactId: string;
   monetaryValue?: number;
   assignedTo?: string;
-  source?: string;
-  tags?: string[];
-  customFields?: Array<{ id: string; value: unknown }>;
-  notes?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  locationId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface GhlOpportunityCreateInput {
-  name: string;
+export interface CreateOpportunityData {
   pipelineId: string;
   pipelineStageId: string;
   contactId: string;
+  name: string;
   status?: string;
   monetaryValue?: number;
   assignedTo?: string;
-  source?: string;
-  tags?: string[];
-  customFields?: Array<{ id: string; value: unknown }>;
 }
 
-export interface GhlOpportunityUpdateInput {
+export interface UpdateOpportunityData {
   name?: string;
   pipelineStageId?: string;
   status?: string;
   monetaryValue?: number;
   assignedTo?: string;
-  source?: string;
-  tags?: string[];
-  customFields?: Array<{ id: string; value: unknown }>;
-  notes?: string;
-}
-
-export interface GhlOpportunitySearchParams {
-  pipelineId?: string;
-  pipelineStageId?: string;
-  status?: string;
-  assignedTo?: string;
-  contactId?: string;
-  q?: string;
-  limit?: number;
-  startAfterId?: string;
 }
 
 // ========================================
-// TYPES -- CAMPAIGNS
+// TYPES — Campaigns
 // ========================================
 
-export interface GhlCampaign {
+export interface GHLCampaign {
   id: string;
   name: string;
-  locationId: string;
   status: string;
-  type?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  locationId: string;
 }
 
-// ========================================
-// TYPES -- WORKFLOWS
-// ========================================
-
-export interface GhlWorkflow {
+export interface GHLCampaignStats {
   id: string;
   name: string;
-  locationId: string;
   status: string;
-  version?: number;
-  createdAt?: string;
-  updatedAt?: string;
+  totalContacts: number;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  bounced: number;
+  unsubscribed: number;
 }
 
 // ========================================
-// TYPES -- MESSAGING
+// TYPES — Workflows
 // ========================================
 
-export interface GhlMessageStatus {
+export interface GHLWorkflow {
   id: string;
-  type: string;
+  name: string;
   status: string;
-  direction: string;
+  locationId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TriggerWorkflowData {
   contactId: string;
-  body?: string;
-  dateAdded?: string;
+  [key: string]: unknown;
 }
 
-export interface GhlTemplate {
-  id: string;
-  name: string;
-  type: string;
-  body?: string;
+// ========================================
+// TYPES — Messaging
+// ========================================
+
+export interface SendSMSResult {
+  conversationId: string;
+  messageId: string;
+  message: string;
+  contactId: string;
+}
+
+export interface SendEmailData {
   subject?: string;
-  locationId: string;
-  createdAt?: string;
+  htmlBody?: string;
+  altText?: string;
+  replyTo?: string;
+}
+
+export interface SendEmailResult {
+  conversationId: string;
+  messageId: string;
+  contactId: string;
+  emailMessageId?: string;
 }
 
 // ========================================
-// PIPELINES SERVICE
+// SERVICE CLASS
 // ========================================
 
-export class GhlPipelinesService {
-  private ghl = getGHLService();
+export class GHLPipelinesService {
+  private ghl: GHLService;
+
+  constructor(ghl: GHLService) {
+    this.ghl = ghl;
+  }
 
   // ----------------------------------------
-  // Pipelines (FR-015)
+  // Pipelines
   // ----------------------------------------
 
-  /** List all pipelines for a location */
-  async listPipelines(userId: number, locationId: string) {
-    return this.ghl.request<{ pipelines: GhlPipeline[] }>({
+  /**
+   * List all pipelines (with stages) for a location.
+   */
+  async listPipelines(locationId: string): Promise<GHLPipeline[]> {
+    const response = await this.ghl.request<{ pipelines: GHLPipeline[] }>({
       method: "GET",
       endpoint: "/opportunities/pipelines",
-      locationId,
-      userId,
       params: { locationId },
     });
-  }
-
-  /** Get a single pipeline with stages */
-  async getPipeline(userId: number, locationId: string, pipelineId: string) {
-    return this.ghl.request<{ pipeline: GhlPipeline }>({
-      method: "GET",
-      endpoint: `/opportunities/pipelines/${pipelineId}`,
-      locationId,
-      userId,
-    });
+    return response.data.pipelines ?? [];
   }
 
   // ----------------------------------------
-  // Opportunities (FR-016 through FR-020)
+  // Opportunities
   // ----------------------------------------
 
-  /** Create an opportunity (FR-016) */
-  async createOpportunity(userId: number, locationId: string, data: GhlOpportunityCreateInput) {
-    return this.ghl.request<{ opportunity: GhlOpportunity }>({
+  /**
+   * Create an opportunity in a pipeline.
+   */
+  async createOpportunity(
+    locationId: string,
+    data: CreateOpportunityData
+  ): Promise<GHLOpportunity> {
+    const response = await this.ghl.request<{ opportunity: GHLOpportunity }>({
       method: "POST",
       endpoint: "/opportunities/",
-      locationId,
-      userId,
-      data,
+      data: { ...data, locationId },
     });
+    return response.data.opportunity;
   }
 
-  /** Get an opportunity by ID (FR-017) */
-  async getOpportunity(userId: number, locationId: string, opportunityId: string) {
-    return this.ghl.request<{ opportunity: GhlOpportunity }>({
+  /**
+   * Get a single opportunity by ID.
+   */
+  async getOpportunity(
+    locationId: string,
+    opportunityId: string
+  ): Promise<GHLOpportunity> {
+    const response = await this.ghl.request<{ opportunity: GHLOpportunity }>({
       method: "GET",
       endpoint: `/opportunities/${opportunityId}`,
-      locationId,
-      userId,
+      params: { locationId },
     });
+    return response.data.opportunity;
   }
 
-  /** Update an opportunity (FR-018) */
+  /**
+   * Update an opportunity.
+   */
   async updateOpportunity(
-    userId: number,
     locationId: string,
     opportunityId: string,
-    data: GhlOpportunityUpdateInput
-  ) {
-    return this.ghl.request<{ opportunity: GhlOpportunity }>({
+    data: UpdateOpportunityData
+  ): Promise<GHLOpportunity> {
+    const response = await this.ghl.request<{ opportunity: GHLOpportunity }>({
       method: "PUT",
       endpoint: `/opportunities/${opportunityId}`,
-      locationId,
-      userId,
-      data,
+      data: { ...data, locationId },
     });
+    return response.data.opportunity;
   }
 
-  /** Delete an opportunity (FR-019) */
-  async deleteOpportunity(userId: number, locationId: string, opportunityId: string) {
-    return this.ghl.request({
+  /**
+   * Delete an opportunity.
+   */
+  async deleteOpportunity(
+    locationId: string,
+    opportunityId: string
+  ): Promise<{ succeded: boolean }> {
+    const response = await this.ghl.request<{ succeded: boolean }>({
       method: "DELETE",
       endpoint: `/opportunities/${opportunityId}`,
-      locationId,
-      userId,
+      params: { locationId },
     });
+    return response.data;
   }
 
-  /** Move an opportunity to a different pipeline stage (FR-020) */
+  /**
+   * Move an opportunity to a different pipeline stage.
+   */
   async moveOpportunityStage(
-    userId: number,
     locationId: string,
     opportunityId: string,
     stageId: string
-  ) {
-    return this.updateOpportunity(userId, locationId, opportunityId, {
+  ): Promise<GHLOpportunity> {
+    return this.updateOpportunity(locationId, opportunityId, {
       pipelineStageId: stageId,
     });
   }
 
-  /** Assign an opportunity to a user */
+  /**
+   * Assign an opportunity to a user.
+   */
   async assignOpportunity(
-    userId: number,
     locationId: string,
     opportunityId: string,
-    assignedUserId: string
-  ) {
-    return this.updateOpportunity(userId, locationId, opportunityId, {
-      assignedTo: assignedUserId,
-    });
-  }
-
-  /** Search opportunities */
-  async searchOpportunities(
-    userId: number,
-    locationId: string,
-    searchParams: GhlOpportunitySearchParams = {}
-  ) {
-    const params: Record<string, string> = { location_id: locationId };
-    if (searchParams.pipelineId) params.pipeline_id = searchParams.pipelineId;
-    if (searchParams.pipelineStageId) params.pipeline_stage_id = searchParams.pipelineStageId;
-    if (searchParams.status) params.status = searchParams.status;
-    if (searchParams.assignedTo) params.assigned_to = searchParams.assignedTo;
-    if (searchParams.contactId) params.contact_id = searchParams.contactId;
-    if (searchParams.q) params.q = searchParams.q;
-    if (searchParams.limit) params.limit = String(searchParams.limit);
-    if (searchParams.startAfterId) params.startAfterId = searchParams.startAfterId;
-
-    return this.ghl.request<{ opportunities: GhlOpportunity[]; meta?: { total: number } }>({
-      method: "GET",
-      endpoint: "/opportunities/search",
-      locationId,
-      userId,
-      params,
+    userId: string
+  ): Promise<GHLOpportunity> {
+    return this.updateOpportunity(locationId, opportunityId, {
+      assignedTo: userId,
     });
   }
 
   // ----------------------------------------
-  // Campaigns (FR-021 through FR-026)
+  // Campaigns
   // ----------------------------------------
 
-  /** List campaigns for a location (FR-021) */
-  async listCampaigns(userId: number, locationId: string) {
-    return this.ghl.request<{ campaigns: GhlCampaign[] }>({
+  /**
+   * List all campaigns for a location.
+   */
+  async listCampaigns(locationId: string): Promise<GHLCampaign[]> {
+    const response = await this.ghl.request<{ campaigns: GHLCampaign[] }>({
       method: "GET",
       endpoint: "/campaigns/",
-      locationId,
-      userId,
       params: { locationId },
     });
+    return response.data.campaigns ?? [];
   }
 
-  /** Add a contact to a campaign (FR-022) */
+  /**
+   * Add a contact to a campaign.
+   */
   async addContactToCampaign(
-    userId: number,
     locationId: string,
     campaignId: string,
     contactId: string
-  ) {
-    return this.ghl.request({
+  ): Promise<{ success: boolean }> {
+    const response = await this.ghl.request<{ success: boolean }>({
       method: "POST",
       endpoint: `/campaigns/${campaignId}/contacts/${contactId}`,
-      locationId,
-      userId,
+      data: { locationId },
     });
+    return response.data;
   }
 
-  /** Remove a contact from a campaign (FR-023) */
+  /**
+   * Remove a contact from a campaign.
+   */
   async removeContactFromCampaign(
-    userId: number,
     locationId: string,
     campaignId: string,
     contactId: string
-  ) {
-    return this.ghl.request({
+  ): Promise<{ success: boolean }> {
+    const response = await this.ghl.request<{ success: boolean }>({
       method: "DELETE",
       endpoint: `/campaigns/${campaignId}/contacts/${contactId}`,
-      locationId,
-      userId,
+      params: { locationId },
     });
+    return response.data;
   }
 
-  /** Get campaign details (FR-025) */
-  async getCampaign(userId: number, locationId: string, campaignId: string) {
-    return this.ghl.request<GhlCampaign>({
-      method: "GET",
-      endpoint: `/campaigns/${campaignId}`,
-      locationId,
-      userId,
-    });
+  /**
+   * Get campaign statistics.
+   */
+  async getCampaignStats(
+    locationId: string,
+    campaignId: string
+  ): Promise<GHLCampaignStats> {
+    // The GHL API does not have a dedicated stats endpoint; campaign list
+    // returns status & contact counts.  We fetch the campaign list and
+    // filter to the requested campaignId, then return what the API gives us.
+    const campaigns = await this.listCampaigns(locationId);
+    const campaign = campaigns.find((c) => c.id === campaignId);
+
+    if (!campaign) {
+      throw new Error(`Campaign ${campaignId} not found in location ${locationId}`);
+    }
+
+    // Return the campaign data cast to our stats interface — the GHL response
+    // includes these numeric fields when available.
+    return campaign as unknown as GHLCampaignStats;
   }
 
   // ----------------------------------------
-  // Workflows (FR-027 through FR-030)
+  // Workflows
   // ----------------------------------------
 
-  /** List workflows for a location (FR-027) */
-  async listWorkflows(userId: number, locationId: string) {
-    return this.ghl.request<{ workflows: GhlWorkflow[] }>({
+  /**
+   * List all workflows for a location.
+   */
+  async listWorkflows(locationId: string): Promise<GHLWorkflow[]> {
+    const response = await this.ghl.request<{ workflows: GHLWorkflow[] }>({
       method: "GET",
       endpoint: "/workflows/",
-      locationId,
-      userId,
       params: { locationId },
     });
+    return response.data.workflows ?? [];
   }
 
-  /** Trigger a workflow for a contact (FR-028) */
+  /**
+   * Trigger a workflow for a contact.
+   */
   async triggerWorkflow(
-    userId: number,
     locationId: string,
     workflowId: string,
-    contactId: string,
-    eventData?: Record<string, unknown>
-  ) {
-    return this.ghl.request({
+    data: TriggerWorkflowData
+  ): Promise<{ success: boolean }> {
+    const response = await this.ghl.request<{ success: boolean }>({
       method: "POST",
-      endpoint: `/contacts/${contactId}/workflow/${workflowId}`,
-      locationId,
-      userId,
-      data: eventData ? { eventData } : undefined,
+      endpoint: `/workflows/${workflowId}/trigger`,
+      data: { ...data, locationId },
     });
+    return response.data;
   }
 
-  /** Remove a contact from a workflow */
-  async removeFromWorkflow(
-    userId: number,
+  // ----------------------------------------
+  // Messaging
+  // ----------------------------------------
+
+  /**
+   * Send an SMS message to a contact.
+   */
+  async sendSMS(
     locationId: string,
-    workflowId: string,
-    contactId: string
-  ) {
-    return this.ghl.request({
-      method: "DELETE",
-      endpoint: `/contacts/${contactId}/workflow/${workflowId}`,
-      locationId,
-      userId,
-    });
-  }
-
-  // ----------------------------------------
-  // Messaging (FR-031 through FR-035)
-  // ----------------------------------------
-
-  /** Send an SMS message (FR-031) */
-  async sendSms(userId: number, locationId: string, contactId: string, message: string) {
-    return this.ghl.request<GhlMessageStatus>({
+    contactId: string,
+    message: string
+  ): Promise<SendSMSResult> {
+    const response = await this.ghl.request<SendSMSResult>({
       method: "POST",
       endpoint: "/conversations/messages",
-      locationId,
-      userId,
-      data: { type: "SMS", contactId, message },
+      data: {
+        type: "SMS",
+        contactId,
+        message,
+        locationId,
+      },
     });
+    return response.data;
   }
 
-  /** Send an email (FR-032) */
+  /**
+   * Send an email to a contact.
+   */
   async sendEmail(
-    userId: number,
     locationId: string,
     contactId: string,
-    options: {
-      subject?: string;
-      html?: string;
-      message?: string;
-      emailFrom?: string;
-      templateId?: string;
-    }
-  ) {
-    return this.ghl.request<GhlMessageStatus>({
+    templateId: string,
+    data?: SendEmailData
+  ): Promise<SendEmailResult> {
+    const response = await this.ghl.request<SendEmailResult>({
       method: "POST",
       endpoint: "/conversations/messages",
-      locationId,
-      userId,
-      data: { type: "Email", contactId, ...options },
+      data: {
+        type: "Email",
+        contactId,
+        locationId,
+        templateId,
+        ...data,
+      },
     });
-  }
-
-  /** Get message delivery status (FR-033) */
-  async getMessageStatus(userId: number, locationId: string, messageId: string) {
-    return this.ghl.request<GhlMessageStatus>({
-      method: "GET",
-      endpoint: `/conversations/messages/${messageId}`,
-      locationId,
-      userId,
-    });
-  }
-
-  /** Get conversation messages for a contact */
-  async getConversationMessages(userId: number, locationId: string, contactId: string) {
-    return this.ghl.request<{ messages: GhlMessageStatus[]; lastMessageId?: string }>({
-      method: "GET",
-      endpoint: "/conversations/messages",
-      locationId,
-      userId,
-      params: { contactId },
-    });
-  }
-
-  // ----------------------------------------
-  // Templates (FR-036 through FR-039)
-  // ----------------------------------------
-
-  /** List email/SMS templates (FR-036) */
-  async listTemplates(userId: number, locationId: string, type?: "sms" | "email") {
-    const params: Record<string, string> = { locationId };
-    if (type) params.type = type;
-
-    return this.ghl.request<{ templates: GhlTemplate[] }>({
-      method: "GET",
-      endpoint: "/conversations/messages/templates",
-      locationId,
-      userId,
-      params,
-    });
-  }
-
-  /** Get a specific template */
-  async getTemplate(userId: number, locationId: string, templateId: string) {
-    return this.ghl.request<{ template: GhlTemplate }>({
-      method: "GET",
-      endpoint: `/conversations/messages/templates/${templateId}`,
-      locationId,
-      userId,
-    });
+    return response.data;
   }
 }
 
 // ========================================
-// SINGLETON
+// FACTORY
 // ========================================
 
-let pipelinesServiceInstance: GhlPipelinesService | null = null;
-
-export function getGhlPipelinesService(): GhlPipelinesService {
-  if (!pipelinesServiceInstance) {
-    pipelinesServiceInstance = new GhlPipelinesService();
-  }
-  return pipelinesServiceInstance;
+/**
+ * Create a GHLPipelinesService backed by a user's authenticated GHLService.
+ */
+export function createGHLPipelinesService(
+  locationId: string,
+  userId: number
+): GHLPipelinesService {
+  const ghl = new GHLService(locationId, userId);
+  return new GHLPipelinesService(ghl);
 }

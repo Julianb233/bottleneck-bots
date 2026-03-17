@@ -26,6 +26,8 @@ export default defineConfig({
     "./drizzle/schema-sop.ts",
     "./drizzle/schema-subscriptions.ts",
     "./drizzle/schema-webhooks.ts",
+    "./drizzle/schema-support.ts",
+    "./drizzle/schema-task-templates.ts",
     "./drizzle/relations.ts",
     "./server/rag/schema.ts",
   ],

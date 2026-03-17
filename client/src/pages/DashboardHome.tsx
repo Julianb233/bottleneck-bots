@@ -52,7 +52,7 @@ export default function DashboardHome() {
               <span className="text-sm text-purple-600">agent slots</span>
             </div>
             <Button
-              onClick={() => setLocation('/agent')}
+              onClick={() => setLocation('/dashboard/agent')}
               size="sm"
               className="w-full bg-purple-600 hover:bg-purple-700"
             >
@@ -121,7 +121,7 @@ export default function DashboardHome() {
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
             <Button
-              onClick={() => setLocation('/ai-campaigns')}
+              onClick={() => setLocation('/dashboard/ai-campaigns')}
               className="h-auto flex-col gap-2 py-4"
               variant="outline"
             >
@@ -135,7 +135,7 @@ export default function DashboardHome() {
             </Button>
 
             <Button
-              onClick={() => setLocation('/lead-lists')}
+              onClick={() => setLocation('/dashboard/lead-lists')}
               className="h-auto flex-col gap-2 py-4"
               variant="outline"
             >
@@ -149,7 +149,7 @@ export default function DashboardHome() {
             </Button>
 
             <Button
-              onClick={() => setLocation('/settings')}
+              onClick={() => setLocation('/dashboard/settings')}
               className="h-auto flex-col gap-2 py-4"
               variant="outline"
             >

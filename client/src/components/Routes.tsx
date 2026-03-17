@@ -17,7 +17,6 @@ import AICampaigns from '@/pages/AICampaigns';
 import CampaignDetails from '@/pages/CampaignDetails';
 import CreditPurchase from '@/pages/CreditPurchase';
 import Training from '@/pages/Training';
-import ExecutionHistory from '@/pages/ExecutionHistory';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { UserManagement } from '@/pages/admin/UserManagement';
 import { SystemHealth } from '@/pages/admin/SystemHealth';
@@ -32,34 +31,33 @@ export function Routes() {
     <>
       <DashboardLayout>
         <Switch>
-          <Route path="/" component={DashboardHome} />
-          <Route path="/agent" component={AgentDashboard} />
-          <Route path="/scheduled-tasks" component={ScheduledTasksPage} />
-          <Route path="/workflow-builder" component={WorkflowBuilder} />
-          <Route path="/browser-sessions" component={BrowserSessions} />
-          <Route path="/settings" component={Settings} />
-          <Route path="/quizzes" component={Quizzes} />
-          <Route path="/quizzes/create" component={QuizBuilder} />
-          <Route path="/quizzes/:id/edit" component={QuizBuilder} />
-          <Route path="/quizzes/:id/take" component={QuizTake} />
-          <Route path="/quizzes/:id/results/:attemptId" component={QuizResults} />
-          <Route path="/quizzes/my-attempts" component={MyAttempts} />
-          <Route path="/lead-lists" component={LeadLists} />
-          <Route path="/lead-lists/upload" component={LeadUpload} />
-          <Route path="/lead-lists/:id" component={LeadDetails} />
-          <Route path="/ai-campaigns" component={AICampaigns} />
-          <Route path="/ai-campaigns/:id" component={CampaignDetails} />
-          <Route path="/credits" component={CreditPurchase} />
-          <Route path="/training" component={Training} />
-          <Route path="/execution-history" component={ExecutionHistory} />
+          {/* Dashboard routes — all prefixed with /dashboard to avoid conflict with public routes */}
+          <Route path="/dashboard" component={DashboardHome} />
+          <Route path="/dashboard/agent" component={AgentDashboard} />
+          <Route path="/dashboard/scheduled-tasks" component={ScheduledTasksPage} />
+          <Route path="/dashboard/workflow-builder" component={WorkflowBuilder} />
+          <Route path="/dashboard/browser-sessions" component={BrowserSessions} />
+          <Route path="/dashboard/settings" component={Settings} />
+          <Route path="/dashboard/quizzes" component={Quizzes} />
+          <Route path="/dashboard/quizzes/create" component={QuizBuilder} />
+          <Route path="/dashboard/quizzes/:id/edit" component={QuizBuilder} />
+          <Route path="/dashboard/quizzes/:id/take" component={QuizTake} />
+          <Route path="/dashboard/quizzes/:id/results/:attemptId" component={QuizResults} />
+          <Route path="/dashboard/quizzes/my-attempts" component={MyAttempts} />
+          <Route path="/dashboard/lead-lists" component={LeadLists} />
+          <Route path="/dashboard/lead-lists/upload" component={LeadUpload} />
+          <Route path="/dashboard/lead-lists/:id" component={LeadDetails} />
+          <Route path="/dashboard/ai-campaigns" component={AICampaigns} />
+          <Route path="/dashboard/ai-campaigns/:id" component={CampaignDetails} />
+          <Route path="/dashboard/credits" component={CreditPurchase} />
+          <Route path="/dashboard/training" component={Training} />
           {/* Admin routes */}
-          <Route path="/admin" component={AdminDashboard} />
-          <Route path="/admin/users" component={UserManagement} />
-          <Route path="/admin/costs" component={CostsPage} />
-          <Route path="/admin/system" component={SystemHealth} />
-          <Route path="/admin/audit" component={AuditLog} />
-          <Route path="/admin/config" component={ConfigCenter} />
-{/* Team management route - redirects to settings for now */}
+          <Route path="/dashboard/admin" component={AdminDashboard} />
+          <Route path="/dashboard/admin/users" component={UserManagement} />
+          <Route path="/dashboard/admin/costs" component={CostsPage} />
+          <Route path="/dashboard/admin/system" component={SystemHealth} />
+          <Route path="/dashboard/admin/audit" component={AuditLog} />
+          <Route path="/dashboard/admin/config" component={ConfigCenter} />
           <Route>
             {() => (
               <div className="space-y-6">
