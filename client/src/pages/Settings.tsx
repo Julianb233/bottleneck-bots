@@ -666,8 +666,6 @@ export const Settings: React.FC = () => {
             </Card>
 
             {/* GoHighLevel CRM Integration */}
-            <GHLConnectionCard />
-            {/* GoHighLevel Connection */}
             <div className="mt-6">
               <GHLConnectionCard />
             </div>

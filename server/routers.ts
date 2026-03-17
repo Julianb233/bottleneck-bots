@@ -46,9 +46,7 @@ import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
 import { ghlRouter } from "./api/routers/ghl";
 import { ghlContactsRouter } from "./api/routers/ghlContacts";
-import { ghlPipelinesRouter } from "./api/routers/ghlPipelines";
 import { taskTemplatesRouter } from "./api/routers/taskTemplates";
->>>>>>> worktree-agent-a3dc1bfd
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -151,7 +149,6 @@ export const appRouter = router({
   // GHL Integration
   ghl: ghlRouter,
   ghlContacts: ghlContactsRouter,
-  ghlPipelines: ghlPipelinesRouter,
   ghlAutomation: ghlAutomationRouter,
 
   // Task Templates (pre-built templates for common agency tasks)
