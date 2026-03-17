@@ -726,6 +726,39 @@ class SubscriptionService {
   }
 
   /**
+   * Cancel a subscription
+   */
+  async cancelSubscription(
+    userId: number,
+    reason?: string,
+    cancelImmediately: boolean = false
+  ): Promise<void> {
+    const db = await getDb();
+    if (!db) throw new Error("Database not initialized");
+
+    if (cancelImmediately) {
+      await db
+        .update(userSubscriptions)
+        .set({
+          status: "cancelled",
+          cancelledAt: new Date(),
+          cancellationReason: reason || "user_requested",
+          updatedAt: new Date(),
+        })
+        .where(eq(userSubscriptions.userId, userId));
+    } else {
+      await db
+        .update(userSubscriptions)
+        .set({
+          cancelAtPeriodEnd: true,
+          cancellationReason: reason || "user_requested",
+          updatedAt: new Date(),
+        })
+        .where(eq(userSubscriptions.userId, userId));
+    }
+  }
+
+  /**
    * Reset monthly usage (called by billing cycle)
    */
   async resetMonthlyUsage(userId: number, newPeriodStart: Date, newPeriodEnd: Date): Promise<void> {
