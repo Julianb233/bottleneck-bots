@@ -3,6 +3,7 @@ import { workflowTour } from './workflowTour';
 import { scheduledTasksTour } from './scheduledTasksTour';
 import { browserSessionsTour } from './browserSessionsTour';
 import { creditsTour } from './creditsTour';
+import { trainingTour } from './trainingTour';
 
 import { quizzesTour } from './quizzesTour';
 export const tours: Tour[] = [
@@ -71,6 +72,7 @@ export const tours: Tour[] = [
   browserSessionsTour,
   quizzesTour,
   creditsTour,
+  trainingTour,
   {
     id: 'settings',
     name: 'Settings & Customization',
@@ -104,4 +106,4 @@ export const getTourById = (tourId: string): Tour | undefined => {
   return tours.find((tour) => tour.id === tourId);
 };
 
-export { browserSessionsTour, creditsTour, quizzesTour };
+export { browserSessionsTour, creditsTour, quizzesTour, trainingTour };

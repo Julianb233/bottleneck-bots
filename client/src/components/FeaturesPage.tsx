@@ -293,6 +293,52 @@ export const FeaturesPage: React.FC<FeaturesPageProps> = ({ onGetStarted, onNavi
         </div>
       </section>
 
+      {/* Comparison Table */}
+      <section className="py-12 sm:py-24 bg-gradient-to-b from-gray-900 to-gray-800">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="max-w-4xl mx-auto text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black mb-4 sm:mb-6">
+              Why Switch to <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">AI Agents?</span>
+            </h2>
+            <p className="text-lg sm:text-xl text-gray-300">
+              See how Bottleneck Bots compares to traditional methods
+            </p>
+          </div>
+
+          <div className="max-w-4xl mx-auto overflow-x-auto mb-16">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="py-4 px-4 text-sm font-bold text-gray-400 uppercase tracking-wider">Capability</th>
+                  <th className="py-4 px-4 text-sm font-bold text-red-400 uppercase tracking-wider text-center">Manual / VAs</th>
+                  <th className="py-4 px-4 text-sm font-bold text-amber-400 uppercase tracking-wider text-center">Basic Automation</th>
+                  <th className="py-4 px-4 text-sm font-bold text-emerald-400 uppercase tracking-wider text-center">Bottleneck Bots</th>
+                </tr>
+              </thead>
+              <tbody className="text-sm">
+                {[
+                  { cap: 'Availability', manual: '8-10 hrs/day', basic: '24/7 (rules only)', bots: '24/7 with AI reasoning' },
+                  { cap: 'GHL Automation', manual: 'Manual clicks', basic: 'Basic Zapier triggers', bots: '48 native functions' },
+                  { cap: 'Browser Tasks', manual: 'Manual browsing', basic: 'None', bots: 'Full AI browser control' },
+                  { cap: 'Learning from SOPs', manual: 'Training time needed', basic: 'Static rules only', bots: 'RAG-powered SOP training' },
+                  { cap: 'Multi-step Workflows', manual: 'Error-prone', basic: 'Linear sequences', bots: 'Intelligent branching + retry' },
+                  { cap: 'Scalability', manual: 'Hire more people', basic: 'Add more Zaps', bots: 'Unlimited parallel agents' },
+                  { cap: 'Cost per Task', manual: '$15-30/hr', basic: '$0.01-0.05', bots: '$0.002-0.01' },
+                  { cap: 'Decision Making', manual: 'Human judgment', basic: 'If/then rules', bots: 'AI reasoning + human oversight' },
+                ].map((row, i) => (
+                  <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
+                    <td className="py-3 px-4 font-medium text-white">{row.cap}</td>
+                    <td className="py-3 px-4 text-gray-400 text-center">{row.manual}</td>
+                    <td className="py-3 px-4 text-gray-400 text-center">{row.basic}</td>
+                    <td className="py-3 px-4 text-emerald-400 font-semibold text-center">{row.bots}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       {/* Additional Features Highlight */}
       <section className="py-12 sm:py-24 bg-gradient-to-b from-gray-900 to-gray-800">
         <div className="container mx-auto px-4 sm:px-6">

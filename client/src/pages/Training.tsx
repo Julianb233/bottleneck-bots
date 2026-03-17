@@ -12,12 +12,13 @@ import BehaviorTab from '@/components/training/BehaviorTab';
 import KnowledgeBaseBrowser from '@/components/training/KnowledgeBaseBrowser';
 import { PageEmptyState } from '@/components/onboarding/PageEmptyState';
 import { DocumentsTab } from '@/components/training/DocumentsTab';
+import { TourPrompt } from '@/components/tour';
 
 export default function Training() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4" data-tour="training-header">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Agent Training</h1>
           <p className="text-muted-foreground mt-1">
@@ -26,8 +27,10 @@ export default function Training() {
         </div>
       </div>
 
+      <TourPrompt tourId="training" featureName="Agent Training" />
+
       {/* Tabbed Interface */}
-      <Tabs defaultValue="documents" className="space-y-6">
+      <Tabs defaultValue="documents" className="space-y-6" data-tour="training-tabs">
         <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
           <TabsTrigger value="documents" className="gap-1.5">
             <FileText className="w-4 h-4" />
