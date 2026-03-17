@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import type { AgentPlan, ThinkingStep, AgentExecutionListItem } from '@/types/agent';
+import type { BrowserAction } from '@/components/agent/EnhancedBrowserLiveView';
 
 // ========================================
 // TYPES
@@ -80,6 +81,10 @@ interface AgentState {
   // Browser session tracking
   activeBrowserSession: BrowserSession | null;
 
+  // Browser action tracking (for live preview overlay)
+  currentBrowserAction: BrowserAction | null;
+  browserActions: BrowserAction[];
+
   // Progress tracking
   progress: ProgressData | null;
 
@@ -142,6 +147,8 @@ const initialState = {
   currentExecution: null,
   isExecuting: false,
   activeBrowserSession: null,
+  currentBrowserAction: null,
+  browserActions: [],
   progress: null,
   reasoningSteps: [],
   executionHistory: [],
@@ -151,6 +158,26 @@ const initialState = {
   connectedAgents: 0,
   stats: null,
 };
+
+/** Infer browser action type from tool name */
+function inferBrowserActionType(toolName: string): BrowserAction['type'] {
+  if (toolName.includes('click')) return 'click';
+  if (toolName.includes('type') || toolName.includes('fill')) return 'type';
+  if (toolName.includes('navigate') || toolName.includes('goto')) return 'navigate';
+  if (toolName.includes('scroll')) return 'scroll';
+  if (toolName.includes('extract')) return 'extract';
+  if (toolName.includes('wait')) return 'wait';
+  if (toolName.includes('screenshot')) return 'screenshot';
+  return 'custom';
+}
+
+/** Format browser action description from tool name and params */
+function formatBrowserActionDescription(toolName: string, params: any): string {
+  if (params?.text) return `Type: "${params.text.substring(0, 50)}"`;
+  if (params?.url) return `Navigate to ${params.url}`;
+  if (params?.selector) return `${toolName} on ${params.selector}`;
+  return toolName.replace(/_/g, ' ');
+}
 
 // ========================================
 // STORE
@@ -526,7 +553,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         get().addThinkingStep(thinkingStep);
         break;
 
-      case 'tool:start':
+      case 'tool:start': {
         const toolStartStep: ThinkingStep = {
           id: `step-${Date.now()}`,
           type: 'tool_use',
@@ -536,9 +563,28 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           toolParams: data.params,
         };
         get().addThinkingStep(toolStartStep);
-        break;
 
-      case 'tool:complete':
+        // Track browser action for live preview overlay
+        const toolName = data.toolName as string;
+        if (toolName.startsWith('browser_') || toolName.includes('navigate') || toolName.includes('click') || toolName.includes('type') || toolName.includes('extract') || toolName.includes('screenshot') || toolName.includes('scroll')) {
+          const action: BrowserAction = {
+            id: `action-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            type: inferBrowserActionType(toolName),
+            description: formatBrowserActionDescription(toolName, data.params),
+            selector: (data.params as any)?.selector,
+            value: (data.params as any)?.text || (data.params as any)?.url,
+            timestamp: Date.now(),
+            status: 'executing',
+          };
+          set((s) => ({
+            currentBrowserAction: action,
+            browserActions: [...s.browserActions, action],
+          }));
+        }
+        break;
+      }
+
+      case 'tool:complete': {
         const toolCompleteStep: ThinkingStep = {
           id: `step-${Date.now()}`,
           type: 'tool_result',
@@ -549,15 +595,29 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         };
         get().addThinkingStep(toolCompleteStep);
 
+        // Update browser action status
+        set((s) => {
+          if (!s.currentBrowserAction) return {};
+          const updatedActions = s.browserActions.map((a) =>
+            a.id === s.currentBrowserAction?.id
+              ? { ...a, status: ((data.result as any)?.error ? 'failed' : 'completed') as BrowserAction['status'], duration: data.duration as number }
+              : a
+          );
+          return {
+            currentBrowserAction: null,
+            browserActions: updatedActions,
+          };
+        });
+
         // Check if this is a browser session creation
         if (data.toolName === 'browser_create_session' && data.result) {
           const result = data.result as { success?: boolean; sessionId?: string };
           if (result.success && result.sessionId) {
-            // Fetch the full session details
             get().fetchActiveBrowserSession();
           }
         }
         break;
+      }
 
       case 'phase:complete':
         get().addLog({
@@ -572,6 +632,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         set({
           isExecuting: false,
           activeBrowserSession: null,
+          currentBrowserAction: null,
           currentExecution: state.currentExecution ? {
             ...state.currentExecution,
             status: 'completed',
@@ -591,6 +652,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         set({
           isExecuting: false,
           activeBrowserSession: null,
+          currentBrowserAction: null,
           progress: null,
           currentExecution: state.currentExecution ? {
             ...state.currentExecution,

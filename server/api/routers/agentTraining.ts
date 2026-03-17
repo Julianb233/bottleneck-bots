@@ -16,6 +16,7 @@ import { TRPCError } from "@trpc/server";
 import { getDb } from "../../db";
 import { eq, and } from "drizzle-orm";
 import { knowledgeEntries } from "../../../drizzle/schema-agent";
+import { trainingContextService } from "../../services/trainingContext.service";
 
 // ========================================
 // CONSTANTS — DEFAULT CONFIGURATIONS
@@ -480,4 +481,31 @@ export const agentTrainingRouter = router({
         });
       }
     }),
+
+  // ========================================
+  // TRAINING CONTEXT PREVIEW
+  // ========================================
+
+  /**
+   * Preview the training context that will be injected into agent execution.
+   * Useful for debugging what the agent "knows" from training.
+   */
+  previewTrainingContext: protectedProcedure.query(async ({ ctx }) => {
+    try {
+      const context = await trainingContextService.loadForUser(ctx.user.id);
+      return {
+        success: true,
+        workflows: context.workflows,
+        skills: context.skills,
+        behavior: context.behavior,
+        promptFragment: context.promptFragment,
+        promptFragmentLength: context.promptFragment.length,
+      };
+    } catch (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: error instanceof Error ? error.message : "Failed to preview training context",
+      });
+    }
+  }),
 });

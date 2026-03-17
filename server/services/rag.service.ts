@@ -54,6 +54,7 @@ export interface RetrieveOptions {
   platforms?: string[];
   categories?: string[];
   minSimilarity?: number;
+  userId?: number;
 }
 
 export interface SystemPromptResult {
@@ -67,6 +68,7 @@ export interface BuildSystemPromptOptions {
   customTemplate?: string;
   maxDocumentationTokens?: number;
   includeExamples?: boolean;
+  userId?: number;
 }
 
 /**
@@ -344,6 +346,11 @@ class RAGService {
           AND s.is_active = true
       `;
 
+      // Add userId filter to scope retrieval to the current user's documents
+      if (options.userId) {
+        sqlQuery = sql`${sqlQuery} AND s.user_id = ${options.userId}`;
+      }
+
       // Add platform filter
       if (options.platforms && options.platforms.length > 0) {
         sqlQuery = sql`${sqlQuery} AND s.platform IN ${sql.join(options.platforms.map(p => sql`${p}`), sql`, `)}`;
@@ -417,12 +424,13 @@ class RAGService {
         platforms = await this.detectPlatforms(userPrompt);
       }
 
-      // Retrieve relevant documentation
+      // Retrieve relevant documentation, scoped to user if provided
       const maxTokens = options.maxDocumentationTokens || 4000;
       const chunks = await this.retrieve(userPrompt, {
         topK: 10,
         platforms: platforms.length > 0 ? platforms : undefined,
         minSimilarity: 0.6,
+        userId: options.userId,
       });
 
       // Build context from chunks, respecting token limit
