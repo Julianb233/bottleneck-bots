@@ -43,6 +43,7 @@ import { agentTrainingRouter } from "./api/routers/agentTraining";
 import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlRouter } from "./api/routers/ghl";
+import { executionHistoryRouter } from "./api/routers/executionHistory";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -142,6 +143,9 @@ export const appRouter = router({
 
   // GHL OAuth & Connection Management (AI-2877)
   ghl: ghlRouter,
+
+  // Execution History & Replay
+  executionHistory: executionHistoryRouter,
 });
 
 export type AppRouter = typeof appRouter;
