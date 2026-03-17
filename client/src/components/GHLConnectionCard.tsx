@@ -117,7 +117,10 @@ export const GHLConnectionCard: React.FC = () => {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-white">
-                        Location: {loc.locationId}
+                        {loc.name || `Location ${loc.locationId.substring(0, 8)}`}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        ID: {loc.locationId}
                       </p>
                       {loc.companyId && (
                         <p className="text-xs text-slate-400">Company: {loc.companyId}</p>

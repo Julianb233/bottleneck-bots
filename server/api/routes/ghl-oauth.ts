@@ -17,6 +17,7 @@ import { oauthStateService } from "../../services/oauthState.service";
 import { GHLService, type GHLScope } from "../../services/ghl.service";
 import { getDb } from "../../db";
 import { integrations } from "../../../drizzle/schema";
+import { ghlLocations, ghlActiveLocation } from "../../../drizzle/schema-ghl-locations";
 import { eq, and } from "drizzle-orm";
 
 const router = express.Router();
@@ -234,6 +235,60 @@ router.get("/callback", async (req: Request, res: Response) => {
       console.log(
         `[GHL OAuth] Created new integration for location ${tokens.locationId}`
       );
+    }
+
+    // Auto-create/update ghl_locations entry
+    const [existingLocation] = await db
+      .select()
+      .from(ghlLocations)
+      .where(
+        and(
+          eq(ghlLocations.userId, userId),
+          eq(ghlLocations.locationId, tokens.locationId)
+        )
+      )
+      .limit(1);
+
+    if (existingLocation) {
+      await db
+        .update(ghlLocations)
+        .set({
+          companyId: tokens.companyId,
+          isActive: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(ghlLocations.id, existingLocation.id));
+    } else {
+      await db.insert(ghlLocations).values({
+        userId,
+        locationId: tokens.locationId,
+        companyId: tokens.companyId,
+        name: `Location ${tokens.locationId.substring(0, 8)}`,
+        isActive: true,
+        config: {
+          automationsEnabled: true,
+          contactSyncEnabled: true,
+          pipelineSyncEnabled: true,
+          calendarSyncEnabled: false,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    // Auto-set as active location if it's the first one
+    const [existingActive] = await db
+      .select()
+      .from(ghlActiveLocation)
+      .where(eq(ghlActiveLocation.userId, userId))
+      .limit(1);
+
+    if (!existingActive) {
+      await db.insert(ghlActiveLocation).values({
+        userId,
+        locationId: tokens.locationId,
+        selectedAt: new Date(),
+      });
     }
 
     res.redirect(
