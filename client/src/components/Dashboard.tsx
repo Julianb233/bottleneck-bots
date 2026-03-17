@@ -28,7 +28,9 @@ import { ClientProfileModal } from './ClientProfileModal';
 import { AgentDashboard } from './agent/AgentDashboard';
 import { SubscriptionUsageCard, UpgradeModal, ExecutionPacksModal } from './subscription';
 import { SwarmView } from './swarm/SwarmView';
-import { Home, Terminal, Mail, Globe, Settings, Bot, Zap, Network } from 'lucide-react';
+import Training from '../pages/Training';
+import TaskTemplates from './training/TaskTemplates';
+import { Home, Terminal, Mail, Globe, Settings, Bot, Zap, Network, GraduationCap, LayoutTemplate } from 'lucide-react';
 
 // Demo data only loaded when VITE_DEMO_MODE=1 (disabled by default in production)
 
@@ -41,12 +43,12 @@ const DEFAULT_USER: User = {
 };
 
 // ViewMode type definition
-type ViewMode = 'GLOBAL' | 'TERMINAL' | 'EMAIL_AGENT' | 'VOICE_AGENT' | 'SETTINGS' | 'SEO' | 'ADS' | 'MARKETPLACE' | 'AI_BROWSER' | 'AGENT' | 'SWARM';
+type ViewMode = 'GLOBAL' | 'TERMINAL' | 'EMAIL_AGENT' | 'VOICE_AGENT' | 'SETTINGS' | 'SEO' | 'ADS' | 'MARKETPLACE' | 'AI_BROWSER' | 'AGENT' | 'SWARM' | 'TRAINING' | 'TEMPLATES';
 
 // Helper function to parse view from URL hash
 const getViewFromHash = (): ViewMode => {
   const hash = window.location.hash.slice(1); // remove #
-  const validViews: ViewMode[] = ['GLOBAL', 'TERMINAL', 'EMAIL_AGENT', 'VOICE_AGENT', 'SETTINGS', 'SEO', 'ADS', 'MARKETPLACE', 'AI_BROWSER', 'AGENT', 'SWARM'];
+  const validViews: ViewMode[] = ['GLOBAL', 'TERMINAL', 'EMAIL_AGENT', 'VOICE_AGENT', 'SETTINGS', 'SEO', 'ADS', 'MARKETPLACE', 'AI_BROWSER', 'AGENT', 'SWARM', 'TRAINING', 'TEMPLATES'];
   return validViews.includes(hash.toUpperCase() as ViewMode) ? hash.toUpperCase() as ViewMode : 'GLOBAL';
 };
 
@@ -774,6 +776,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ userTier, credits: initial
             <Network className="w-5 h-5 lg:w-6 lg:h-6" aria-hidden="true" />
           </button>
 
+          <button
+            onClick={() => setViewMode('TRAINING')}
+            className={`w-11 h-11 lg:w-12 lg:h-12 rounded-xl flex items-center justify-center transition-all min-h-[44px] min-w-[44px] ${viewMode === 'TRAINING' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30' : 'text-slate-400 hover:bg-gray-100 hover:text-emerald-500'}`}
+            aria-label="Agent Training"
+            aria-current={viewMode === 'TRAINING' ? 'page' : undefined}
+            title="Agent Training - Documents, Workflows, Skills"
+          >
+            <GraduationCap className="w-5 h-5 lg:w-6 lg:h-6" aria-hidden="true" />
+          </button>
+
+          <button
+            onClick={() => setViewMode('TEMPLATES')}
+            className={`w-11 h-11 lg:w-12 lg:h-12 rounded-xl flex items-center justify-center transition-all min-h-[44px] min-w-[44px] ${viewMode === 'TEMPLATES' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30' : 'text-slate-400 hover:bg-gray-100 hover:text-emerald-500'}`}
+            aria-label="Task Templates"
+            aria-current={viewMode === 'TEMPLATES' ? 'page' : undefined}
+            title="Task Templates - Pre-built Agent Tasks"
+          >
+            <LayoutTemplate className="w-5 h-5 lg:w-6 lg:h-6" aria-hidden="true" />
+          </button>
+
           <div className="flex-1"></div>
 
           <button
@@ -835,6 +857,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ userTier, credits: initial
 
           {viewMode === 'SWARM' && (
             <SwarmView />
+          )}
+
+          {viewMode === 'TRAINING' && (
+            <Training />
+          )}
+
+          {viewMode === 'TEMPLATES' && (
+            <TaskTemplates />
           )}
 
           {viewMode === 'TERMINAL' && (
