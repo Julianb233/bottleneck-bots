@@ -35,9 +35,12 @@ import { SessionLogsViewer } from '@/components/browser/SessionLogsViewer';
 import { SessionDataViewer } from '@/components/browser/SessionDataViewer';
 import { SessionRecordingViewer } from '@/components/browser/SessionRecordingViewer';
 import { LiveBrowserView } from '@/components/browser/LiveBrowserView';
+import { ExecutionDetailPanel } from '@/components/browser/ExecutionDetailPanel';
+import { ExecutionControls } from '@/components/browser/ExecutionControls';
 import { useBrowserSessions } from '@/hooks/useBrowserSessions';
 import { useBrowserSession } from '@/hooks/useBrowserSession';
 import { useWebSocketStore } from '@/stores/websocketStore';
+import { useAgentStore } from '@/stores/agentStore';
 import {
   Globe,
   Plus,
@@ -47,6 +50,7 @@ import {
   XCircle,
   RefreshCw,
   Calendar,
+  Activity,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { TourPrompt } from '@/components/tour';
@@ -68,6 +72,9 @@ export default function BrowserSessions() {
   } = useBrowserSessions();
 
   const { connectionState } = useWebSocketStore();
+  const isExecuting = useAgentStore((s) => s.isExecuting);
+  const currentExecution = useAgentStore((s) => s.currentExecution);
+  const activeBrowserSession = useAgentStore((s) => s.activeBrowserSession);
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<SessionStatus>('all');
@@ -305,6 +312,46 @@ export default function BrowserSessions() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Active Execution Panel -- shows when an agent is running a browser task */}
+      {(isExecuting || (currentExecution && ['running', 'executing', 'planning', 'paused'].includes(currentExecution.status))) && (
+        <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-slate-50" data-tour="browser-active-execution">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Activity className="h-4 w-4 text-blue-600" />
+                Active Agent Execution
+                {activeBrowserSession?.sessionId && (
+                  <Badge variant="secondary" className="text-[10px] h-5 font-mono">
+                    {activeBrowserSession.sessionId.slice(0, 8)}...
+                  </Badge>
+                )}
+              </CardTitle>
+              <ExecutionControls compact />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <ExecutionDetailPanel />
+              {activeBrowserSession?.debugUrl ? (
+                <LiveBrowserView
+                  sessionId={activeBrowserSession.sessionId}
+                  debugUrl={activeBrowserSession.debugUrl}
+                />
+              ) : (
+                <Card className="flex items-center justify-center min-h-[300px]">
+                  <CardContent className="text-center py-8">
+                    <Globe className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">
+                      Live browser preview will appear when a browser session is active
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters and Search */}
       <Card data-tour="browser-filters">
