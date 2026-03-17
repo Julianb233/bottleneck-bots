@@ -35,7 +35,9 @@ import {
   LifeBuoy,
   Shield,
   Bot,
-  GraduationCap
+  GraduationCap,
+  BookOpen,
+  FileStack
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -49,6 +51,7 @@ const menuItems = [
   { icon: GraduationCap, label: "Training", path: "/training" },
   { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
+  { icon: FileStack, label: "Task Templates", path: "/task-templates" },
   { icon: Workflow, label: "Workflow Builder", path: "/workflow-builder" },
   { icon: Users, label: "Lead Lists", path: "/lead-lists" },
   { icon: Megaphone, label: "AI Campaigns", path: "/ai-campaigns" },
