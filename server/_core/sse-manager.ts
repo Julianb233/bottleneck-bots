@@ -29,7 +29,12 @@ export type AgentSSEEventType =
   | 'phase:complete'
   | 'execution:complete'
   | 'execution:error'
-  | 'browser:session';
+  | 'browser:session'
+  | 'browser:navigate'
+  | 'browser:action'
+  | 'browser:screenshot'
+  | 'execution:paused'
+  | 'execution:resumed';
 
 export interface AgentSSEEvent {
   type: AgentSSEEventType;

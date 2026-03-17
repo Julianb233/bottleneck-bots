@@ -732,23 +732,59 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         });
         break;
 
-      case 'browser:session':
-        const sessionData = data as { sessionId: string; debugUrl?: string };
+      case 'browser:session': {
+        const bsData = data as { sessionId: string; debugUrl?: string };
         set({
           activeBrowserSession: {
-            sessionId: sessionData.sessionId,
-            debugUrl: sessionData.debugUrl,
+            sessionId: bsData.sessionId,
+            debugUrl: bsData.debugUrl,
           },
         });
-
-        get().addLog({
-          id: `log-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          level: 'success',
-          message: 'Browser session created',
-          detail: sessionData.debugUrl ? 'Live view available' : sessionData.sessionId,
-        });
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'success', message: 'Browser session created', detail: bsData.debugUrl ? 'Live view available' : bsData.sessionId });
         break;
+      }
+
+      case 'browser:navigate': {
+        const bnData = data as { url: string; pageTitle?: string; timestamp: string };
+        set((prev) => ({
+          browserState: { ...prev.browserState, currentUrl: bnData.url, pageTitle: bnData.pageTitle, lastUpdated: bnData.timestamp,
+            actions: [...prev.browserState.actions, { id: `a-${Date.now()}`, action: 'navigate', description: `Navigated to ${bnData.url}`, timestamp: bnData.timestamp }].slice(-50),
+          },
+        }));
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'info', message: `Navigated to: ${bnData.pageTitle || bnData.url}`, detail: bnData.url });
+        break;
+      }
+
+      case 'browser:action': {
+        const baData = data as { action: string; selector?: string; value?: string; description: string; timestamp: string };
+        set((prev) => ({
+          browserState: { ...prev.browserState, lastUpdated: baData.timestamp,
+            actions: [...prev.browserState.actions, { id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, action: baData.action, description: baData.description, selector: baData.selector, value: baData.value, timestamp: baData.timestamp }].slice(-50),
+          },
+        }));
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'info', message: baData.description, detail: baData.selector });
+        break;
+      }
+
+      case 'browser:screenshot': {
+        const bssData = data as { screenshotUrl?: string; screenshotBase64?: string; pageTitle?: string; currentUrl?: string; timestamp: string };
+        set((prev) => ({
+          browserState: { ...prev.browserState, screenshotUrl: bssData.screenshotUrl || prev.browserState.screenshotUrl, screenshotBase64: bssData.screenshotBase64 || prev.browserState.screenshotBase64, pageTitle: bssData.pageTitle || prev.browserState.pageTitle, currentUrl: bssData.currentUrl || prev.browserState.currentUrl, lastUpdated: bssData.timestamp },
+        }));
+        break;
+      }
+
+      case 'execution:paused': {
+        if (state.currentExecution) { set({ currentExecution: { ...state.currentExecution, status: 'paused' } }); }
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'warning', message: 'Execution paused' });
+        break;
+      }
+
+      case 'execution:resumed': {
+        if (state.currentExecution) { set({ isExecuting: true, currentExecution: { ...state.currentExecution, status: 'running' } }); }
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'info', message: 'Execution resumed' });
+        break;
+      }
     }
   },
 }));

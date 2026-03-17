@@ -1290,24 +1290,72 @@ export class AgentOrchestratorService {
         content: currentPrompt,
       });
 
-      // Fetch RAG context on first iteration
+      // Fetch RAG context on first iteration (enhanced with SOP knowledge retrieval)
       let ragContext: RAGContext | undefined;
       if (state.iterations === 0) {
         try {
+          // Use structured retrieval that separates SOP context from reference docs
+          const taskKnowledge = await ragService.retrieveForTask(state.taskDescription, {
+            maxTokens: 4000,
+          });
+
+          // Also get the standard RAG system prompt for platform detection
           const ragResult = await ragService.buildSystemPrompt(state.taskDescription, {
             maxDocumentationTokens: 3000,
             includeExamples: true,
           });
+
+          // Build enriched RAG context with SOP steps as action sequences
+          const actionSequences: RAGContext["actionSequences"] = [];
+          if (taskKnowledge.sopSteps.length > 0) {
+            actionSequences.push({
+              sequenceId: "sop-task-steps",
+              name: "SOP Steps for Task",
+              successRate: 1.0,
+              steps: taskKnowledge.sopSteps.map(
+                (s) => `Step ${s.stepNumber}: ${s.title || s.instruction.substring(0, 100)}`
+              ),
+            });
+          }
+
           ragContext = {
-            relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
-              elementName: 'document',
+            relevantSelectors: ragResult.retrievedChunks.map((chunk) => ({
+              elementName: "document",
               selector: chunk.content.substring(0, 100),
               reliability: chunk.similarity || 0,
             })),
+            actionSequences:
+              actionSequences.length > 0 ? actionSequences : undefined,
           };
-          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+
+          // Inject SOP and reference context into the task description for richer context
+          if (taskKnowledge.sopContext || taskKnowledge.referenceContext) {
+            const knowledgeSection = [
+              taskKnowledge.sopContext &&
+                `\n<sop_knowledge>\n${taskKnowledge.sopContext}\n</sop_knowledge>`,
+              taskKnowledge.referenceContext &&
+                `\n<reference_knowledge>\n${taskKnowledge.referenceContext}\n</reference_knowledge>`,
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+            // Prepend knowledge to the first user message
+            if (state.conversationHistory.length > 0) {
+              const lastMsg =
+                state.conversationHistory[
+                  state.conversationHistory.length - 1
+                ];
+              if (lastMsg.role === "user" && typeof lastMsg.content === "string") {
+                lastMsg.content = `${knowledgeSection}\n\n${lastMsg.content}`;
+              }
+            }
+          }
+
+          console.log(
+            `[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} doc chunks, ${taskKnowledge.sopSteps.length} SOP steps, platforms: ${ragResult.detectedPlatforms.join(", ")}`
+          );
         } catch (ragError) {
-          console.warn('[Agent] Failed to load RAG context:', ragError);
+          console.warn("[Agent] Failed to load RAG context:", ragError);
           // Continue without RAG context
         }
       }
