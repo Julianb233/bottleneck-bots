@@ -151,6 +151,7 @@ export const appRouter = router({
   // GHL Integration
   ghl: ghlRouter,
   ghlContacts: ghlContactsRouter,
+  ghlPipelines: ghlPipelinesRouter,
   ghlAutomation: ghlAutomationRouter,
 
   // Task Templates (pre-built templates for common agency tasks)
