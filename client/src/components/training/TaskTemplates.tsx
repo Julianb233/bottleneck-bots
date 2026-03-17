@@ -99,39 +99,30 @@ export default function TaskTemplates() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   // Fetch templates from backend
-  const { data: templates = [], isLoading } = trpc.taskTemplates.getAll.useQuery(undefined, {
-    refetchOnWindowFocus: false,
-  });
+  const { data: listData, isLoading } = trpc.taskTemplates.list.useQuery(
+    { category: selectedCategory ?? undefined, search: searchQuery || undefined, limit: 100 },
+    { refetchOnWindowFocus: false },
+  );
+  const templates = listData?.templates ?? [];
 
-  const runMutation = trpc.taskTemplates.runFromTemplate.useMutation({
-    onSuccess: (data) => {
-      toast.success(data.message, {
-        description: `Estimated: ~${data.estimatedMinutes} min | ${data.creditCost} credits`,
-      });
+  const runMutation = trpc.taskTemplates.createTask.useMutation({
+    onSuccess: () => {
+      toast.success('Task created from template');
       setSelectedTemplateId(null);
       setInputValues({});
     },
-    onError: (err) => {
+    onError: (err: { message: string }) => {
       toast.error(err.message);
     },
   });
 
   const selectedTemplate = useMemo(
-    () => templates.find((t) => t.id === selectedTemplateId) ?? null,
+    () => templates.find((t: any) => String(t.id) === selectedTemplateId) ?? null,
     [templates, selectedTemplateId],
   );
 
-  const filteredTemplates = useMemo(() => {
-    return templates.filter((t) => {
-      const matchesSearch =
-        !searchQuery ||
-        t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesCategory = !selectedCategory || t.category === selectedCategory;
-      return matchesSearch && matchesCategory;
-    });
-  }, [templates, searchQuery, selectedCategory]);
+  // Filtering is handled server-side via the list query params
+  const filteredTemplates = templates;
 
   const categories = ['ghl', 'marketing', 'sales', 'operations'];
 
@@ -144,7 +135,6 @@ export default function TaskTemplates() {
     if (!selectedTemplate) return;
     runMutation.mutate({
       templateId: selectedTemplate.id,
-      inputs: inputValues,
     });
   };
 
@@ -208,7 +198,6 @@ export default function TaskTemplates() {
             All ({templates.length})
           </Button>
           {categories.map((cat) => {
-            const count = templates.filter((t) => t.category === cat).length;
             return (
               <Button
                 key={cat}
@@ -216,7 +205,7 @@ export default function TaskTemplates() {
                 size="sm"
                 onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
               >
-                {CATEGORY_LABELS[cat]} ({count})
+                {CATEGORY_LABELS[cat]}
               </Button>
             );
           })}
@@ -226,19 +215,19 @@ export default function TaskTemplates() {
       {/* Template Grid View */}
       {viewMode === 'grid' && (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTemplates.map((template) => (
+          {filteredTemplates.map((template: any) => (
             <Card
               key={template.id}
               className="hover:shadow-md transition-shadow cursor-pointer group"
-              onClick={() => handleOpenTemplate(template.id)}
+              onClick={() => handleOpenTemplate(String(template.id))}
             >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="p-2 bg-gray-100 rounded-lg group-hover:bg-emerald-100 transition-colors">
                     {ICON_MAP[template.id] ?? <Zap className="w-5 h-5" />}
                   </div>
-                  <Badge className={CATEGORY_COLORS[template.category]}>
-                    {CATEGORY_LABELS[template.category]}
+                  <Badge className={CATEGORY_COLORS[template.categorySlug] ?? 'bg-gray-100 text-gray-700'}>
+                    {CATEGORY_LABELS[template.categorySlug] ?? template.categorySlug}
                   </Badge>
                 </div>
                 <CardTitle className="text-base mt-3">{template.name}</CardTitle>
@@ -249,30 +238,29 @@ export default function TaskTemplates() {
               <CardContent>
                 <div className="flex items-center gap-4 text-xs text-gray-500">
                   <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" />~{template.estimatedMinutes} min
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <CreditCard className="w-3.5 h-3.5" />
-                    {template.creditCost} credits
-                  </span>
-                  <span className="flex items-center gap-1">
                     <Zap className="w-3.5 h-3.5" />
-                    {template.steps.length} steps
+                    {template.taskType}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Target className="w-3.5 h-3.5" />
+                    {template.priority}
                   </span>
                 </div>
                 {/* Tags */}
-                <div className="flex flex-wrap gap-1 mt-3">
-                  {template.tags.slice(0, 3).map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">
-                      {tag}
-                    </Badge>
-                  ))}
-                  {template.tags.length > 3 && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                      +{template.tags.length - 3}
-                    </Badge>
-                  )}
-                </div>
+                {Array.isArray(template.defaultTags) && template.defaultTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-3">
+                    {template.defaultTags.slice(0, 3).map((tag: string) => (
+                      <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {template.defaultTags.length > 3 && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        +{template.defaultTags.length - 3}
+                      </Badge>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -282,11 +270,11 @@ export default function TaskTemplates() {
       {/* Template List View */}
       {viewMode === 'list' && (
         <div className="space-y-2">
-          {filteredTemplates.map((template) => (
+          {filteredTemplates.map((template: any) => (
             <Card
               key={template.id}
               className="hover:shadow-sm transition-shadow cursor-pointer"
-              onClick={() => handleOpenTemplate(template.id)}
+              onClick={() => handleOpenTemplate(String(template.id))}
             >
               <div className="flex items-center gap-4 p-4">
                 <div className="p-2 bg-gray-100 rounded-lg shrink-0">
@@ -295,21 +283,15 @@ export default function TaskTemplates() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="font-medium text-sm truncate">{template.name}</h3>
-                    <Badge className={`${CATEGORY_COLORS[template.category]} text-[10px]`}>
-                      {CATEGORY_LABELS[template.category]}
+                    <Badge className={`${CATEGORY_COLORS[template.categorySlug] ?? 'bg-gray-100 text-gray-700'} text-[10px]`}>
+                      {CATEGORY_LABELS[template.categorySlug] ?? template.categorySlug}
                     </Badge>
                   </div>
                   <p className="text-xs text-gray-500 truncate mt-0.5">{template.description}</p>
                 </div>
                 <div className="flex items-center gap-4 text-xs text-gray-500 shrink-0">
                   <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" />~{template.estimatedMinutes}m
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <CreditCard className="w-3.5 h-3.5" />{template.creditCost}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Zap className="w-3.5 h-3.5" />{template.steps.length}
+                    <Zap className="w-3.5 h-3.5" />{template.taskType}
                   </span>
                   <ArrowRight className="w-4 h-4 text-gray-300" />
                 </div>
@@ -344,98 +326,41 @@ export default function TaskTemplates() {
             </DialogHeader>
 
             {/* Steps preview */}
-            <div className="space-y-2 mb-4">
-              <p className="text-sm font-medium text-gray-700">Workflow Steps</p>
-              <div className="space-y-1.5">
-                {selectedTemplate.steps.map((step, i) => (
-                  <div key={i} className="flex items-start gap-2 text-sm">
-                    <span className="text-emerald-600 font-mono text-xs mt-0.5 min-w-[20px]">
-                      {step.order}.
-                    </span>
-                    <Badge className={`${ACTION_TYPE_COLORS[step.actionType]} text-[10px] px-1.5 py-0 shrink-0`}>
-                      {step.actionType}
-                    </Badge>
-                    <span className="text-gray-600">{step.description}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Info badges */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              <Badge variant="outline" className="gap-1">
-                <Clock className="w-3 h-3" /> ~{selectedTemplate.estimatedMinutes} min
-              </Badge>
-              <Badge variant="outline" className="gap-1">
-                <CreditCard className="w-3 h-3" /> {selectedTemplate.creditCost} credits
-              </Badge>
-              <Badge className={CATEGORY_COLORS[selectedTemplate.category]}>
-                {selectedTemplate.platform}
-              </Badge>
-            </div>
-
-            {/* Platform requirements */}
-            {selectedTemplate.platformRequirements.length > 0 && (
-              <div className="mb-4">
-                <p className="text-xs font-medium text-gray-500 mb-1">Requires</p>
-                <div className="flex flex-wrap gap-1">
-                  {selectedTemplate.platformRequirements.map((req) => (
-                    <Badge key={req} variant="secondary" className="text-[10px]">
-                      {req}
-                    </Badge>
+            {Array.isArray(selectedTemplate.steps) && (
+              <div className="space-y-2 mb-4">
+                <p className="text-sm font-medium text-gray-700">Workflow Steps</p>
+                <div className="space-y-1.5">
+                  {(selectedTemplate.steps as any[]).map((step: any, i: number) => (
+                    <div key={i} className="flex items-start gap-2 text-sm">
+                      <span className="text-emerald-600 font-mono text-xs mt-0.5 min-w-[20px]">
+                        {i + 1}.
+                      </span>
+                      <span className="text-gray-600">{step.title ?? step.description ?? String(step)}</span>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Input form */}
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-gray-700">Inputs</p>
-              {selectedTemplate.inputs.map((input) => (
-                <div key={input.name}>
-                  <label className="text-sm text-gray-600 mb-1 block">
-                    {input.label} {input.required && <span className="text-red-500">*</span>}
-                  </label>
-                  {input.type === 'textarea' ? (
-                    <Textarea
-                      placeholder={input.placeholder}
-                      value={inputValues[input.name] || ''}
-                      onChange={(e) =>
-                        setInputValues((prev) => ({ ...prev, [input.name]: e.target.value }))
-                      }
-                      rows={3}
-                    />
-                  ) : input.type === 'select' && input.options ? (
-                    <Select
-                      value={inputValues[input.name] || ''}
-                      onValueChange={(val) =>
-                        setInputValues((prev) => ({ ...prev, [input.name]: val }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={input.placeholder} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {input.options.map((opt) => (
-                          <SelectItem key={opt} value={opt}>
-                            {opt}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      type={input.type}
-                      placeholder={input.placeholder}
-                      value={inputValues[input.name] || ''}
-                      onChange={(e) =>
-                        setInputValues((prev) => ({ ...prev, [input.name]: e.target.value }))
-                      }
-                    />
-                  )}
-                </div>
-              ))}
+            {/* Info badges */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Badge variant="outline" className="gap-1">
+                <Zap className="w-3 h-3" /> {selectedTemplate.taskType}
+              </Badge>
+              <Badge variant="outline" className="gap-1">
+                <Target className="w-3 h-3" /> {selectedTemplate.priority}
+              </Badge>
+              <Badge className={CATEGORY_COLORS[selectedTemplate.categorySlug] ?? 'bg-gray-100 text-gray-700'}>
+                {CATEGORY_LABELS[selectedTemplate.categorySlug] ?? selectedTemplate.categorySlug}
+              </Badge>
             </div>
+
+            {/* Description */}
+            {selectedTemplate.description && (
+              <div className="mb-4">
+                <p className="text-sm text-gray-600">{selectedTemplate.description}</p>
+              </div>
+            )}
 
             <DialogFooter className="mt-4">
               <Button variant="outline" onClick={() => setSelectedTemplateId(null)}>
