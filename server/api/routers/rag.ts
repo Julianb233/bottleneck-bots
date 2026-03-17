@@ -665,27 +665,7 @@ export const ragRouter = router({
   /**
    * Re-process an existing document with updated SOP processing
    */
-  reprocessSource: protectedProcedure
-    .input(z.object({ sourceId: z.number() }))
-    .mutation(async ({ input }) => {
-      try {
-        const result = await ragService.reprocessSource(input.sourceId);
 
-        return {
-          success: true,
-          sourceId: result.sourceId,
-          chunkCount: result.chunkCount,
-          totalTokens: result.totalTokens,
-          message: `Reprocessed document: ${result.chunkCount} chunks created`,
-        };
-      } catch (error) {
-        console.error("[RAG Router] Reprocess failed:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to reprocess document: ${error instanceof Error ? error.message : "Unknown error"}`,
-        });
-      }
-    }),
 
   /**
    * Get knowledge base summary (categorized counts, SOP data, top priority docs)
@@ -712,20 +692,7 @@ export const ragRouter = router({
   /**
    * Get chunks for a specific source (knowledge base browser preview)
    */
-  getSourceChunks: protectedProcedure
-    .input(z.object({ sourceId: z.number() }))
-    .query(async ({ input }) => {
-      try {
-        const chunks = await ragService.getSourceChunks(input.sourceId);
-        return { success: true, chunks, count: chunks.length };
-      } catch (error) {
-        console.error("[RAG Router] Get source chunks failed:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to get chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
-        });
-      }
-    }),
+
 
   /**
    * Retrieve structured knowledge for agent task execution

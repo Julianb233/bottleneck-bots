@@ -5,7 +5,7 @@
 
 import { router, protectedProcedure } from "../../_core/trpc";
 import { z } from "zod";
-import { getSkillConfigService } from "../../services/agentSkillConfig.service";
+import { getAgentSkillConfigService as getSkillConfigService } from "../../services/agentSkillConfig.service";
 import { TRPCError } from "@trpc/server";
 
 // ========================================

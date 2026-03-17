@@ -44,6 +44,7 @@ import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
 import { ghlRouter } from "./api/routers/ghl";
+import { ghlAppointmentsRouter } from "./api/routers/ghlAppointments";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -146,6 +147,9 @@ export const appRouter = router({
 
   // GHL OAuth & Connection Management
   ghl: ghlRouter,
+
+  // GHL Appointments & Webhook Events
+  ghlAppointments: ghlAppointmentsRouter,
 });
 
 export type AppRouter = typeof appRouter;
