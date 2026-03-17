@@ -233,9 +233,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated, onBac
               {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
             </button>
             {!isSignUp && (
-              <p className="text-xs text-slate-400 mt-3">
-                Protected by Enterprise Encryption.
-              </p>
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => { window.location.href = '/forgot-password'; }}
+                  className="text-xs text-slate-400 hover:text-emerald-600 hover:underline transition-colors p-1 min-h-[44px] inline-flex items-center"
+                >
+                  Forgot your password?
+                </button>
+              </div>
             )}
           </div>
         </GlassPane>
