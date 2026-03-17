@@ -4,7 +4,7 @@
  * Provides typed RPC endpoints for GHL integration management:
  * - ghl.status — connection health check per location
  * - ghl.listLocations — list all authorized GHL locations
- * - ghl.disconnect — revoke and clean up a location
+ * - ghl.disconnect — revoke and clean up
  *
  * Linear: AI-2877
  */
@@ -17,12 +17,6 @@ import { GHLService, GHLError } from "../../services/ghl.service";
 export const ghlRouter = router({
   /**
    * Get connection status for a specific GHL location.
-   *
-   * @example
-   * ```ts
-   * const status = await trpc.ghl.status.query({ locationId: "abc123" });
-   * console.log(status.connected); // true
-   * ```
    */
   status: protectedProcedure
     .input(
@@ -57,12 +51,6 @@ export const ghlRouter = router({
 
   /**
    * List all authorized GHL locations for the current user.
-   *
-   * @example
-   * ```ts
-   * const locations = await trpc.ghl.listLocations.query();
-   * locations.forEach(loc => console.log(loc.locationId, loc.connected));
-   * ```
    */
   listLocations: protectedProcedure.query(async ({ ctx }) => {
     try {
@@ -81,11 +69,6 @@ export const ghlRouter = router({
 
   /**
    * Disconnect a GHL location (revoke tokens and mark inactive).
-   *
-   * @example
-   * ```ts
-   * await trpc.ghl.disconnect.mutate({ locationId: "abc123" });
-   * ```
    */
   disconnect: protectedProcedure
     .input(

@@ -36,14 +36,13 @@ import { knowledgeRouter } from "./api/routers/knowledge";
 import { subscriptionRouter } from "./api/routers/subscription";
 import { memoryRouter } from "./api/routers/memory";
 import { toolsRouter } from "./api/routers/tools";
-import { taskTemplatesRouter } from "./api/routers/taskTemplates";
 import { subAccountsRouter } from "./api/routers/subAccounts";
 import { agentPermissionsRouter } from "./api/routers/agentPermissions";
 import { agentMemoryRouter } from "./api/routers/agentMemory";
 import { agentTrainingRouter } from "./api/routers/agentTraining";
 import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
-import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
+import { ghlRouter } from "./api/routers/ghl";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -141,11 +140,8 @@ export const appRouter = router({
   // Multi-Step Workflow Pipelines
   pipelines: pipelinesRouter,
 
-  // GHL Automation (48 GoHighLevel browser automation functions)
-  ghlAutomation: ghlAutomationRouter,
-
-  // Task Templates (pre-built agency workflow templates)
-  taskTemplates: taskTemplatesRouter,
+  // GHL OAuth & Connection Management (AI-2877)
+  ghl: ghlRouter,
 });
 
 export type AppRouter = typeof appRouter;
