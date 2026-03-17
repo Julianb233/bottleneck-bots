@@ -35,6 +35,7 @@ import {
   getAgentPermissionsService,
   PermissionDeniedError,
 } from "./agentPermissions.service";
+import { getAgentSkillConfigService } from "./agentSkillConfig.service";
 import { getSelfCorrectionService, type FailureAttempt } from "./browser/selfCorrection.service";
 import { getConfidenceService } from "./agentConfidence.service";
 import { getStrategyService, type ExecutionStrategy } from "./agentStrategy.service";
@@ -899,6 +900,15 @@ export class AgentOrchestratorService {
         throw error;
       }
 
+      // SKILL CONFIG: Check if the tool's skill is enabled and permitted
+      const skillConfigService = getAgentSkillConfigService();
+      const skillCheck = await skillConfigService.checkSkillPermission(state.userId, toolName);
+      if (!skillCheck.allowed) {
+        throw new Error(
+          `Skill blocked: ${skillCheck.reason} (Tool: ${toolName}, Skill: ${skillCheck.skillName})`
+        );
+      }
+
       // Special handling for certain tools that need state
       let result: unknown;
       if (toolName === "browser_create_session") {
@@ -1012,6 +1022,9 @@ export class AgentOrchestratorService {
 
       const duration = Date.now() - startTime;
 
+      // Track skill usage (async, non-blocking)
+      skillConfigService.recordSkillUsage(state.userId, toolName, true, duration).catch(() => {});
+
       // Emit tool complete event
       if (emitter) {
         emitter.toolComplete({
@@ -1028,6 +1041,10 @@ export class AgentOrchestratorService {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
+
+      // Track failed skill usage (async, non-blocking)
+      const skillSvc = getAgentSkillConfigService();
+      skillSvc.recordSkillUsage(state.userId, toolName, false, duration).catch(() => {});
 
       // Emit tool complete event with error
       if (emitter) {
