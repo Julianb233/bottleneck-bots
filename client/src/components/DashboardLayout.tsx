@@ -35,7 +35,8 @@ import {
   LifeBuoy,
   Shield,
   Bot,
-  GraduationCap
+  GraduationCap,
+  History
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -46,6 +47,7 @@ import { CommandPalette } from './CommandPalette';
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Bot, label: "AI Agent", path: "/agent" },
+  { icon: History, label: "Execution History", path: "/execution-history" },
   { icon: GraduationCap, label: "Training", path: "/training" },
   { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
