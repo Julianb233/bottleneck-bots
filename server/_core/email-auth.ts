@@ -341,4 +341,17 @@ router.get("/verify-reset-token", async (req, res) => {
   }
 });
 
+// POST /api/auth/logout - Clear session cookie
+router.post("/logout", async (req, res) => {
+  try {
+    const cookieOptions = getSessionCookieOptions(req);
+    res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+    console.log("[Auth] Logout successful");
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("[Auth] Logout error:", error);
+    return res.status(500).json({ error: "Logout failed" });
+  }
+});
+
 export const emailAuthRouter = router;

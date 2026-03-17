@@ -6,6 +6,7 @@ import { eq, and, desc, or } from "drizzle-orm";
 import { taskExecutions, agencyTasks } from "../../../drizzle/schema-webhooks";
 import { getAgentOrchestrator } from "../../services/agentOrchestrator.service";
 import { getSubscriptionService } from "../../services/subscription.service";
+import { getExecutionRetryService } from "../../services/executionRetry.service";
 
 /**
  * Agent tRPC Router
@@ -17,6 +18,7 @@ import { getSubscriptionService } from "../../services/subscription.service";
  * - View execution history and results
  * - Respond to agent questions
  * - Cancel running executions
+ * - Retry failed executions with automatic error recovery
  */
 
 // ========================================
@@ -59,6 +61,11 @@ const cancelExecutionSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+const retryExecutionSchema = z.object({
+  executionId: z.number().int().positive(),
+  maxAttempts: z.number().int().min(1).max(5).optional().default(3),
+});
+
 // ========================================
 // AGENT ROUTER
 // ========================================
@@ -67,6 +74,7 @@ export const agentRouter = router({
   /**
    * Execute a new agent task
    * Starts an autonomous agent to complete the specified task
+   * Automatically retries on transient failures (timeouts, network errors, 5xx)
    */
   executeTask: protectedProcedure
     .input(executeTaskSchema)
@@ -128,26 +136,37 @@ export const agentRouter = router({
             .where(eq(agencyTasks.id, input.taskId));
         }
 
-        // Execute the task
-        const orchestrator = getAgentOrchestrator();
-        const result = await orchestrator.executeTask({
-          userId,
-          taskDescription: input.taskDescription,
-          context: input.context || {},
-          maxIterations: input.maxIterations,
-          taskId: input.taskId,
-        });
+        // Execute the task with automatic retry on transient failures
+        const retryService = getExecutionRetryService();
+        const retryResult = await retryService.executeWithRetry(
+          {
+            userId,
+            taskDescription: input.taskDescription,
+            context: input.context || {},
+            maxIterations: input.maxIterations,
+            taskId: input.taskId,
+          },
+          {
+            retryPolicy: { maxAttempts: 3 },
+            onRetry: (attempt, error, delayMs) => {
+              console.log(
+                `[Agent Router] Auto-retrying task (attempt ${attempt}): ${error} (delay: ${delayMs}ms)`
+              );
+            },
+          }
+        );
 
-        // Increment execution usage after successful execution
+        const result = retryResult.executionResult;
+
+        // Increment execution usage after execution completes
         try {
           await subscriptionService.incrementExecutionUsage(userId);
         } catch (usageError) {
           console.error("Failed to increment execution usage:", usageError);
-          // Don't fail the request if usage tracking fails
         }
 
         return {
-          success: true,
+          success: retryResult.finalSuccess,
           executionId: result.executionId,
           status: result.status,
           plan: result.plan,
@@ -156,6 +175,16 @@ export const agentRouter = router({
           output: result.output,
           iterations: result.iterations,
           duration: result.duration,
+          retryInfo: retryResult.totalAttempts > 1
+            ? {
+                totalAttempts: retryResult.totalAttempts,
+                retriedErrors: retryResult.retriedErrors.map((e) => ({
+                  attempt: e.attempt,
+                  error: e.error,
+                  errorType: e.errorType,
+                })),
+              }
+            : undefined,
         };
       } catch (error) {
         console.error("Agent task execution failed:", error);
@@ -491,6 +520,120 @@ export const agentRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to cancel execution: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
+   * Retry a failed execution
+   * Re-runs a previously failed/timed-out execution with automatic retry logic
+   */
+  retryExecution: protectedProcedure
+    .input(retryExecutionSchema)
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.user.id;
+
+      try {
+        // Check subscription limits before retrying
+        const subscriptionService = getSubscriptionService();
+        const limitCheck = await subscriptionService.canExecuteTask(userId);
+
+        if (!limitCheck.allowed) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: limitCheck.reason || "Subscription limit reached",
+          });
+        }
+
+        const retryService = getExecutionRetryService();
+
+        // Check if the execution is eligible for retry
+        const db = await getDb();
+        if (!db) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Database not initialized",
+          });
+        }
+
+        const [execution] = await db
+          .select()
+          .from(taskExecutions)
+          .where(
+            and(
+              eq(taskExecutions.id, input.executionId),
+              eq(taskExecutions.triggeredByUserId, userId)
+            )
+          )
+          .limit(1);
+
+        if (!execution) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Execution not found",
+          });
+        }
+
+        if (execution.status !== "failed" && execution.status !== "timeout") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Cannot retry execution with status: ${execution.status}. Only failed or timed-out executions can be retried.`,
+          });
+        }
+
+        // Check retry eligibility based on error type
+        if (execution.error) {
+          const eligibility = retryService.isRetryEligible(execution.error);
+          if (!eligibility.eligible) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Execution is not eligible for retry: ${eligibility.reason}`,
+            });
+          }
+        }
+
+        const retryResult = await retryService.retryFailedExecution(
+          input.executionId,
+          userId,
+          {
+            retryPolicy: { maxAttempts: input.maxAttempts },
+          }
+        );
+
+        const result = retryResult.executionResult;
+
+        // Increment execution usage
+        try {
+          await subscriptionService.incrementExecutionUsage(userId);
+        } catch (usageError) {
+          console.error("Failed to increment execution usage:", usageError);
+        }
+
+        return {
+          success: retryResult.finalSuccess,
+          executionId: result.executionId,
+          status: result.status,
+          plan: result.plan,
+          thinkingSteps: result.thinkingSteps,
+          toolHistory: result.toolHistory,
+          output: result.output,
+          iterations: result.iterations,
+          duration: result.duration,
+          retryInfo: {
+            totalAttempts: retryResult.totalAttempts,
+            retriedErrors: retryResult.retriedErrors.map((e) => ({
+              attempt: e.attempt,
+              error: e.error,
+              errorType: e.errorType,
+            })),
+          },
+        };
+      } catch (error) {
+        console.error("Failed to retry execution:", error);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to retry execution: ${error instanceof Error ? error.message : "Unknown error"}`,
         });
       }
     }),

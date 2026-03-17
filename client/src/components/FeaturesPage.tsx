@@ -412,7 +412,7 @@ export const FeaturesPage: React.FC<FeaturesPageProps> = ({ onGetStarted, onNavi
             </div>
           </div>
           <div className="border-t border-gray-800 pt-6 sm:pt-8 text-center text-xs sm:text-sm">
-            <p>&copy; 2025 Bottleneck Bots. All rights reserved.</p>
+            <p>&copy; 2026 Bottleneck Bots. All rights reserved.</p>
           </div>
         </div>
       </footer>

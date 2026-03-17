@@ -62,6 +62,7 @@ export enum JobType {
     AD_AUTOMATION = "ad_automation",
     LEAD_ENRICHMENT = "lead_enrichment",
     WORKFLOW_EXECUTION = "workflow_execution",
+    SCHEDULED_TASK = "scheduled_task",
 }
 
 /**
@@ -125,6 +126,16 @@ export interface WorkflowExecutionJobData {
     context?: Record<string, any>;
 }
 
+export interface ScheduledTaskJobData {
+    userId: number;
+    taskId: number;
+    executionId: number;
+    automationType: string;
+    automationConfig: Record<string, any>;
+    timeout: number;
+    attemptNumber: number;
+}
+
 export type JobData =
     | EmailSyncJobData
     | EmailDraftJobData
@@ -132,7 +143,8 @@ export type JobData =
     | SeoAuditJobData
     | AdAnalysisJobData
     | LeadEnrichmentJobData
-    | WorkflowExecutionJobData;
+    | WorkflowExecutionJobData
+    | ScheduledTaskJobData;
 
 /**
  * Queue Definitions - Only create if Redis is available
@@ -179,6 +191,13 @@ const defaultWorkflowOptions = {
     removeOnFail: { age: 7 * 24 * 3600 },
 };
 
+const defaultScheduledTaskOptions = {
+    attempts: 3,
+    backoff: { type: "exponential" as const, delay: 5000 },
+    removeOnComplete: { age: 24 * 3600, count: 500 },
+    removeOnFail: { age: 7 * 24 * 3600 },
+};
+
 // Only create queues if Redis is configured
 export const emailQueue = connection ? new Queue("email", { connection, defaultJobOptions: defaultEmailOptions }) : null;
 export const voiceQueue = connection ? new Queue("voice", { connection, defaultJobOptions: defaultVoiceOptions }) : null;
@@ -186,6 +205,7 @@ export const seoQueue = connection ? new Queue("seo", { connection, defaultJobOp
 export const adsQueue = connection ? new Queue("ads", { connection, defaultJobOptions: defaultAdsOptions }) : null;
 export const enrichmentQueue = connection ? new Queue("enrichment", { connection, defaultJobOptions: defaultEnrichmentOptions }) : null;
 export const workflowQueue = connection ? new Queue("workflow", { connection, defaultJobOptions: defaultWorkflowOptions }) : null;
+export const scheduledTaskQueue = connection ? new Queue("scheduled-task", { connection, defaultJobOptions: defaultScheduledTaskOptions }) : null;
 
 /**
  * Queue Events for monitoring - Only create if Redis is available
@@ -196,6 +216,7 @@ export const seoQueueEvents = connection ? new QueueEvents("seo", { connection }
 export const adsQueueEvents = connection ? new QueueEvents("ads", { connection }) : null;
 export const enrichmentQueueEvents = connection ? new QueueEvents("enrichment", { connection }) : null;
 export const workflowQueueEvents = connection ? new QueueEvents("workflow", { connection }) : null;
+export const scheduledTaskQueueEvents = connection ? new QueueEvents("scheduled-task", { connection }) : null;
 
 // Export availability flag
 export { REDIS_AVAILABLE };
@@ -204,7 +225,7 @@ export { REDIS_AVAILABLE };
  * Add job to queue with retry logic
  */
 export async function addJob<T extends JobData>(
-    queueName: "email" | "voice" | "seo" | "ads" | "enrichment" | "workflow",
+    queueName: "email" | "voice" | "seo" | "ads" | "enrichment" | "workflow" | "scheduled-task",
     jobType: JobType,
     data: T,
     options?: {
@@ -226,6 +247,7 @@ export async function addJob<T extends JobData>(
         ads: adsQueue,
         enrichment: enrichmentQueue,
         workflow: workflowQueue,
+        "scheduled-task": scheduledTaskQueue,
     };
 
     const queue = queueMap[queueName];
@@ -273,10 +295,14 @@ export async function addWorkflowExecutionJob(data: WorkflowExecutionJobData, op
     return addJob("workflow", JobType.WORKFLOW_EXECUTION, data, options);
 }
 
+export async function addScheduledTaskJob(data: ScheduledTaskJobData, options?: { delay?: number; priority?: number; jobId?: string }) {
+    return addJob("scheduled-task", JobType.SCHEDULED_TASK, data as any, options);
+}
+
 /**
  * Get queue statistics
  */
-export async function getQueueStats(queueName: "email" | "voice" | "seo" | "ads" | "enrichment" | "workflow") {
+export async function getQueueStats(queueName: "email" | "voice" | "seo" | "ads" | "enrichment" | "workflow" | "scheduled-task") {
     if (!REDIS_AVAILABLE) {
         return { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0, paused: false, available: false };
     }
@@ -288,6 +314,7 @@ export async function getQueueStats(queueName: "email" | "voice" | "seo" | "ads"
         ads: adsQueue,
         enrichment: enrichmentQueue,
         workflow: workflowQueue,
+        "scheduled-task": scheduledTaskQueue,
     };
 
     const queue = queueMap[queueName];
@@ -319,13 +346,14 @@ export async function getQueueStats(queueName: "email" | "voice" | "seo" | "ads"
  * Get all queue statistics
  */
 export async function getAllQueueStats() {
-    const [email, voice, seo, ads, enrichment, workflow] = await Promise.all([
+    const [email, voice, seo, ads, enrichment, workflow, scheduledTask] = await Promise.all([
         getQueueStats("email"),
         getQueueStats("voice"),
         getQueueStats("seo"),
         getQueueStats("ads"),
         getQueueStats("enrichment"),
         getQueueStats("workflow"),
+        getQueueStats("scheduled-task"),
     ]);
 
     return {
@@ -335,6 +363,7 @@ export async function getAllQueueStats() {
         ads,
         enrichment,
         workflow,
+        scheduledTask,
     };
 }
 
@@ -345,7 +374,7 @@ export async function shutdownQueues() {
     if (!REDIS_AVAILABLE) return;
 
     console.log("Closing all queues...");
-    const queues = [emailQueue, voiceQueue, seoQueue, adsQueue, enrichmentQueue, workflowQueue];
+    const queues = [emailQueue, voiceQueue, seoQueue, adsQueue, enrichmentQueue, workflowQueue, scheduledTaskQueue];
     await Promise.all(queues.filter(q => q !== null).map(q => q!.close()));
     console.log("All queues closed");
 }
@@ -357,7 +386,7 @@ export async function shutdownQueueEvents() {
     if (!REDIS_AVAILABLE) return;
 
     console.log("Closing all queue events...");
-    const events = [emailQueueEvents, voiceQueueEvents, seoQueueEvents, adsQueueEvents, enrichmentQueueEvents, workflowQueueEvents];
+    const events = [emailQueueEvents, voiceQueueEvents, seoQueueEvents, adsQueueEvents, enrichmentQueueEvents, workflowQueueEvents, scheduledTaskQueueEvents];
     await Promise.all(events.filter(e => e !== null).map(e => e!.close()));
     console.log("All queue events closed");
 }

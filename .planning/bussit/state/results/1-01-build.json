@@ -1,0 +1,17 @@
+{
+  "status": "completed",
+  "summary": "Build now passes cleanly. Fixed 2 esbuild errors: (1) created stub router files for server/api/routers/pipelines.ts and server/api/routers/ghlAutomation.ts which were imported in routers.ts but never created, (2) removed duplicate ghlAutomationRouter import. Vite client build produces all assets to dist/public/. esbuild server build produces dist/index.js. vercel.json and api/index.ts serverless wrapper are correctly configured. Health endpoint at /api/health returns JSON. App is build-ready for Vercel deployment.",
+  "commits": [
+    {
+      "hash": "a98cf96",
+      "message": "fix(deploy): add missing pipelines and ghlAutomation router stubs, remove duplicate import"
+    }
+  ],
+  "errors": [],
+  "notes": {
+    "vercel_config": "vercel.json routes /api/* to api/index.ts serverless function, all other routes to index.html SPA",
+    "build_output": "dist/public/ (client assets) + dist/index.js (server bundle)",
+    "env_vars_needed": "DATABASE_URL, SUPABASE_*, ANTHROPIC_API_KEY, GOOGLE_GEMINI_API_KEY, OPENAI_API_KEY, BROWSERBASE_*, STRIPE_*, JWT_SECRET, SESSION_SECRET, SENTRY_DSN, REDIS_URL, AWS_*, VAPI_API_KEY",
+    "node_engine": "package.json specifies node 20.x"
+  }
+}

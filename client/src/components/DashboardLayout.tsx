@@ -54,7 +54,6 @@ const menuItems = [
   { icon: Megaphone, label: "AI Campaigns", path: "/ai-campaigns" },
   { icon: CreditCard, label: "Credits", path: "/credits" },
   { icon: Settings, label: "Settings", path: "/settings" },
-  { icon: LifeBuoy, label: "Support", path: "/support" },
 ];
 
 const adminOnlyItems = [

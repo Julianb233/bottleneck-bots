@@ -28,46 +28,52 @@ Add the following to your `.env` file:
 ENCRYPTION_KEY=your_32_byte_hex_encryption_key_here
 
 # ========================================
-# OAUTH - GOOGLE
+# APP URL (derives OAuth redirect URIs)
+# ========================================
+# Production: https://bottleneckbots.com
+APP_URL=http://localhost:3000
+
+# ========================================
+# OAUTH - GOOGLE (redirect URI optional, derived from APP_URL)
 # ========================================
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_REDIRECT_URI=http://localhost:3000/api/oauth/callback/google
+# GOOGLE_REDIRECT_URI=https://bottleneckbots.com/api/oauth/google/callback
 
 # ========================================
-# OAUTH - GMAIL
+# OAUTH - GMAIL (redirect URI optional, derived from APP_URL)
 # ========================================
 GMAIL_CLIENT_ID=your_gmail_client_id
 GMAIL_CLIENT_SECRET=your_gmail_client_secret
-GMAIL_REDIRECT_URI=http://localhost:3000/api/oauth/callback/gmail
+# GMAIL_REDIRECT_URI=https://bottleneckbots.com/api/oauth/callback/gmail
 
 # ========================================
-# OAUTH - OUTLOOK
+# OAUTH - OUTLOOK (redirect URI optional, derived from APP_URL)
 # ========================================
 OUTLOOK_CLIENT_ID=your_outlook_client_id
 OUTLOOK_CLIENT_SECRET=your_outlook_client_secret
-OUTLOOK_REDIRECT_URI=http://localhost:3000/api/oauth/callback/outlook
+# OUTLOOK_REDIRECT_URI=https://bottleneckbots.com/api/oauth/callback/outlook
 
 # ========================================
-# OAUTH - FACEBOOK
+# OAUTH - FACEBOOK (redirect URI optional, derived from APP_URL)
 # ========================================
 FACEBOOK_CLIENT_ID=your_facebook_app_id
 FACEBOOK_CLIENT_SECRET=your_facebook_app_secret
-FACEBOOK_REDIRECT_URI=http://localhost:3000/api/oauth/callback/facebook
+# FACEBOOK_REDIRECT_URI=https://bottleneckbots.com/api/oauth/callback/facebook
 
 # ========================================
-# OAUTH - INSTAGRAM
+# OAUTH - INSTAGRAM (redirect URI optional, derived from APP_URL)
 # ========================================
 INSTAGRAM_CLIENT_ID=your_instagram_client_id
 INSTAGRAM_CLIENT_SECRET=your_instagram_client_secret
-INSTAGRAM_REDIRECT_URI=http://localhost:3000/api/oauth/callback/instagram
+# INSTAGRAM_REDIRECT_URI=https://bottleneckbots.com/api/oauth/callback/instagram
 
 # ========================================
-# OAUTH - LINKEDIN
+# OAUTH - LINKEDIN (redirect URI optional, derived from APP_URL)
 # ========================================
 LINKEDIN_CLIENT_ID=your_linkedin_client_id
 LINKEDIN_CLIENT_SECRET=your_linkedin_client_secret
-LINKEDIN_REDIRECT_URI=http://localhost:3000/api/oauth/callback/linkedin
+# LINKEDIN_REDIRECT_URI=https://bottleneckbots.com/api/oauth/callback/linkedin
 ```
 
 ### Generate Encryption Key

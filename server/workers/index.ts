@@ -11,6 +11,7 @@ import { createVoiceWorker } from "./voiceWorker";
 import { createEnrichmentWorker } from "./enrichmentWorker";
 import { createWorkflowWorker } from "./workflowWorker";
 import { createMemoryCleanupWorker } from "./memoryCleanup.worker";
+import { createScheduledTaskWorker } from "./scheduledTask.worker";
 import { shutdownQueues, shutdownQueueEvents } from "../_core/queue";
 import { Worker } from "bullmq";
 
@@ -29,12 +30,17 @@ async function startWorkers() {
         const enrichmentWorker = createEnrichmentWorker();
         const workflowWorker = createWorkflowWorker();
         const memoryCleanupWorker = createMemoryCleanupWorker();
+        const scheduledTaskWorker = createScheduledTaskWorker();
 
-        workers.push(emailWorker, voiceWorker, enrichmentWorker, workflowWorker, memoryCleanupWorker);
+        const allWorkers = [emailWorker, voiceWorker, enrichmentWorker, workflowWorker, memoryCleanupWorker];
+        if (scheduledTaskWorker) {
+            allWorkers.push(scheduledTaskWorker);
+        }
+        workers.push(...allWorkers);
 
         // Add global error handlers
         workers.forEach((worker, index) => {
-            const workerNames = ["email", "voice", "enrichment", "workflow", "memory_cleanup"];
+            const workerNames = ["email", "voice", "enrichment", "workflow", "memory_cleanup", "scheduled_task"];
             const workerName = workerNames[index];
 
             worker.on("completed", (job) => {
@@ -61,6 +67,9 @@ async function startWorkers() {
         console.log("  - Enrichment Worker (lead_enrichment)");
         console.log("  - Workflow Worker (workflow_execution)");
         console.log("  - Memory Cleanup Worker (memory_cleanup, memory_consolidation)");
+        if (scheduledTaskWorker) {
+            console.log("  - Scheduled Task Worker (scheduled_task)");
+        }
         console.log("\nPress Ctrl+C to stop workers");
     } catch (error) {
         console.error("Failed to start workers:", error);

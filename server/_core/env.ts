@@ -7,4 +7,10 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // GoHighLevel OAuth & API
+  ghlClientId: process.env.GHL_CLIENT_ID ?? "",
+  ghlClientSecret: process.env.GHL_CLIENT_SECRET ?? "",
+  ghlRedirectUri: process.env.GHL_REDIRECT_URI ?? "",
+  ghlApiBaseUrl: process.env.GHL_API_BASE_URL ?? "https://services.leadconnectorhq.com",
+  ghlWebhookSecret: process.env.GHL_WEBHOOK_SECRET ?? "",
 };
