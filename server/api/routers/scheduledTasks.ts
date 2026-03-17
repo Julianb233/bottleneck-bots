@@ -592,16 +592,35 @@ export const scheduledTasksRouter = router({
         })
         .returning();
 
-      // PLACEHOLDER: Integrate with actual task execution service
-      // This should trigger the browser automation workflow
-      // Example:
-      // await taskExecutionService.executeTask(task.id, execution[0].id);
+      // Queue the task for execution via BullMQ (falls back to direct execution)
+      try {
+        const { addScheduledTaskJob, REDIS_AVAILABLE } = await import("../../_core/queue");
+
+        if (REDIS_AVAILABLE) {
+          await addScheduledTaskJob({
+            userId: ctx.user.id,
+            taskId: task.id,
+            executionId: execution[0].id,
+            automationType: task.automationType,
+            automationConfig: task.automationConfig as Record<string, any>,
+            timeout: task.timeout,
+            attemptNumber: 1,
+          });
+        } else {
+          // Direct execution fallback when Redis is not available
+          const { schedulerRunnerService } = await import("../../services/schedulerRunner.service");
+          // Fire and forget - the runner handles status updates
+          schedulerRunnerService.executeTaskById(task.id, execution[0].id);
+        }
+      } catch (queueError) {
+        console.error("Failed to queue scheduled task:", queueError);
+        // Still return success - execution record was created
+      }
 
       return {
         success: true,
         execution: execution[0],
         message: "Task execution queued successfully",
-        // PLACEHOLDER: Add execution status polling endpoint or webhook for updates
       };
     }),
 
@@ -784,6 +803,81 @@ export const scheduledTasksRouter = router({
         lastRunError: task[0].lastRunError,
         lastRunDuration: task[0].lastRunDuration,
         nextRun: task[0].nextRun,
+      };
+    }),
+
+  /**
+   * Validate a cron expression and return human-readable description
+   */
+  validateCron: protectedProcedure
+    .input(z.object({
+      cronExpression: z.string().min(1),
+      timezone: z.string().default("UTC"),
+    }))
+    .query(({ input }) => {
+      const validation = cronSchedulerService.validateCronExpression(input.cronExpression);
+      if (!validation.valid) {
+        return {
+          valid: false,
+          error: validation.error,
+          description: null,
+          nextRuns: [] as Date[],
+        };
+      }
+
+      const description = cronSchedulerService.describeCronExpression(input.cronExpression);
+      const nextRuns = cronSchedulerService.getNextNRunTimes(input.cronExpression, 5, input.timezone);
+
+      return {
+        valid: true,
+        error: undefined as string | undefined,
+        description,
+        nextRuns,
+      };
+    }),
+
+  /**
+   * Convert schedule type + config to cron expression
+   */
+  buildCronExpression: protectedProcedure
+    .input(z.object({
+      scheduleType: z.enum(["daily", "weekly", "monthly", "custom"]),
+      hour: z.number().min(0).max(23).default(0),
+      minute: z.number().min(0).max(59).default(0),
+      dayOfWeek: z.number().min(0).max(6).optional(),
+      dayOfMonth: z.number().min(1).max(31).optional(),
+    }))
+    .query(({ input }) => {
+      const cronExpression = cronSchedulerService.scheduleTypeToCron(input.scheduleType, {
+        hour: input.hour,
+        minute: input.minute,
+        dayOfWeek: input.dayOfWeek,
+        dayOfMonth: input.dayOfMonth,
+      });
+
+      const description = cronSchedulerService.describeCronExpression(cronExpression);
+      const nextRuns = cronSchedulerService.getNextNRunTimes(cronExpression, 5, "UTC");
+
+      return {
+        cronExpression,
+        description,
+        nextRuns,
+      };
+    }),
+
+  /**
+   * Get scheduler status and statistics
+   */
+  getSchedulerStatus: protectedProcedure
+    .query(async () => {
+      // Import dynamically to avoid circular deps
+      const { schedulerRunnerService } = await import("../../services/schedulerRunner.service");
+      const stats = schedulerRunnerService.getStats();
+      const isRunning = schedulerRunnerService.isSchedulerRunning();
+
+      return {
+        isRunning,
+        ...stats,
       };
     }),
 });

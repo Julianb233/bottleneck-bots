@@ -87,7 +87,8 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { CronExpressionBuilder } from '@/components/agent/CronExpressionBuilder';
+import { CronExpressionBuilder } from '@/components/scheduled/CronExpressionBuilder';
+import { ExecutionHistoryPanel } from '@/components/scheduled/ExecutionHistoryPanel';
 import { useBulkOperations } from '@/hooks/useBulkOperations';
 import { useSavedViewsStore, SavedView } from '@/stores/savedViewsStore';
 import { BulkOperationsToolbar } from '@/components/BulkOperationsToolbar';
@@ -1185,15 +1186,17 @@ export default function ScheduledTasksPage() {
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="cronExpression">
-                  Schedule {formData.scheduleType === 'cron' && '*'}
-                </Label>
-                <CronExpressionBuilder
-                  value={formData.cronExpression}
-                  onChange={(expr) => setFormData({ ...formData, cronExpression: expr })}
-                />
-              </div>
+              <CronExpressionBuilder
+                value={formData.cronExpression}
+                onChange={(cron, schedType) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    cronExpression: cron,
+                    scheduleType: schedType,
+                  }));
+                }}
+                timezone={formData.timezone}
+              />
             </div>
 
             {/* Advanced Options */}
@@ -1360,34 +1363,10 @@ export default function ScheduledTasksPage() {
               </TabsContent>
 
               <TabsContent value="history" className="space-y-4" data-tour="tasks-history">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Started</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Trigger</TableHead>
-                      <TableHead>Duration</TableHead>
-                      <TableHead>Steps</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {executions.map((execution) => (
-                      <TableRow key={execution.id}>
-                        <TableCell>{formatDate(execution.startedAt)}</TableCell>
-                        <TableCell>{getLastRunBadge(execution.status)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize">
-                            {execution.triggerType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{formatDuration(execution.duration)}</TableCell>
-                        <TableCell>
-                          {execution.stepsCompleted}/{execution.stepsTotal || '?'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <ExecutionHistoryPanel
+                  taskId={selectedTask.id}
+                  taskName={selectedTask.name}
+                />
               </TabsContent>
 
               <TabsContent value="config" className="space-y-4">

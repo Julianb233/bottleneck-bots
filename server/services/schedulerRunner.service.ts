@@ -80,6 +80,14 @@ class SchedulerRunnerService {
   }
 
   /**
+   * Public method to execute a specific task by ID
+   * Used by the tRPC endpoint for manual execution
+   */
+  async executeTaskById(taskId: number, executionId: number): Promise<void> {
+    this.executeTask(taskId, executionId);
+  }
+
+  /**
    * Check for scheduled tasks that need to run
    */
   private async checkScheduledTasks(): Promise<void> {
