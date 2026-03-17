@@ -93,6 +93,7 @@ import { useBulkOperations } from '@/hooks/useBulkOperations';
 import { useSavedViewsStore, SavedView } from '@/stores/savedViewsStore';
 import { BulkOperationsToolbar } from '@/components/BulkOperationsToolbar';
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts';
+import { PageEmptyState } from '@/components/onboarding/PageEmptyState';
 
 // PLACEHOLDER: Import the actual types from schema once available
 type ScheduledBrowserTask = {

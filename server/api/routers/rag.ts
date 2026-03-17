@@ -342,9 +342,41 @@ export const ragRouter = router({
 
         const countMap = new Map(chunkCounts.map((c: any) => [c.sourceId, Number(c.count)]));
 
+        // Get knowledge category info from first chunk metadata for each source
+        const categoryInfo = sourceIds.length > 0 ? await database
+          .select({
+            sourceId: documentationChunks.sourceId,
+            metadata: documentationChunks.metadata,
+          })
+          .from(documentationChunks)
+          .where(
+            and(
+              sql`${documentationChunks.sourceId} = ANY(${sourceIds})`,
+              eq(documentationChunks.chunkIndex, 0)
+            )
+          ) : [];
+
+        const categoryMap = new Map(
+          categoryInfo.map((c: any) => [
+            c.sourceId,
+            {
+              knowledgeCategory: c.metadata?.knowledgeCategory || "general",
+              sopDocument: c.metadata?.sopDocument || false,
+              sopTotalSteps: c.metadata?.sopTotalSteps || 0,
+              priority: c.metadata?.priority || 50,
+            },
+          ])
+        );
+
         const sourcesWithCounts = sources.map((s: any) => ({
           ...s,
           chunkCount: countMap.get(s.id) || 0,
+          ...(categoryMap.get(s.id) || {
+            knowledgeCategory: "general",
+            sopDocument: false,
+            sopTotalSteps: 0,
+            priority: 50,
+          }),
         }));
 
         return {

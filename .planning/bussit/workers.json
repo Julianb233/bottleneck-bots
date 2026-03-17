@@ -1,0 +1,38 @@
+{
+  "workers": [
+    {
+      "id": "worker-1",
+      "taskId": "a2258abe6a2ddffda",
+      "sessionId": "session-2026-03-17T10-42-29-024656Z",
+      "registeredAt": "2026-03-17T10:43:47.704169Z",
+      "lastHeartbeat": "2026-03-17T10:44:11.032290Z",
+      "status": "running",
+      "shutdownRequested": false,
+      "focus": "Day 1-2 (Deploy + Training)",
+      "currentTask": "1-04-build"
+    },
+    {
+      "id": "worker-2",
+      "taskId": "a3115e0b95a28dd15",
+      "sessionId": "session-2026-03-17T10-42-29-024656Z",
+      "registeredAt": "2026-03-17T10:43:47.704169Z",
+      "lastHeartbeat": "2026-03-17T10:43:47.704169Z",
+      "status": "running",
+      "shutdownRequested": false,
+      "focus": "Day 2-3 (Training + GHL)"
+    },
+    {
+      "id": "worker-3",
+      "taskId": "a24cbdbe902715cfa",
+      "sessionId": "session-2026-03-17T10-42-29-024656Z",
+      "registeredAt": "2026-03-17T10:43:47.704169Z",
+      "lastHeartbeat": "2026-03-17T10:43:47.704169Z",
+      "status": "running",
+      "shutdownRequested": false,
+      "focus": "Day 4-5 (Execution + Launch)"
+    }
+  ],
+  "maxWorkers": 3,
+  "startedAt": "2026-03-17T10:43:47.704169Z",
+  "sessionId": "session-2026-03-17T10-42-29-024656Z"
+}

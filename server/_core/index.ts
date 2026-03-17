@@ -128,6 +128,8 @@ export async function createApp() {
   app.use("/api/auth", emailAuthRouter);
   // Onboarding routes
   app.use("/api/onboarding", onboardingRouter);
+  // GHL OAuth routes for GoHighLevel integration
+  registerGhlOAuthRoutes(app);
   // SSE routes for real-time streaming
   registerSSERoutes(app);
   // Webhook endpoints (public, token-authenticated)

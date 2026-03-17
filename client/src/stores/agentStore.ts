@@ -52,6 +52,24 @@ export interface BrowserSession {
   liveViewUrl?: string;
 }
 
+export interface BrowserActionEntry {
+  id: string;
+  action: string;
+  description: string;
+  selector?: string;
+  value?: string;
+  timestamp: string;
+}
+
+export interface BrowserState {
+  currentUrl?: string;
+  pageTitle?: string;
+  screenshotUrl?: string;
+  screenshotBase64?: string;
+  lastUpdated?: string;
+  actions: BrowserActionEntry[];
+}
+
 export interface ProgressData {
   currentStep: number;
   totalSteps: number;
@@ -83,6 +101,9 @@ interface AgentState {
   // Progress tracking
   progress: ProgressData | null;
 
+  // Live browser state
+  browserState: BrowserState;
+
   // Reasoning steps
   reasoningSteps: ReasoningStep[];
 
@@ -113,6 +134,8 @@ interface AgentState {
   loadExecutionHistory: () => Promise<void>;
   loadStats: () => Promise<void>;
   cancelExecution: () => Promise<void>;
+  pauseExecution: () => Promise<void>;
+  resumeExecution: () => Promise<void>;
   respondToAgent: (response: string) => Promise<void>;
   clearCurrentExecution: () => void;
   setStatus: (status: CurrentExecution['status']) => void;
@@ -143,6 +166,7 @@ const initialState = {
   isExecuting: false,
   activeBrowserSession: null,
   progress: null,
+  browserState: { actions: [] } as BrowserState,
   reasoningSteps: [],
   executionHistory: [],
   isLoadingHistory: false,
@@ -333,6 +357,81 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       });
     } catch (error) {
       console.error('Failed to cancel execution:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Pause the current execution
+   */
+  pauseExecution: async () => {
+    const { currentExecution } = get();
+
+    if (!currentExecution) {
+      throw new Error('No active execution to pause');
+    }
+
+    try {
+      const { trpcClient } = await import('@/lib/trpc');
+
+      await trpcClient.agent.pauseExecution.mutate({
+        executionId: currentExecution.id,
+      });
+
+      set({
+        currentExecution: {
+          ...currentExecution,
+          status: 'paused',
+        },
+      });
+
+      get().addLog({
+        id: `log-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        level: 'warning',
+        message: 'Execution paused',
+        detail: `ID: ${currentExecution.id}`,
+      });
+    } catch (error) {
+      console.error('Failed to pause execution:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Resume a paused execution
+   */
+  resumeExecution: async () => {
+    const { currentExecution } = get();
+
+    if (!currentExecution) {
+      throw new Error('No active execution to resume');
+    }
+
+    try {
+      const { trpcClient } = await import('@/lib/trpc');
+
+      await trpcClient.agent.resumeExecution.mutate({
+        executionId: currentExecution.id,
+      });
+
+      set({
+        isExecuting: true,
+        currentExecution: {
+          ...currentExecution,
+          status: 'running',
+        },
+      });
+
+      get().addLog({
+        id: `log-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Execution resumed',
+        detail: `ID: ${currentExecution.id}`,
+      });
+    } catch (error) {
+      console.error('Failed to resume execution:', error);
       throw error;
     }
   },

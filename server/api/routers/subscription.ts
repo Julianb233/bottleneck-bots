@@ -210,7 +210,47 @@ export const subscriptionRouter = router({
     }),
 
   /**
-   * Create a new subscription
+   * Create a Stripe Checkout Session for a new subscription
+   * Returns a checkout URL for client-side redirect
+   */
+  createCheckout: protectedProcedure
+    .input(
+      z.object({
+        tierSlug: z.enum(["starter", "growth", "professional", "enterprise"]),
+        paymentFrequency: z.enum(["weekly", "monthly", "six_month", "annual"]).default("monthly"),
+        successUrl: z.string().url().optional(),
+        cancelUrl: z.string().url().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = getSubscriptionService();
+
+        const result = await service.createSubscriptionCheckout(
+          ctx.user.id,
+          input.tierSlug,
+          input.paymentFrequency,
+          input.successUrl,
+          input.cancelUrl
+        );
+
+        return {
+          success: true,
+          checkoutUrl: result.checkoutUrl,
+          sessionId: result.sessionId,
+        };
+      } catch (error) {
+        console.error("Failed to create checkout:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create checkout session. Please try again.",
+        });
+      }
+    }),
+
+  /**
+   * Create a new subscription (direct, without Stripe - for dev/testing)
+   * In production, use createCheckout instead
    */
   create: protectedProcedure
     .input(createSubscriptionSchema)
@@ -227,17 +267,34 @@ export const subscriptionRouter = router({
           });
         }
 
+        // If Stripe is configured, redirect to checkout instead
+        if (process.env.STRIPE_SECRET_KEY) {
+          const result = await service.createSubscriptionCheckout(
+            ctx.user.id,
+            input.tierSlug,
+            input.paymentFrequency
+          );
+
+          return {
+            success: true,
+            subscriptionId: null,
+            message: "Redirecting to Stripe checkout",
+            checkoutUrl: result.checkoutUrl,
+          };
+        }
+
+        // Fallback: create subscription directly (dev mode)
         const subscription = await service.createSubscription(
           ctx.user.id,
           input.tierSlug,
           input.paymentFrequency
-          // TODO: Add Stripe integration
         );
 
         return {
           success: true,
           subscriptionId: subscription.id,
           message: "Subscription created successfully",
+          checkoutUrl: null,
         };
       } catch (error) {
         console.error("Failed to create subscription:", error);
@@ -251,6 +308,7 @@ export const subscriptionRouter = router({
 
   /**
    * Upgrade/downgrade subscription tier
+   * If Stripe is connected, redirects to checkout for the new tier
    */
   updateTier: protectedProcedure
     .input(updateTierSchema)
@@ -258,6 +316,25 @@ export const subscriptionRouter = router({
       try {
         const service = getSubscriptionService();
 
+        // If user has Stripe subscription, use Stripe Checkout for upgrades
+        const existing = await service.getUserSubscription(ctx.user.id);
+        if (existing?.subscription.stripeSubscriptionId && process.env.STRIPE_SECRET_KEY) {
+          const result = await service.createSubscriptionCheckout(
+            ctx.user.id,
+            input.newTierSlug,
+            (existing.subscription.paymentFrequency as any) || "monthly"
+          );
+
+          return {
+            success: true,
+            subscriptionId: existing.subscription.id,
+            newTier: input.newTierSlug,
+            message: "Redirecting to Stripe checkout for upgrade",
+            checkoutUrl: result.checkoutUrl,
+          };
+        }
+
+        // Direct update for non-Stripe subscriptions
         const subscription = await service.updateTier(ctx.user.id, input.newTierSlug);
 
         return {
@@ -265,12 +342,94 @@ export const subscriptionRouter = router({
           subscriptionId: subscription.id,
           newTier: input.newTierSlug,
           message: "Subscription tier updated successfully",
+          checkoutUrl: null,
         };
       } catch (error) {
         console.error("Failed to update tier:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update subscription tier",
+        });
+      }
+    }),
+
+  /**
+   * Cancel subscription (schedules cancellation at period end)
+   */
+  cancel: protectedProcedure
+    .input(
+      z.object({
+        reason: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = getSubscriptionService();
+        const subscription = await service.cancelSubscription(ctx.user.id, input.reason);
+
+        return {
+          success: true,
+          message: "Subscription will be cancelled at the end of the current billing period",
+          cancelAtPeriodEnd: true,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+        };
+      } catch (error) {
+        console.error("Failed to cancel subscription:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to cancel subscription",
+        });
+      }
+    }),
+
+  /**
+   * Resume a cancelled subscription (undo cancellation)
+   */
+  resume: protectedProcedure.mutation(async ({ ctx }) => {
+    try {
+      const service = getSubscriptionService();
+      await service.resumeSubscription(ctx.user.id);
+
+      return {
+        success: true,
+        message: "Subscription resumed successfully",
+      };
+    } catch (error) {
+      console.error("Failed to resume subscription:", error);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to resume subscription",
+      });
+    }
+  }),
+
+  /**
+   * Get Stripe Billing Portal URL for self-serve subscription management
+   * Allows users to update payment method, view invoices, etc.
+   */
+  getBillingPortalUrl: protectedProcedure
+    .input(
+      z.object({
+        returnUrl: z.string().url().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = getSubscriptionService();
+        const url = await service.createBillingPortalSession(
+          ctx.user.id,
+          input.returnUrl
+        );
+
+        return {
+          success: true,
+          url,
+        };
+      } catch (error) {
+        console.error("Failed to create billing portal session:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to open billing portal. Ensure you have an active Stripe subscription.",
         });
       }
     }),

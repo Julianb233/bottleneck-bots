@@ -639,6 +639,119 @@ export const agentRouter = router({
     }),
 
   /**
+   * Pause a running execution
+   * Pauses agent execution mid-task for user intervention
+   */
+  pauseExecution: protectedProcedure
+    .input(pauseExecutionSchema)
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not initialized",
+        });
+      }
+
+      try {
+        const [execution] = await db
+          .select()
+          .from(taskExecutions)
+          .where(and(
+            eq(taskExecutions.id, input.executionId),
+            eq(taskExecutions.triggeredByUserId, userId)
+          ))
+          .limit(1);
+
+        if (!execution) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Execution not found",
+          });
+        }
+
+        if (execution.status !== 'started' && execution.status !== 'running') {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Cannot pause execution with status: ${execution.status}`,
+          });
+        }
+
+        const { getExecutionControl } = await import("../../services/executionControl.service");
+        const controlService = getExecutionControl();
+        await controlService.pauseExecution(userId, input.executionId, input.reason);
+
+        return {
+          success: true,
+          executionId: input.executionId,
+          status: 'paused',
+        };
+      } catch (error) {
+        console.error("Failed to pause execution:", error);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to pause execution: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
+   * Resume a paused execution
+   * Resumes agent execution from where it was paused
+   */
+  resumeExecution: protectedProcedure
+    .input(resumeExecutionSchema)
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.user.id;
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not initialized",
+        });
+      }
+
+      try {
+        const [execution] = await db
+          .select()
+          .from(taskExecutions)
+          .where(and(
+            eq(taskExecutions.id, input.executionId),
+            eq(taskExecutions.triggeredByUserId, userId)
+          ))
+          .limit(1);
+
+        if (!execution) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Execution not found",
+          });
+        }
+
+        const { getExecutionControl } = await import("../../services/executionControl.service");
+        const controlService = getExecutionControl();
+        await controlService.resumeExecution(userId, input.executionId);
+
+        return {
+          success: true,
+          executionId: input.executionId,
+          status: 'running',
+        };
+      } catch (error) {
+        console.error("Failed to resume execution:", error);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to resume execution: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
    * Get or create agent session
    * Placeholder for future session-based agent interaction
    *

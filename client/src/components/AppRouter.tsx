@@ -1,17 +1,21 @@
 import React, { Suspense, lazy } from 'react';
-import { Route, Switch, useLocation } from 'wouter';
+import { Route, Switch, useLocation, Router } from 'wouter';
 import { trpc } from '@/lib/trpc';
+import { Routes } from './Routes';
 
-// Lazy load pages
+// Lazy load public pages
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/Signup'));
+const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
 const OnboardingFlow = lazy(() => import('./OnboardingFlow').then(m => ({ default: m.OnboardingFlow })));
-const Dashboard = lazy(() => import('./Dashboard').then(m => ({ default: m.Dashboard })));
 const LandingPage = lazy(() => import('./LandingPage').then(m => ({ default: m.LandingPage })));
 const FeaturesPage = lazy(() => import('./FeaturesPage').then(m => ({ default: m.FeaturesPage })));
 const PrivacyPolicy = lazy(() => import('@/pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
 const TermsOfService = lazy(() => import('@/pages/TermsOfService').then(m => ({ default: m.TermsOfService })));
 const AlexRamozyPage = lazy(() => import('./AlexRamozyPage').then(m => ({ default: m.AlexRamozyPage })));
+const OAuthCallback = lazy(() => import('./OAuthPopup').then(m => ({ default: m.OAuthCallback })));
+const NotFound = lazy(() => import('@/pages/NotFound'));
 
 // Loading spinner component
 const LoadingSpinner = () => (
@@ -41,11 +45,10 @@ export function AppRouter() {
     );
   }
 
-  // Redirect logic for authenticated users
+  // Redirect logic for authenticated users on public pages
   if (user) {
-    // If user is on landing or auth pages, redirect to dashboard or onboarding
-    const publicRoutes = ['/', '/landing', '/login', '/signup'];
-    if (publicRoutes.includes(location)) {
+    const publicOnlyRoutes = ['/', '/landing', '/login', '/signup'];
+    if (publicOnlyRoutes.includes(location)) {
       if (user.onboardingCompleted === false) {
         setLocation('/onboarding');
       } else {
@@ -54,8 +57,8 @@ export function AppRouter() {
     }
   } else {
     // If user is not authenticated and trying to access protected routes
-    const protectedRoutes = ['/dashboard', '/onboarding'];
-    if (protectedRoutes.some(route => location.startsWith(route))) {
+    const protectedPrefixes = ['/dashboard', '/onboarding'];
+    if (protectedPrefixes.some(prefix => location.startsWith(prefix))) {
       setLocation('/login');
     }
   }
@@ -78,6 +81,8 @@ export function AppRouter() {
         </Route>
         <Route path="/login" component={Login} />
         <Route path="/signup" component={Signup} />
+        <Route path="/forgot-password" component={ForgotPassword} />
+        <Route path="/reset-password" component={ResetPassword} />
         <Route path="/features">
           <FeaturesPage
             onGetStarted={() => user ? setLocation('/dashboard') : setLocation('/login')}
@@ -93,8 +98,23 @@ export function AppRouter() {
         <Route path="/alex-ramozy">
           <AlexRamozyPage onDemoClick={() => setLocation('/login')} />
         </Route>
+        <Route path="/api/oauth/callback" component={OAuthCallback} />
 
-        {/* Protected routes */}
+        {/* Auth callback (legacy) */}
+        <Route path="/auth/callback">
+          {() => {
+            const params = new URLSearchParams(window.location.search);
+            const sessionToken = params.get('sessionToken');
+            if (sessionToken) {
+              document.cookie = `app_session_id=${sessionToken}; path=/; max-age=31536000; SameSite=Lax`;
+            }
+            window.history.replaceState({}, '', '/');
+            window.location.reload();
+            return <div>Redirecting...</div>;
+          }}
+        </Route>
+
+        {/* Protected routes - Onboarding */}
         <Route path="/onboarding">
           {user ? (
             <OnboardingFlow onComplete={() => setLocation('/dashboard')} />
@@ -102,10 +122,25 @@ export function AppRouter() {
             <div>Redirecting...</div>
           )}
         </Route>
+
+        {/* Protected routes - Dashboard (all /dashboard/* paths) */}
+        <Route path="/dashboard/:rest*">
+          {user ? (
+            <main id="main-content">
+              <Router base="/dashboard">
+                <Routes />
+              </Router>
+            </main>
+          ) : (
+            <div>Redirecting...</div>
+          )}
+        </Route>
         <Route path="/dashboard">
           {user ? (
             <main id="main-content">
-              <Dashboard userTier="WHITELABEL" credits={1000} />
+              <Router base="/dashboard">
+                <Routes />
+              </Router>
             </main>
           ) : (
             <div>Redirecting...</div>
@@ -113,20 +148,7 @@ export function AppRouter() {
         </Route>
 
         {/* 404 */}
-        <Route>
-          <div className="min-h-screen flex items-center justify-center">
-            <div className="text-center">
-              <h1 className="text-4xl font-bold mb-4">404</h1>
-              <p className="text-muted-foreground mb-4">Page not found</p>
-              <button
-                onClick={() => setLocation('/')}
-                className="text-primary hover:underline"
-              >
-                Go back home
-              </button>
-            </div>
-          </div>
-        </Route>
+        <Route component={NotFound} />
       </Switch>
     </Suspense>
   );

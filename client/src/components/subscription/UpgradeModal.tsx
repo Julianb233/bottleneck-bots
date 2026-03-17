@@ -92,17 +92,34 @@ export function UpgradeModal({ isOpen, onClose, currentTierSlug }: UpgradeModalP
   const { data: tiersData, isLoading } = trpc.subscription.getTiers.useQuery();
 
   const updateTier = trpc.subscription.updateTier.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // If Stripe checkout URL is returned, redirect to it
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
       onClose();
-      // Refresh subscription data
       window.location.reload();
     },
   });
 
   const createSubscription = trpc.subscription.create.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // If Stripe checkout URL is returned, redirect to it
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
       onClose();
       window.location.reload();
+    },
+  });
+
+  const createCheckout = trpc.subscription.createCheckout.useMutation({
+    onSuccess: (data) => {
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      }
     },
   });
 
@@ -116,16 +133,11 @@ export function UpgradeModal({ isOpen, onClose, currentTierSlug }: UpgradeModalP
   const handleConfirm = () => {
     if (!selectedTier) return;
 
-    if (currentTierSlug) {
-      // Upgrade existing subscription
-      updateTier.mutate({ newTierSlug: selectedTier as any });
-    } else {
-      // Create new subscription
-      createSubscription.mutate({
-        tierSlug: selectedTier as any,
-        paymentFrequency,
-      });
-    }
+    // Use Stripe Checkout flow (preferred)
+    createCheckout.mutate({
+      tierSlug: selectedTier as any,
+      paymentFrequency: paymentFrequency === 'annual' ? 'annual' : 'monthly',
+    });
   };
 
   const getDiscountedPrice = (monthlyPrice: number) => {
@@ -310,10 +322,10 @@ export function UpgradeModal({ isOpen, onClose, currentTierSlug }: UpgradeModalP
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selectedTier || updateTier.isPending || createSubscription.isPending}
+            disabled={!selectedTier || updateTier.isPending || createSubscription.isPending || createCheckout.isPending}
             className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
           >
-            {updateTier.isPending || createSubscription.isPending ? (
+            {updateTier.isPending || createSubscription.isPending || createCheckout.isPending ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Processing...
