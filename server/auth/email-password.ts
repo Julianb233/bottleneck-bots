@@ -155,10 +155,11 @@ export async function createPasswordResetToken(email: string) {
     throw new Error("Database not available");
   }
 
+  // Allow any user to reset their password (including Google users who want to add email/password login)
   const [user] = await db
     .select()
     .from(users)
-    .where(and(eq(users.email, email.toLowerCase().trim()), eq(users.loginMethod, "email")))
+    .where(eq(users.email, email.toLowerCase().trim()))
     .limit(1);
 
   if (!user) {
@@ -229,8 +230,20 @@ export async function resetPassword(token: string, newPassword: string) {
   // Hash new password
   const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
-  // Update user password
-  await db.update(users).set({ password: hashedPassword }).where(eq(users.id, matchingToken.userId));
+  // Get the user to check current loginMethod
+  const [existingUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, matchingToken.userId))
+    .limit(1);
+
+  // Update user password; if user was Google-only, also enable email login
+  const updateData: Record<string, unknown> = { password: hashedPassword };
+  if (existingUser && existingUser.loginMethod === "google") {
+    // Keep Google association but allow email login too
+    updateData.loginMethod = "email";
+  }
+  await db.update(users).set(updateData).where(eq(users.id, matchingToken.userId));
 
   // Mark token as used
   await db.update(passwordResetTokens).set({ usedAt: new Date() }).where(eq(passwordResetTokens.id, matchingToken.id));
@@ -394,9 +407,8 @@ export function validatePassword(password: string): string[] {
     errors.push("Password must contain at least one number");
   }
 
-  if (!/[^A-Za-z0-9]/.test(password)) {
-    errors.push("Password must contain at least one special character");
-  }
+  // Note: special characters are encouraged but not required
+  // to match frontend validation rules
 
   return errors;
 }

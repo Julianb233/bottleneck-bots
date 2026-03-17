@@ -88,7 +88,12 @@ export function registerGoogleAuthRoutes(app: Express) {
             console.log('[Google Auth] Redirect URI:', redirectUri);
 
             if (!clientId || !clientSecret) {
-                throw new Error("Google credentials not configured");
+                console.error("[Google Auth] Missing credentials:", {
+                    clientId: clientId ? "Present" : "MISSING",
+                    clientSecret: clientSecret ? "Present" : "MISSING",
+                });
+                res.redirect("/login?error=google_not_configured");
+                return;
             }
 
             // Exchange code for token using form-urlencoded format

@@ -17,7 +17,9 @@ export function useAuth() {
     refetch,
   } = trpc.auth.me.useQuery(undefined, {
     retry: false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    staleTime: 5 * 60 * 1000, // Consider data stale after 5 minutes
   });
 
   /**
@@ -111,18 +113,16 @@ export function useAuth() {
       });
 
       if (!response.ok) {
-        throw new Error('Logout failed');
+        console.warn('Logout response not ok:', response.status);
       }
-
-      // Refetch to clear user data
+    } catch (error) {
+      // Even if the server request fails, we should still clear client state
+      console.warn('Logout request failed:', error);
+    } finally {
+      // Always clear client state and redirect, even if server call fails
       await refetch();
-
       toast.success('Logged out successfully');
       setLocation('/login');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Logout failed';
-      toast.error(message);
-      throw error;
     }
   };
 

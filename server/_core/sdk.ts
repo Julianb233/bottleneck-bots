@@ -211,6 +211,7 @@ class SDKServer {
       name: payload.name,
     })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuedAt(Math.floor(issuedAt / 1000))
       .setExpirationTime(expirationSeconds)
       .sign(secretKey);
   }
@@ -252,7 +253,12 @@ class SDKServer {
         name,
       };
     } catch (error) {
-      console.warn("[Auth] Session verification failed", String(error));
+      const errorStr = String(error);
+      if (errorStr.includes("exp") || errorStr.includes("expired")) {
+        console.warn("[Auth] Session token expired");
+      } else {
+        console.warn("[Auth] Session verification failed:", errorStr);
+      }
       return null;
     }
   }

@@ -43,9 +43,6 @@ import { agentTrainingRouter } from "./api/routers/agentTraining";
 import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
-import { ghlRouter } from "./api/routers/ghl";
-import { ghlContactsRouter } from "./api/routers/ghlContacts";
-import { taskTemplatesRouter } from "./api/routers/taskTemplates";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -143,13 +140,8 @@ export const appRouter = router({
   // Multi-Step Workflow Pipelines
   pipelines: pipelinesRouter,
 
-  // GHL Integration
-  ghl: ghlRouter,
-  ghlContacts: ghlContactsRouter,
+  // GHL Automation (48 GoHighLevel browser automation functions)
   ghlAutomation: ghlAutomationRouter,
-
-  // Task Templates (pre-built templates for common agency tasks)
-  taskTemplates: taskTemplatesRouter,
 });
 
 export type AppRouter = typeof appRouter;

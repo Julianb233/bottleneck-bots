@@ -81,10 +81,17 @@ router.post("/signup", async (req, res) => {
     console.log("[Auth] req.body:", JSON.stringify(req.body));
     console.log("[Auth] req.body type:", typeof req.body);
 
-    const { email, password, name } = req.body || {};
+    const { email: rawEmail, password, name } = req.body || {};
 
-    if (!email || !password) {
+    if (!rawEmail || !password) {
       return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    const email = rawEmail.toLowerCase().trim();
+
+    // Validate email format
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
     }
 
     if (password.length < 8) {
@@ -141,6 +148,41 @@ router.post("/signup", async (req, res) => {
   }
 });
 
+// Simple in-memory rate limiting for login attempts
+const loginAttemptMap = new Map<string, { count: number; resetAt: number }>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+function checkLoginRateLimit(key: string): boolean {
+  const now = Date.now();
+  const entry = loginAttemptMap.get(key);
+  if (!entry || now > entry.resetAt) {
+    loginAttemptMap.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= MAX_LOGIN_ATTEMPTS) {
+    return false;
+  }
+  entry.count++;
+  return true;
+}
+
+function resetLoginRateLimit(key: string): void {
+  loginAttemptMap.delete(key);
+}
+
+// Periodically clean up stale rate limit entries (every 30 minutes)
+setInterval(() => {
+  const now = Date.now();
+  const keysToDelete: string[] = [];
+  loginAttemptMap.forEach((entry, key) => {
+    if (now > entry.resetAt) {
+      keysToDelete.push(key);
+    }
+  });
+  keysToDelete.forEach(key => loginAttemptMap.delete(key));
+}, 30 * 60 * 1000);
+
 // POST /api/auth/login - Login with email/password
 router.post("/login", async (req, res) => {
   try {
@@ -150,16 +192,27 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
+    // Rate limit by email (normalized)
+    const normalizedEmail = email.toLowerCase().trim();
+    const rateLimitKey = `login:${normalizedEmail}`;
+    if (!checkLoginRateLimit(rateLimitKey)) {
+      console.warn(`[Auth] Rate limited login for: ${normalizedEmail}`);
+      return res.status(429).json({
+        error: "Too many login attempts. Please try again later.",
+      });
+    }
+
     // Find user by email
-    const user = await db.getUserByEmail(email);
+    const user = await db.getUserByEmail(normalizedEmail);
     if (!user) {
+      // Use generic message to prevent email enumeration
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Check if user has a password set
+    // Check if user has a password set (e.g., Google-only users)
     if (!user.password) {
       return res.status(401).json({
-        error: "This account has no password set. Please use the password reset feature to set one."
+        error: "This account uses a different sign-in method. Try Google sign-in, or use 'Forgot Password' to set a password.",
       });
     }
 
@@ -168,6 +221,9 @@ router.post("/login", async (req, res) => {
     if (!isValid) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
+
+    // Successful login - reset rate limit
+    resetLoginRateLimit(rateLimitKey);
 
     // Upgrade legacy SHA-256 hash to bcrypt on successful login
     if (isLegacyHash(user.password)) {
@@ -188,7 +244,7 @@ router.post("/login", async (req, res) => {
     const cookieOptions = getSessionCookieOptions(req);
     res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-    console.log("[Auth] Email login successful for:", email);
+    console.log("[Auth] Email login successful for:", normalizedEmail);
 
     return res.json({
       success: true,
@@ -201,7 +257,7 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     console.error("[Auth] Login error:", error);
-    return res.status(500).json({ error: "Login failed" });
+    return res.status(500).json({ error: "Login failed. Please try again." });
   }
 });
 
