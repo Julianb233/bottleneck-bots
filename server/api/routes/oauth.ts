@@ -79,6 +79,11 @@ function encrypt(text: string): string {
  * OAuth provider configurations
  * PLACEHOLDER: Add your OAuth app credentials to .env
  */
+/**
+ * Get the application base URL from APP_URL env var, falling back to localhost for development.
+ */
+const BASE_URL = (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+
 const OAUTH_CONFIGS = {
   google: {
     tokenUrl: "https://oauth2.googleapis.com/token",
@@ -86,7 +91,7 @@ const OAUTH_CONFIGS = {
     userInfoUrl: "https://www.googleapis.com/oauth2/v2/userinfo",
     clientId: process.env.GOOGLE_CLIENT_ID || "PLACEHOLDER_GOOGLE_CLIENT_ID",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "PLACEHOLDER_GOOGLE_CLIENT_SECRET",
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/oauth/google/callback",
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || `${BASE_URL}/api/oauth/google/callback`,
   },
   gmail: {
     tokenUrl: "https://oauth2.googleapis.com/token",
@@ -94,7 +99,7 @@ const OAUTH_CONFIGS = {
     userInfoUrl: "https://www.googleapis.com/oauth2/v2/userinfo",
     clientId: process.env.GMAIL_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "PLACEHOLDER_GMAIL_CLIENT_ID",
     clientSecret: process.env.GMAIL_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "PLACEHOLDER_GMAIL_CLIENT_SECRET",
-    redirectUri: process.env.GMAIL_REDIRECT_URI || "http://localhost:3000/api/auth/oauth/gmail/callback",
+    redirectUri: process.env.GMAIL_REDIRECT_URI || `${BASE_URL}/api/auth/oauth/gmail/callback`,
   },
   outlook: {
     tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -102,7 +107,7 @@ const OAUTH_CONFIGS = {
     userInfoUrl: "https://graph.microsoft.com/v1.0/me",
     clientId: process.env.OUTLOOK_CLIENT_ID || "PLACEHOLDER_OUTLOOK_CLIENT_ID",
     clientSecret: process.env.OUTLOOK_CLIENT_SECRET || "PLACEHOLDER_OUTLOOK_CLIENT_SECRET",
-    redirectUri: process.env.OUTLOOK_REDIRECT_URI || "http://localhost:3000/api/auth/oauth/outlook/callback",
+    redirectUri: process.env.OUTLOOK_REDIRECT_URI || `${BASE_URL}/api/auth/oauth/outlook/callback`,
   },
   facebook: {
     tokenUrl: "https://graph.facebook.com/v18.0/oauth/access_token",
@@ -110,7 +115,7 @@ const OAUTH_CONFIGS = {
     userInfoUrl: "https://graph.facebook.com/v18.0/me",
     clientId: process.env.FACEBOOK_CLIENT_ID || "PLACEHOLDER_FACEBOOK_CLIENT_ID",
     clientSecret: process.env.FACEBOOK_CLIENT_SECRET || "PLACEHOLDER_FACEBOOK_CLIENT_SECRET",
-    redirectUri: process.env.FACEBOOK_REDIRECT_URI || "http://localhost:3000/api/auth/oauth/facebook/callback",
+    redirectUri: process.env.FACEBOOK_REDIRECT_URI || `${BASE_URL}/api/auth/oauth/facebook/callback`,
   },
   instagram: {
     tokenUrl: "https://api.instagram.com/oauth/access_token",
@@ -118,7 +123,7 @@ const OAUTH_CONFIGS = {
     userInfoUrl: "https://graph.instagram.com/me",
     clientId: process.env.INSTAGRAM_CLIENT_ID || "PLACEHOLDER_INSTAGRAM_CLIENT_ID",
     clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || "PLACEHOLDER_INSTAGRAM_CLIENT_SECRET",
-    redirectUri: process.env.INSTAGRAM_REDIRECT_URI || "http://localhost:3000/api/auth/oauth/instagram/callback",
+    redirectUri: process.env.INSTAGRAM_REDIRECT_URI || `${BASE_URL}/api/auth/oauth/instagram/callback`,
   },
   linkedin: {
     tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
@@ -126,7 +131,7 @@ const OAUTH_CONFIGS = {
     userInfoUrl: "https://api.linkedin.com/v2/me",
     clientId: process.env.LINKEDIN_CLIENT_ID || "PLACEHOLDER_LINKEDIN_CLIENT_ID",
     clientSecret: process.env.LINKEDIN_CLIENT_SECRET || "PLACEHOLDER_LINKEDIN_CLIENT_SECRET",
-    redirectUri: process.env.LINKEDIN_REDIRECT_URI || "http://localhost:3000/api/auth/oauth/linkedin/callback",
+    redirectUri: process.env.LINKEDIN_REDIRECT_URI || `${BASE_URL}/api/auth/oauth/linkedin/callback`,
   },
 } as const;
 
