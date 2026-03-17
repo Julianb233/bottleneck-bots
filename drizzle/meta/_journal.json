@@ -43,6 +43,13 @@
       "when": 1765559194245,
       "tag": "0005_eager_true_believers",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1765925160000,
+      "tag": "0006_claude_flow_schemas",
+      "breakpoints": true
     }
   ]
 }
