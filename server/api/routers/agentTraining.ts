@@ -88,6 +88,47 @@ const escalationRuleSchema = z.object({
   action: z.string().min(1),
 });
 
+const escalationConfigSchema = z.object({
+  confidenceThreshold: z.number().min(0).max(100).default(70),
+  actionsRequiringApproval: z.array(z.string()).default([]),
+  timeBasedEscalation: z.object({
+    enabled: z.boolean().default(false),
+    thresholdMinutes: z.number().min(1).max(1440).default(30),
+    notifyMethod: z.enum(["email", "sms", "in_app", "all"]).default("in_app"),
+  }).default({ enabled: false, thresholdMinutes: 30, notifyMethod: "in_app" }),
+  errorThreshold: z.object({
+    enabled: z.boolean().default(true),
+    maxErrors: z.number().min(1).max(100).default(3),
+    action: z.enum(["pause", "notify", "escalate"]).default("pause"),
+  }).default({ enabled: true, maxErrors: 3, action: "pause" }),
+  customRules: z.array(escalationRuleSchema).default([]),
+});
+
+const DEFAULT_ESCALATION_CONFIG = {
+  confidenceThreshold: 70,
+  actionsRequiringApproval: ["bulk_delete", "send_mass_email", "payment_action", "account_deletion"],
+  timeBasedEscalation: {
+    enabled: false,
+    thresholdMinutes: 30,
+    notifyMethod: "in_app" as const,
+  },
+  errorThreshold: {
+    enabled: true,
+    maxErrors: 3,
+    action: "pause" as const,
+  },
+  customRules: [
+    {
+      condition: "Payment or billing related actions",
+      action: "Ask for human approval before proceeding",
+    },
+    {
+      condition: "Deleting more than 10 records",
+      action: "Confirm with user before bulk deletion",
+    },
+  ],
+};
+
 // ========================================
 // ROUTER DEFINITION
 // ========================================

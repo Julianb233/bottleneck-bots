@@ -44,10 +44,13 @@ import { agentSkillConfigRouter } from "./api/routers/agentSkillConfig";
 import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
+<<<<<<< HEAD
 import { ghlRouter } from "./api/routers/ghl";
 import { ghlContactsRouter } from "./api/routers/ghlContacts";
 import { taskTemplatesRouter } from "./api/routers/taskTemplates";
 import { executionHistoryRouter } from "./api/routers/executionHistory";
+=======
+>>>>>>> worktree-agent-adf56056
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({

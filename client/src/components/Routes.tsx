@@ -26,7 +26,6 @@ import { ConfigCenter } from '@/pages/admin/ConfigCenter';
 import { CostsPage } from '@/pages/admin/CostsPage';
 import DashboardLayout from './DashboardLayout';
 import { Toaster } from '@/components/ui/sonner';
-import { FeaturesPage } from '@/components/FeaturesPage';
 
 export function Routes() {
   return (
