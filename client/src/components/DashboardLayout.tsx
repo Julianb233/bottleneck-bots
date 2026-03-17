@@ -1,4 +1,4 @@
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -36,25 +36,19 @@ import {
   Shield,
   Bot,
   GraduationCap,
-  FileStack,
-  Sparkles,
-  History,
-  HelpCircle,
+  History
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { CommandPalette } from './CommandPalette';
-import { HelpDrawer } from './help/HelpDrawer';
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: Bot, label: "AI Agent", path: "/agent" },
-  { icon: GraduationCap, label: "Training", path: "/training" },
-  { icon: FileStack, label: "Templates", path: "/templates" },
-  { icon: Sparkles, label: "Agent Skills", path: "/agent-skills" },
   { icon: History, label: "Execution History", path: "/execution-history" },
+  { icon: GraduationCap, label: "Training", path: "/training" },
   { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
   { icon: Workflow, label: "Workflow Builder", path: "/workflow-builder" },
@@ -62,7 +56,6 @@ const menuItems = [
   { icon: Megaphone, label: "AI Campaigns", path: "/ai-campaigns" },
   { icon: CreditCard, label: "Credits", path: "/credits" },
   { icon: Settings, label: "Settings", path: "/settings" },
-  { icon: LifeBuoy, label: "Support", path: "/support" },
 ];
 
 const adminOnlyItems = [
@@ -83,7 +76,7 @@ export default function DashboardLayout({
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
-  const { isLoading: loading, user } = useAuth();
+  const { loading, user } = useAuth();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
@@ -158,7 +151,6 @@ function DashboardLayoutContent({
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const allMenuItems = [...menuItems, ...adminOnlyItems];
   const activeMenuItem = allMenuItems.find(item => item.path === location);
@@ -270,7 +262,7 @@ function DashboardLayoutContent({
                       className={`min-h-[44px] transition-all font-normal ${
                         isActive
                           ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"
-                          : "hover:bg-accent"
+                          : "hover:bg-gray-100"
                       }`}
                       data-tour={tourId}
                     >
@@ -346,12 +338,12 @@ function DashboardLayoutContent({
 
       <SidebarInset>
         {isMobile && (
-          <div className="flex border-b h-14 items-center justify-between bg-background px-2 sticky top-0 z-40">
+          <div className="flex border-b h-14 items-center justify-between bg-white px-2 sticky top-0 z-40">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="h-9 w-9 rounded-lg" />
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-1">
-                  <span className="tracking-tight text-foreground">
+                  <span className="tracking-tight text-gray-900">
                     {activeMenuItem?.label ?? APP_TITLE}
                   </span>
                 </div>
@@ -359,20 +351,8 @@ function DashboardLayoutContent({
             </div>
           </div>
         )}
-        <main className="flex-1 p-4 bg-muted/30">{children}</main>
+        <main className="flex-1 p-4 bg-gray-50">{children}</main>
       </SidebarInset>
-
-      {/* Floating Help Button */}
-      <button
-        onClick={() => setHelpOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
-        aria-label="Open help"
-      >
-        <HelpCircle className="w-5 h-5" />
-      </button>
-
-      {/* Help Drawer */}
-      <HelpDrawer open={helpOpen} onOpenChange={setHelpOpen} />
     </>
   );
 }

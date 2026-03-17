@@ -2,23 +2,44 @@
   "task": "4-02-build",
   "title": "Execution History + Replay",
   "status": "complete",
-  "completedAt": "2026-03-17T00:00:00.000Z",
+  "completedAt": "2026-03-17T00:00:00Z",
   "deliverables": {
-    "router": "server/api/routers/executionHistory.ts",
-    "page": "client/src/pages/ExecutionHistory.tsx",
-    "routeRegistered": "client/src/components/Routes.tsx",
-    "sidebarLink": "client/src/components/DashboardLayout.tsx",
-    "routerRegistered": "server/routers.ts"
+    "pages": [
+      "client/src/pages/ExecutionHistory.tsx"
+    ],
+    "routeChanges": [
+      "client/src/components/Routes.tsx - added /execution-history route",
+      "client/src/components/DashboardLayout.tsx - added sidebar entry with History icon"
+    ]
   },
   "features": {
-    "executionHistoryList": "Filterable, paginated list of past executions with status badges, duration, step counts",
-    "filters": "Filter by status (success/failed/cancelled/running/timeout/needs_input), task type, search query",
-    "statsCards": "Overview stats: total executions, success rate, avg duration, successful count",
-    "detailDialog": "Full execution detail with 4 tabs: Overview, Timeline, Replay, Export",
-    "timeline": "Step-by-step timeline with tool names, reasoning, parameters, results, errors, screenshots",
-    "browserbaseReplay": "Link to BrowserBase replay URL, embedded iframe, direct recording link, debug URL",
-    "exportReport": "Downloadable HTML report with execution summary, step timeline, error details (printable to PDF)"
+    "executionHistoryPage": {
+      "statsCards": "Total, success rate, succeeded, failed, avg duration",
+      "filtering": "By status (all/success/failed/running/timeout/cancelled/needs_input), date range (all/today/week/month), search by task name/description/ID",
+      "table": "ID, task, status badge, steps count, duration, started time, actions",
+      "pagination": "20 items per page with page number navigation"
+    },
+    "executionDetailModal": {
+      "summaryBar": "Task, duration, steps, started, attempt number",
+      "timelineTab": "Step-by-step timeline with dot indicators, tool/action names, reasoning (with Brain icon), results, errors, screenshot links, duration per step",
+      "outputTab": "JSON output display",
+      "replayTab": "BrowserBase session recording viewer integration, debug URL link, BrowserBase session link"
+    },
+    "exportReport": {
+      "format": "Markdown file download",
+      "contents": "Overview, error details, step-by-step breakdown, output JSON"
+    },
+    "browserBaseReplay": {
+      "recordingViewer": "Reuses SessionRecordingViewer component",
+      "debugUrl": "Links to BrowserBase debug view",
+      "sessionLink": "Direct link to BrowserBase session page"
+    }
   },
-  "buildVerified": true,
-  "notes": "Uses existing taskExecutions and agencyTasks schema from schema-webhooks.ts. Router uses protectedProcedure for auth. rrweb is in dependencies but BrowserBase replay via iframe/link is the primary approach since rrweb data is not stored in the DB."
+  "backendEndpointsUsed": [
+    "agent.listExecutions - paginated list with status filter",
+    "agent.getExecution - single execution detail with steps/toolHistory",
+    "agent.getStats - aggregated execution statistics"
+  ],
+  "buildStatus": "vite build succeeded (server build has pre-existing errors from missing router files)",
+  "notes": "Backend already had all needed tRPC endpoints (listExecutions, getExecution, getStats). No new backend code was needed. The page follows BrowserSessions.tsx patterns for filters/pagination and agent/ExecutionHistory.tsx patterns for status display."
 }

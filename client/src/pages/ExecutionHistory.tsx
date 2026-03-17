@@ -1,86 +1,655 @@
-import React, { useState, useMemo } from "react";
-import { trpc } from "@/lib/trpc";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import React, { useState, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Breadcrumb } from '@/components/ui/breadcrumb';
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent
+} from '@/components/ui/empty';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { SessionRecordingViewer } from '@/components/browser/SessionRecordingViewer';
+import { trpc } from '@/lib/trpc';
 import {
   History,
   Search,
   Filter,
-  Clock,
+  Calendar,
+  RefreshCw,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
+  Loader2,
+  AlertCircle,
+  Pause,
+  Clock,
+  ExternalLink,
+  Download,
   Play,
+  Eye,
   ChevronLeft,
   ChevronRight,
-  Eye,
-  FileText,
-  ExternalLink,
-  Timer,
-  Activity,
-  TrendingUp,
-  Ban,
-  Loader2,
-  Download,
   Video,
-} from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+  FileText,
+  Brain,
+  Monitor,
+  RotateCcw,
+  Timer,
+  TrendingUp,
+  Activity,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useLocation } from 'wouter';
+import { toast } from 'sonner';
 
 // ========================================
-// STATUS HELPERS
+// TYPES
 // ========================================
 
-type ExecutionStatus = "started" | "running" | "success" | "failed" | "timeout" | "cancelled" | "needs_input";
+type ExecutionStatus = 'started' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'needs_input';
+type DateRange = 'all' | 'today' | 'week' | 'month';
 
-const STATUS_CONFIG: Record<
-  ExecutionStatus,
-  { label: string; color: string; icon: React.ElementType; badgeVariant: "default" | "secondary" | "destructive" | "outline" }
-> = {
-  started: { label: "Started", color: "text-blue-500", icon: Play, badgeVariant: "secondary" },
-  running: { label: "Running", color: "text-blue-600", icon: Loader2, badgeVariant: "default" },
-  success: { label: "Success", color: "text-emerald-600", icon: CheckCircle2, badgeVariant: "default" },
-  failed: { label: "Failed", color: "text-red-600", icon: XCircle, badgeVariant: "destructive" },
-  timeout: { label: "Timeout", color: "text-amber-600", icon: AlertTriangle, badgeVariant: "outline" },
-  cancelled: { label: "Cancelled", color: "text-gray-500", icon: Ban, badgeVariant: "secondary" },
-  needs_input: { label: "Needs Input", color: "text-purple-600", icon: AlertTriangle, badgeVariant: "outline" },
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const config = STATUS_CONFIG[status as ExecutionStatus] ?? STATUS_CONFIG.started;
-  const Icon = config.icon;
-  return (
-    <Badge variant={config.badgeVariant} className="gap-1">
-      <Icon className={`h-3 w-3 ${config.color} ${status === "running" ? "animate-spin" : ""}`} />
-      {config.label}
-    </Badge>
-  );
+interface StepResult {
+  tool?: string;
+  action?: string;
+  result?: string;
+  error?: string;
+  duration?: number;
+  timestamp?: string;
+  screenshot?: string;
+  reasoning?: string;
 }
 
-function formatDuration(ms: number | null | undefined): string {
-  if (!ms) return "--";
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  const mins = Math.floor(ms / 60000);
-  const secs = Math.floor((ms % 60000) / 1000);
-  return `${mins}m ${secs}s`;
+// ========================================
+// HELPERS
+// ========================================
+
+function getStatusIcon(status: ExecutionStatus) {
+  switch (status) {
+    case 'started':
+    case 'running':
+      return <Loader2 className="w-4 h-4 animate-spin" />;
+    case 'success':
+      return <CheckCircle2 className="w-4 h-4" />;
+    case 'failed':
+    case 'timeout':
+      return <XCircle className="w-4 h-4" />;
+    case 'cancelled':
+      return <AlertCircle className="w-4 h-4" />;
+    case 'needs_input':
+      return <Pause className="w-4 h-4" />;
+    default:
+      return <Clock className="w-4 h-4" />;
+  }
+}
+
+function getStatusBadgeVariant(status: ExecutionStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
+  switch (status) {
+    case 'success':
+      return 'default';
+    case 'running':
+    case 'started':
+      return 'secondary';
+    case 'failed':
+    case 'timeout':
+      return 'destructive';
+    default:
+      return 'outline';
+  }
+}
+
+function getStatusColor(status: ExecutionStatus) {
+  switch (status) {
+    case 'started':
+      return 'text-blue-600 bg-blue-50 border-blue-200';
+    case 'running':
+      return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+    case 'success':
+      return 'text-green-600 bg-green-50 border-green-200';
+    case 'failed':
+    case 'timeout':
+      return 'text-red-600 bg-red-50 border-red-200';
+    case 'cancelled':
+      return 'text-orange-600 bg-orange-50 border-orange-200';
+    case 'needs_input':
+      return 'text-purple-600 bg-purple-50 border-purple-200';
+    default:
+      return 'text-gray-600 bg-gray-50 border-gray-200';
+  }
+}
+
+function formatDuration(ms?: number | null) {
+  if (!ms) return '-';
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours}h ${remainingMinutes}m`;
+}
+
+function formatDate(date: Date | string) {
+  const d = new Date(date);
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatRelativeTime(date: Date | string) {
+  const now = new Date();
+  const d = new Date(date);
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return formatDate(date);
+}
+
+function filterByDateRange(date: Date | string, range: DateRange): boolean {
+  if (range === 'all') return true;
+  const d = new Date(date);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  switch (range) {
+    case 'today':
+      return d >= today;
+    case 'week': {
+      const weekAgo = new Date(today);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      return d >= weekAgo;
+    }
+    case 'month': {
+      const monthAgo = new Date(today);
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
+      return d >= monthAgo;
+    }
+    default:
+      return true;
+  }
+}
+
+// ========================================
+// EXPORT REPORT
+// ========================================
+
+function generateExecutionReport(execution: any): string {
+  const lines: string[] = [];
+  lines.push('# Execution Report');
+  lines.push(`Generated: ${new Date().toISOString()}`);
+  lines.push('');
+  lines.push('## Overview');
+  lines.push(`- **Execution ID:** ${execution.id}`);
+  lines.push(`- **Status:** ${execution.status}`);
+  lines.push(`- **Task:** ${execution.task?.title || `Task #${execution.taskId}`}`);
+  if (execution.task?.description) {
+    lines.push(`- **Description:** ${execution.task.description}`);
+  }
+  lines.push(`- **Started:** ${execution.startedAt ? formatDate(execution.startedAt) : 'N/A'}`);
+  lines.push(`- **Completed:** ${execution.completedAt ? formatDate(execution.completedAt) : 'N/A'}`);
+  lines.push(`- **Duration:** ${formatDuration(execution.duration)}`);
+  lines.push(`- **Steps:** ${execution.stepsCompleted || 0}/${execution.stepsTotal || 0}`);
+  if (execution.attemptNumber && execution.attemptNumber > 1) {
+    lines.push(`- **Attempt:** ${execution.attemptNumber}`);
+  }
+  lines.push('');
+
+  if (execution.error) {
+    lines.push('## Error');
+    lines.push(`\`\`\`\n${execution.error}\n\`\`\``);
+    lines.push('');
+  }
+
+  const steps = execution.toolHistory || execution.stepResults || [];
+  if (Array.isArray(steps) && steps.length > 0) {
+    lines.push('## Execution Steps');
+    steps.forEach((step: StepResult, i: number) => {
+      lines.push(`### Step ${i + 1}: ${step.tool || step.action || 'Unknown'}`);
+      if (step.reasoning) lines.push(`**Reasoning:** ${step.reasoning}`);
+      if (step.result) lines.push(`**Result:** ${step.result}`);
+      if (step.error) lines.push(`**Error:** ${step.error}`);
+      if (step.duration) lines.push(`**Duration:** ${formatDuration(step.duration)}`);
+      lines.push('');
+    });
+  }
+
+  if (execution.output) {
+    lines.push('## Output');
+    lines.push(`\`\`\`json\n${JSON.stringify(execution.output, null, 2)}\n\`\`\``);
+  }
+
+  return lines.join('\n');
+}
+
+function downloadReport(execution: any) {
+  const report = generateExecutionReport(execution);
+  const blob = new Blob([report], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `execution-${execution.id}-report.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast.success('Report downloaded');
+}
+
+// ========================================
+// EXECUTION DETAIL MODAL
+// ========================================
+
+function ExecutionDetailModal({
+  executionId,
+  open,
+  onClose,
+}: {
+  executionId: number;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { data: execution, isLoading } = trpc.agent.getExecution.useQuery(
+    { executionId },
+    { enabled: open && executionId > 0 }
+  );
+
+  const steps: StepResult[] = useMemo(() => {
+    if (!execution) return [];
+    const raw = execution.toolHistory || execution.thinkingSteps || [];
+    return Array.isArray(raw) ? raw : [];
+  }, [execution]);
+
+  const [activeTab, setActiveTab] = useState<'timeline' | 'output' | 'replay'>('timeline');
+  const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
+
+  if (!open) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Eye className="h-5 w-5" />
+            Execution Details
+            {execution && (
+              <Badge
+                variant={getStatusBadgeVariant(execution.status as ExecutionStatus)}
+                className="ml-2"
+              >
+                {execution.status}
+              </Badge>
+            )}
+          </DialogTitle>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+          </div>
+        ) : !execution ? (
+          <div className="text-center py-16 text-gray-500">
+            Execution not found
+          </div>
+        ) : (
+          <div className="flex-1 overflow-hidden flex flex-col gap-4">
+            {/* Summary Bar */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500">Task</div>
+                <div className="text-sm font-medium truncate mt-1">
+                  {execution.task?.title || `Task #${execution.taskId}`}
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500">Duration</div>
+                <div className="text-sm font-medium mt-1 flex items-center gap-1">
+                  <Timer className="h-3.5 w-3.5" />
+                  {formatDuration(execution.duration)}
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500">Steps</div>
+                <div className="text-sm font-medium mt-1">
+                  {execution.stepsCompleted || 0}/{execution.stepsTotal || 0}
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500">Started</div>
+                <div className="text-sm font-medium mt-1">
+                  {execution.startedAt ? formatRelativeTime(execution.startedAt) : '-'}
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500">Attempt</div>
+                <div className="text-sm font-medium mt-1">
+                  #{execution.attemptNumber || 1}
+                </div>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-1 border-b">
+              <button
+                onClick={() => setActiveTab('timeline')}
+                className={cn(
+                  'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+                  activeTab === 'timeline'
+                    ? 'border-emerald-600 text-emerald-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Activity className="h-4 w-4" />
+                  Timeline
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('output')}
+                className={cn(
+                  'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+                  activeTab === 'output'
+                    ? 'border-emerald-600 text-emerald-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <FileText className="h-4 w-4" />
+                  Output
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('replay')}
+                className={cn(
+                  'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+                  activeTab === 'replay'
+                    ? 'border-emerald-600 text-emerald-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                )}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Video className="h-4 w-4" />
+                  Replay
+                </div>
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <ScrollArea className="flex-1 max-h-[50vh]">
+              {activeTab === 'timeline' && (
+                <div className="space-y-1 pr-4">
+                  {steps.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <Activity className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                      <p>No step data available for this execution</p>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      {/* Timeline line */}
+                      <div className="absolute left-4 top-3 bottom-3 w-px bg-gray-200" />
+
+                      {steps.map((step, index) => {
+                        const isError = !!step.error;
+                        const isLast = index === steps.length - 1;
+                        return (
+                          <div key={index} className="relative pl-10 pb-4">
+                            {/* Timeline dot */}
+                            <div
+                              className={cn(
+                                'absolute left-2.5 top-1.5 w-3 h-3 rounded-full border-2',
+                                isError
+                                  ? 'bg-red-100 border-red-400'
+                                  : isLast && execution.status === 'success'
+                                  ? 'bg-green-100 border-green-400'
+                                  : 'bg-white border-gray-300'
+                              )}
+                            />
+
+                            <div
+                              className={cn(
+                                'rounded-lg border p-3',
+                                isError ? 'border-red-200 bg-red-50/50' : 'border-gray-200 bg-white'
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-mono text-gray-400">
+                                    #{index + 1}
+                                  </span>
+                                  <span className="text-sm font-medium text-gray-900">
+                                    {step.tool || step.action || 'Step'}
+                                  </span>
+                                </div>
+                                {step.duration != null && (
+                                  <span className="text-xs text-gray-400 flex items-center gap-1 shrink-0">
+                                    <Clock className="h-3 w-3" />
+                                    {formatDuration(step.duration)}
+                                  </span>
+                                )}
+                              </div>
+
+                              {step.reasoning && (
+                                <div className="mt-2 flex items-start gap-1.5">
+                                  <Brain className="h-3.5 w-3.5 text-purple-500 mt-0.5 shrink-0" />
+                                  <p className="text-xs text-purple-700 leading-relaxed">
+                                    {step.reasoning}
+                                  </p>
+                                </div>
+                              )}
+
+                              {step.result && !step.error && (
+                                <p className="text-xs text-gray-600 mt-1.5 line-clamp-3">
+                                  {typeof step.result === 'string'
+                                    ? step.result
+                                    : JSON.stringify(step.result)}
+                                </p>
+                              )}
+
+                              {step.error && (
+                                <div className="mt-2 p-2 bg-red-100 rounded text-xs text-red-700 font-mono">
+                                  {step.error}
+                                </div>
+                              )}
+
+                              {step.screenshot && (
+                                <button
+                                  onClick={() => setSelectedScreenshot(step.screenshot!)}
+                                  className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                                >
+                                  <Monitor className="h-3 w-3" />
+                                  View Screenshot
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Error display for failed executions */}
+                  {execution.error && (
+                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <XCircle className="h-4 w-4 text-red-600" />
+                        <span className="text-sm font-medium text-red-800">Execution Error</span>
+                      </div>
+                      <pre className="text-xs text-red-700 font-mono whitespace-pre-wrap break-words">
+                        {execution.error}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'output' && (
+                <div className="pr-4">
+                  {execution.output ? (
+                    <pre className="bg-gray-50 border rounded-lg p-4 text-xs font-mono whitespace-pre-wrap break-words overflow-auto">
+                      {typeof execution.output === 'string'
+                        ? execution.output
+                        : JSON.stringify(execution.output, null, 2)}
+                    </pre>
+                  ) : (
+                    <div className="text-center py-12 text-gray-400">
+                      <FileText className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                      <p>No output data available</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'replay' && (
+                <div className="pr-4">
+                  {(execution as any).browserSessionId ? (
+                    <div className="space-y-4">
+                      {(execution as any).recordingUrl ? (
+                        <SessionRecordingViewer
+                          sessionId={(execution as any).browserSessionId}
+                          recordingUrl={(execution as any).recordingUrl}
+                          recordingStatus="COMPLETE"
+                        />
+                      ) : (
+                        <Card>
+                          <CardContent className="p-6 text-center">
+                            <Video className="h-10 w-10 mx-auto mb-3 text-gray-300" />
+                            <p className="text-sm text-gray-500 mb-3">
+                              Recording not available. Open in BrowserBase to view session.
+                            </p>
+                            {(execution as any).debugUrl && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  window.open((execution as any).debugUrl, '_blank')
+                                }
+                                className="gap-1.5"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Open Debug View
+                              </Button>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* BrowserBase session link */}
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="gap-1">
+                          <Monitor className="h-3 w-3" />
+                          Session: {(execution as any).browserSessionId?.slice(0, 12)}...
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const url = `https://www.browserbase.com/sessions/${(execution as any).browserSessionId}`;
+                            window.open(url, '_blank');
+                          }}
+                          className="h-7 gap-1 text-xs"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          BrowserBase
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-gray-400">
+                      <Video className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No browser session was used for this execution</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </ScrollArea>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between border-t pt-3">
+              <div className="flex items-center gap-2">
+                {(execution as any).browserSessionId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const url = `https://www.browserbase.com/sessions/${(execution as any).browserSessionId}`;
+                      window.open(url, '_blank');
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                    View Replay
+                  </Button>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadReport(execution)}
+                className="gap-1.5"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export Report
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Screenshot overlay */}
+        {selectedScreenshot && (
+          <Dialog open={!!selectedScreenshot} onOpenChange={() => setSelectedScreenshot(null)}>
+            <DialogContent className="max-w-4xl">
+              <DialogHeader>
+                <DialogTitle>Screenshot</DialogTitle>
+              </DialogHeader>
+              <img
+                src={selectedScreenshot}
+                alt="Step screenshot"
+                className="w-full rounded-lg border"
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ========================================
@@ -88,874 +657,417 @@ function formatDuration(ms: number | null | undefined): string {
 // ========================================
 
 export default function ExecutionHistory() {
-  // Filters
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [taskTypeFilter, setTaskTypeFilter] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [page, setPage] = useState(0);
-  const pageSize = 25;
+  const [, setLocation] = useLocation();
 
-  // Detail view
+  // Filters
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [dateRange, setDateRange] = useState<DateRange>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  // Detail modal
   const [selectedExecutionId, setSelectedExecutionId] = useState<number | null>(null);
 
-  // Queries
-  const statsQuery = trpc.executionHistory.stats.useQuery();
-  const taskTypesQuery = trpc.executionHistory.taskTypes.useQuery();
-
-  const listQuery = trpc.executionHistory.list.useQuery({
-    limit: pageSize,
-    offset: page * pageSize,
-    status: statusFilter === "all" ? undefined : (statusFilter as any),
-    taskType: taskTypeFilter === "all" ? undefined : taskTypeFilter,
-    search: searchQuery || undefined,
+  // Data
+  const { data: executions, isLoading, refetch } = trpc.agent.listExecutions.useQuery({
+    limit: 100,
+    ...(statusFilter !== 'all' ? { status: statusFilter as ExecutionStatus } : {}),
   });
 
-  const detailQuery = trpc.executionHistory.detail.useQuery(
-    { executionId: selectedExecutionId! },
-    { enabled: !!selectedExecutionId }
-  );
+  const { data: stats } = trpc.agent.getStats.useQuery();
 
-  const stats = statsQuery.data;
-  const list = listQuery.data;
-  const detail = detailQuery.data;
+  // Filter executions
+  const filteredExecutions = useMemo(() => {
+    if (!executions) return [];
 
-  const totalPages = list ? Math.ceil(list.total / pageSize) : 0;
+    return executions.filter((exec) => {
+      // Date range filter
+      if (!filterByDateRange(exec.startedAt, dateRange)) return false;
+
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const title = exec.task?.title?.toLowerCase() || '';
+        const description = exec.task?.description?.toLowerCase() || '';
+        const id = String(exec.id);
+        const category = exec.task?.category?.toLowerCase() || '';
+        if (
+          !title.includes(query) &&
+          !description.includes(query) &&
+          !id.includes(query) &&
+          !category.includes(query)
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [executions, dateRange, searchQuery]);
+
+  // Paginate
+  const paginatedExecutions = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredExecutions.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredExecutions, currentPage]);
+
+  const totalPages = Math.ceil(filteredExecutions.length / itemsPerPage);
+
+  // Reset page when filters change
+  const handleFilterChange = () => {
+    setCurrentPage(1);
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Execution History</h1>
-        <p className="text-muted-foreground">
-          Review past task executions, inspect timelines, and replay browser sessions.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <Breadcrumb
+            items={[
+              { label: 'Dashboard', onClick: () => setLocation('/') },
+              { label: 'Execution History' },
+            ]}
+          />
+          <h1 className="text-3xl font-bold flex items-center gap-2 mt-4">
+            <History className="h-8 w-8" />
+            Execution History
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Review past task executions, view step-by-step timelines, and replay sessions
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => refetch()}
+          disabled={isLoading}
+          className="gap-2"
+        >
+          <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
+          Refresh
+        </Button>
       </div>
 
-      {/* Stats cards */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard icon={Activity} label="Total Executions" value={stats.total} />
-          <StatCard
-            icon={CheckCircle2}
-            label="Success Rate"
-            value={`${stats.successRate}%`}
-            color="text-emerald-600"
-          />
-          <StatCard
-            icon={Timer}
-            label="Avg Duration"
-            value={formatDuration(stats.avgDuration)}
-          />
-          <StatCard
-            icon={TrendingUp}
-            label="Successful"
-            value={stats.byStatus?.success ?? 0}
-            color="text-emerald-600"
-          />
-        </div>
-      )}
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-slate-600">Total Executions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.total ?? 0}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-slate-600">Success Rate</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600 flex items-center gap-1">
+              <TrendingUp className="h-5 w-5" />
+              {stats?.successRate != null ? `${Math.round(stats.successRate)}%` : '-'}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-slate-600">Succeeded</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {stats?.byStatus?.success ?? 0}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-slate-600">Failed</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">
+              {(stats?.byStatus?.failed ?? 0) + (stats?.byStatus?.timeout ?? 0)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-slate-600">Avg Duration</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold flex items-center gap-1">
+              <Timer className="h-5 w-5 text-slate-400" />
+              {formatDuration(stats?.averageDuration)}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Filters */}
       <Card>
-        <CardContent className="pt-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search executions..."
-                className="pl-9"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setPage(0);
-                }}
-              />
+        <CardContent className="p-4">
+          <div className="flex flex-col md:flex-row gap-4">
+            {/* Search */}
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Search by task name, description, or ID..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    handleFilterChange();
+                  }}
+                  className="pl-10"
+                />
+              </div>
             </div>
+
+            {/* Status Filter */}
             <Select
               value={statusFilter}
               onValueChange={(v) => {
                 setStatusFilter(v);
-                setPage(0);
+                handleFilterChange();
               }}
             >
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full md:w-48">
                 <Filter className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Status" />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="success">Success</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
                 <SelectItem value="running">Running</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
                 <SelectItem value="timeout">Timeout</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
                 <SelectItem value="needs_input">Needs Input</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Date Range Filter */}
             <Select
-              value={taskTypeFilter}
-              onValueChange={(v) => {
-                setTaskTypeFilter(v);
-                setPage(0);
+              value={dateRange}
+              onValueChange={(v: DateRange) => {
+                setDateRange(v);
+                handleFilterChange();
               }}
             >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Task Type" />
+              <SelectTrigger className="w-full md:w-48">
+                <Calendar className="h-4 w-4 mr-2" />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                {(taskTypesQuery.data ?? []).map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t.replace(/_/g, " ")}
-                  </SelectItem>
-                ))}
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="week">Last 7 Days</SelectItem>
+                <SelectItem value="month">Last 30 Days</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Execution list */}
+      {/* Executions Table */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <History className="h-4 w-4" />
-            Executions
-            {list && (
-              <span className="text-sm font-normal text-muted-foreground">
-                ({list.total} total)
-              </span>
+        {isLoading ? (
+          <CardContent className="p-12 text-center">
+            <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-slate-400" />
+            <p className="text-slate-600">Loading executions...</p>
+          </CardContent>
+        ) : paginatedExecutions.length === 0 ? (
+          <Empty className="border-0">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <History className="h-6 w-6" />
+              </EmptyMedia>
+              <EmptyTitle>No executions found</EmptyTitle>
+              <EmptyDescription>
+                {searchQuery || statusFilter !== 'all' || dateRange !== 'all'
+                  ? 'No executions match your filters. Try adjusting your search criteria.'
+                  : 'Run your first agent task to see execution history here.'}
+              </EmptyDescription>
+            </EmptyHeader>
+            {(searchQuery || statusFilter !== 'all' || dateRange !== 'all') && (
+              <EmptyContent>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStatusFilter('all');
+                    setDateRange('all');
+                    setCurrentPage(1);
+                  }}
+                  className="gap-2"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Clear Filters
+                </Button>
+              </EmptyContent>
             )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {listQuery.isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : !list || list.items.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <History className="h-10 w-10 mx-auto mb-3 opacity-50" />
-              <p className="font-medium">No executions found</p>
-              <p className="text-sm">Run some agent tasks to see them here.</p>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                {list.items.map((item) => (
-                  <ExecutionRow
-                    key={item.id}
-                    item={item}
-                    onView={() => setSelectedExecutionId(item.id)}
-                  />
+          </Empty>
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">ID</TableHead>
+                  <TableHead>Task</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Steps</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Started</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedExecutions.map((execution) => (
+                  <TableRow
+                    key={execution.id}
+                    className="cursor-pointer"
+                    onClick={() => setSelectedExecutionId(execution.id)}
+                  >
+                    <TableCell className="font-mono text-xs text-gray-500">
+                      #{execution.id}
+                    </TableCell>
+                    <TableCell>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate max-w-xs">
+                          {execution.task?.title || `Task #${execution.taskId}`}
+                        </p>
+                        {execution.task?.category && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {execution.task.category}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border',
+                          getStatusColor(execution.status as ExecutionStatus)
+                        )}
+                      >
+                        {getStatusIcon(execution.status as ExecutionStatus)}
+                        {execution.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-600">
+                      {execution.stepsCompleted != null && execution.stepsTotal != null
+                        ? `${execution.stepsCompleted}/${execution.stepsTotal}`
+                        : '-'}
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-600">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-gray-400" />
+                        {formatDuration(execution.duration)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-gray-500">
+                      {formatRelativeTime(execution.startedAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedExecutionId(execution.id);
+                          }}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        {execution.attemptNumber != null && execution.attemptNumber > 1 && (
+                          <Badge variant="outline" className="text-[10px] gap-0.5">
+                            <RotateCcw className="h-2.5 w-2.5" />
+                            {execution.attemptNumber}
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </div>
+              </TableBody>
+            </Table>
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                  <p className="text-sm text-muted-foreground">
-                    Page {page + 1} of {totalPages}
-                  </p>
-                  <div className="flex gap-2">
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="border-t p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-slate-600">
+                    Showing {(currentPage - 1) * itemsPerPage + 1} -{' '}
+                    {Math.min(currentPage * itemsPerPage, filteredExecutions.length)} of{' '}
+                    {filteredExecutions.length} executions
+                  </div>
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={page === 0}
-                      onClick={() => setPage((p) => p - 1)}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="gap-1"
                     >
                       <ChevronLeft className="h-4 w-4" />
+                      Previous
                     </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum: number;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+
+                        return (
+                          <Button
+                            key={i}
+                            variant={currentPage === pageNum ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setCurrentPage(pageNum)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={page >= totalPages - 1}
-                      onClick={() => setPage((p) => p + 1)}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="gap-1"
                     >
+                      Next
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
-              )}
-            </>
-          )}
-        </CardContent>
+              </div>
+            )}
+          </>
+        )}
       </Card>
 
-      {/* Execution Detail Dialog */}
-      <ExecutionDetailDialog
-        open={!!selectedExecutionId}
-        onOpenChange={(open) => {
-          if (!open) setSelectedExecutionId(null);
-        }}
-        detail={detail}
-        isLoading={detailQuery.isLoading}
-      />
-    </div>
-  );
-}
-
-// ========================================
-// SUB-COMPONENTS
-// ========================================
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  color,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  color?: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="pt-4 pb-3">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-muted p-2">
-            <Icon className={`h-4 w-4 ${color ?? "text-muted-foreground"}`} />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="text-lg font-semibold">{value}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ExecutionRow({
-  item,
-  onView,
-}: {
-  item: any;
-  onView: () => void;
-}) {
-  return (
-    <div
-      className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-      onClick={onView}
-    >
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <StatusBadge status={item.status} />
-        <div className="min-w-0">
-          <p className="font-medium text-sm truncate">
-            {item.task?.title ?? `Execution #${item.id}`}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {item.startedAt
-              ? formatDistanceToNow(new Date(item.startedAt), { addSuffix: true })
-              : "--"}
-            {item.task?.category && (
-              <span className="ml-2 text-muted-foreground/70">
-                {item.task.category}
-              </span>
-            )}
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center gap-4 shrink-0">
-        <div className="text-right hidden sm:block">
-          <p className="text-xs text-muted-foreground">
-            {item.stepsCompleted}/{item.stepsTotal} steps
-          </p>
-          <p className="text-xs text-muted-foreground">{formatDuration(item.duration)}</p>
-        </div>
-        {item.recordingUrl && (
-          <Video className="h-4 w-4 text-blue-500" />
-        )}
-        <Button variant="ghost" size="sm">
-          <Eye className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ========================================
-// DETAIL DIALOG
-// ========================================
-
-function ExecutionDetailDialog({
-  open,
-  onOpenChange,
-  detail,
-  isLoading,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  detail: any;
-  isLoading: boolean;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileText className="h-4 w-4" />
-            )}
-            {detail?.task?.title ?? `Execution #${detail?.id ?? ""}`}
-          </DialogTitle>
-        </DialogHeader>
-
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : detail ? (
-          <ExecutionDetailContent detail={detail} />
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ExecutionDetailContent({ detail }: { detail: any }) {
-  return (
-    <Tabs defaultValue="overview" className="flex-1 min-h-0 flex flex-col">
-      <TabsList className="grid w-full grid-cols-4">
-        <TabsTrigger value="overview">Overview</TabsTrigger>
-        <TabsTrigger value="timeline">Timeline</TabsTrigger>
-        <TabsTrigger value="replay">Replay</TabsTrigger>
-        <TabsTrigger value="export">Export</TabsTrigger>
-      </TabsList>
-
-      {/* Overview Tab */}
-      <TabsContent value="overview" className="flex-1 min-h-0">
-        <ScrollArea className="h-[60vh]">
-          <div className="space-y-4 pr-4">
-            {/* Summary */}
-            <div className="grid grid-cols-2 gap-3">
-              <InfoRow label="Status">
-                <StatusBadge status={detail.status} />
-              </InfoRow>
-              <InfoRow label="Duration">{formatDuration(detail.duration)}</InfoRow>
-              <InfoRow label="Steps">
-                {detail.stepsCompleted}/{detail.stepsTotal}
-              </InfoRow>
-              <InfoRow label="Attempt">#{detail.attemptNumber}</InfoRow>
-              <InfoRow label="Started">
-                {detail.startedAt ? format(new Date(detail.startedAt), "PPp") : "--"}
-              </InfoRow>
-              <InfoRow label="Completed">
-                {detail.completedAt ? format(new Date(detail.completedAt), "PPp") : "--"}
-              </InfoRow>
-            </div>
-
-            {/* Task info */}
-            {detail.task && (
-              <>
-                <Separator />
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Task Details</h4>
-                  <div className="space-y-1 text-sm">
-                    <p>
-                      <span className="text-muted-foreground">Type:</span>{" "}
-                      {detail.task.taskType?.replace(/_/g, " ")}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Category:</span>{" "}
-                      {detail.task.category}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">Priority:</span>{" "}
-                      <Badge variant="outline" className="text-xs">
-                        {detail.task.priority}
-                      </Badge>
-                    </p>
-                    {detail.task.description && (
-                      <p className="text-muted-foreground mt-2">{detail.task.description}</p>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Error details */}
-            {detail.error && (
-              <>
-                <Separator />
-                <div>
-                  <h4 className="text-sm font-medium text-red-600 mb-2">Error Details</h4>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm">
-                    <p className="font-mono text-red-700">{detail.error}</p>
-                    {detail.errorCode && (
-                      <p className="text-xs text-red-500 mt-1">Code: {detail.errorCode}</p>
-                    )}
-                    {detail.errorStack && (
-                      <details className="mt-2">
-                        <summary className="text-xs text-red-500 cursor-pointer">
-                          Stack Trace
-                        </summary>
-                        <pre className="text-xs mt-1 overflow-auto max-h-40 whitespace-pre-wrap text-red-600">
-                          {detail.errorStack}
-                        </pre>
-                      </details>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Output */}
-            {detail.output && (
-              <>
-                <Separator />
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Output</h4>
-                  <pre className="bg-muted rounded-lg p-3 text-xs overflow-auto max-h-40 whitespace-pre-wrap">
-                    {typeof detail.output === "string"
-                      ? detail.output
-                      : JSON.stringify(detail.output, null, 2)}
-                  </pre>
-                </div>
-              </>
-            )}
-          </div>
-        </ScrollArea>
-      </TabsContent>
-
-      {/* Timeline Tab */}
-      <TabsContent value="timeline" className="flex-1 min-h-0">
-        <ScrollArea className="h-[60vh]">
-          <TimelineView
-            stepResults={detail.stepResults}
-            logs={detail.logs}
-            screenshots={detail.screenshots}
-            startedAt={detail.startedAt}
-          />
-        </ScrollArea>
-      </TabsContent>
-
-      {/* Replay Tab */}
-      <TabsContent value="replay" className="flex-1 min-h-0">
-        <ReplayView
-          browserSessionId={detail.browserSessionId}
-          recordingUrl={detail.recordingUrl}
-          debugUrl={detail.debugUrl}
+      {/* Execution Detail Modal */}
+      {selectedExecutionId && (
+        <ExecutionDetailModal
+          executionId={selectedExecutionId}
+          open={!!selectedExecutionId}
+          onClose={() => setSelectedExecutionId(null)}
         />
-      </TabsContent>
-
-      {/* Export Tab */}
-      <TabsContent value="export" className="flex-1 min-h-0">
-        <ExportView executionId={detail.id} />
-      </TabsContent>
-    </Tabs>
-  );
-}
-
-// ========================================
-// TIMELINE VIEW
-// ========================================
-
-function TimelineView({
-  stepResults,
-  logs,
-  screenshots,
-  startedAt,
-}: {
-  stepResults: any[];
-  logs: any[];
-  screenshots: any[];
-  startedAt: string | null;
-}) {
-  // Merge step results and logs into a combined timeline
-  const timelineEntries = useMemo(() => {
-    const entries: Array<{
-      type: "step" | "log" | "screenshot";
-      timestamp: string | null;
-      data: any;
-    }> = [];
-
-    // Add step results
-    if (stepResults?.length) {
-      stepResults.forEach((step, i) => {
-        entries.push({
-          type: "step",
-          timestamp: step.timestamp || step.executedAt || null,
-          data: { ...step, index: i },
-        });
-      });
-    }
-
-    // Add logs
-    if (logs?.length) {
-      logs.forEach((log) => {
-        entries.push({
-          type: "log",
-          timestamp: log.timestamp || null,
-          data: log,
-        });
-      });
-    }
-
-    // Add screenshots
-    if (screenshots?.length) {
-      screenshots.forEach((ss) => {
-        entries.push({
-          type: "screenshot",
-          timestamp: ss.timestamp || null,
-          data: ss,
-        });
-      });
-    }
-
-    // Sort by timestamp (entries without timestamps go last)
-    entries.sort((a, b) => {
-      if (!a.timestamp && !b.timestamp) return 0;
-      if (!a.timestamp) return 1;
-      if (!b.timestamp) return -1;
-      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-    });
-
-    return entries;
-  }, [stepResults, logs, screenshots]);
-
-  if (timelineEntries.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <Clock className="h-10 w-10 mx-auto mb-3 opacity-50" />
-        <p className="font-medium">No timeline data available</p>
-        <p className="text-sm">Step details will appear here after an execution completes.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative pl-6 pr-4 space-y-4">
-      {/* Vertical line */}
-      <div className="absolute left-[11px] top-2 bottom-2 w-px bg-border" />
-
-      {timelineEntries.map((entry, i) => (
-        <div key={i} className="relative flex gap-3">
-          {/* Dot */}
-          <div
-            className={`absolute -left-6 top-1 h-3 w-3 rounded-full border-2 ${
-              entry.type === "step"
-                ? entry.data.success === false
-                  ? "bg-red-500 border-red-300"
-                  : "bg-emerald-500 border-emerald-300"
-                : entry.type === "screenshot"
-                ? "bg-blue-500 border-blue-300"
-                : "bg-gray-400 border-gray-300"
-            }`}
-          />
-
-          <div className="flex-1 min-w-0">
-            {entry.type === "step" && (
-              <div className="bg-muted/50 rounded-lg p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium">
-                    Step {entry.data.index + 1}:{" "}
-                    {entry.data.toolName || entry.data.action || entry.data.name || "Action"}
-                  </p>
-                  {entry.data.durationMs && (
-                    <span className="text-xs text-muted-foreground">
-                      {formatDuration(entry.data.durationMs)}
-                    </span>
-                  )}
-                </div>
-                {/* LLM reasoning */}
-                {entry.data.reasoning && (
-                  <p className="text-xs text-blue-600 italic mb-1">
-                    Reasoning: {entry.data.reasoning}
-                  </p>
-                )}
-                {/* Parameters */}
-                {entry.data.parameters && (
-                  <details className="text-xs">
-                    <summary className="text-muted-foreground cursor-pointer">Parameters</summary>
-                    <pre className="mt-1 overflow-auto max-h-24 whitespace-pre-wrap text-muted-foreground">
-                      {JSON.stringify(entry.data.parameters, null, 2)}
-                    </pre>
-                  </details>
-                )}
-                {/* Result */}
-                {entry.data.result && (
-                  <details className="text-xs mt-1">
-                    <summary className="text-muted-foreground cursor-pointer">Result</summary>
-                    <pre className="mt-1 overflow-auto max-h-24 whitespace-pre-wrap text-muted-foreground">
-                      {typeof entry.data.result === "string"
-                        ? entry.data.result
-                        : JSON.stringify(entry.data.result, null, 2)}
-                    </pre>
-                  </details>
-                )}
-                {/* Error */}
-                {entry.data.error && (
-                  <p className="text-xs text-red-600 mt-1">Error: {entry.data.error}</p>
-                )}
-                {entry.timestamp && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {format(new Date(entry.timestamp), "HH:mm:ss.SSS")}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {entry.type === "log" && (
-              <div className="text-sm">
-                <span
-                  className={`text-xs font-mono ${
-                    entry.data.level === "error"
-                      ? "text-red-600"
-                      : entry.data.level === "warn"
-                      ? "text-amber-600"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  [{entry.data.level?.toUpperCase() ?? "INFO"}]
-                </span>{" "}
-                <span className="text-muted-foreground">{entry.data.message}</span>
-                {entry.timestamp && (
-                  <span className="text-xs text-muted-foreground/60 ml-2">
-                    {format(new Date(entry.timestamp), "HH:mm:ss")}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {entry.type === "screenshot" && (
-              <div className="bg-muted/50 rounded-lg p-3">
-                <p className="text-sm font-medium mb-2">Screenshot</p>
-                {entry.data.url ? (
-                  <img
-                    src={entry.data.url}
-                    alt={entry.data.description || "Screenshot"}
-                    className="rounded border max-h-48 object-contain"
-                  />
-                ) : entry.data.base64 ? (
-                  <img
-                    src={`data:image/png;base64,${entry.data.base64}`}
-                    alt={entry.data.description || "Screenshot"}
-                    className="rounded border max-h-48 object-contain"
-                  />
-                ) : (
-                  <p className="text-xs text-muted-foreground">Screenshot data unavailable</p>
-                )}
-                {entry.data.description && (
-                  <p className="text-xs text-muted-foreground mt-1">{entry.data.description}</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ========================================
-// REPLAY VIEW
-// ========================================
-
-function ReplayView({
-  browserSessionId,
-  recordingUrl,
-  debugUrl,
-}: {
-  browserSessionId: string | null;
-  recordingUrl: string | null;
-  debugUrl: string | null;
-}) {
-  if (!browserSessionId && !recordingUrl) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <Video className="h-10 w-10 mx-auto mb-3 opacity-50" />
-        <p className="font-medium">No browser recording</p>
-        <p className="text-sm">
-          This execution did not include a browser session, so there is no replay available.
-        </p>
-      </div>
-    );
-  }
-
-  const bbReplayUrl = browserSessionId
-    ? `https://www.browserbase.com/sessions/${browserSessionId}`
-    : null;
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-        <h4 className="text-sm font-medium">BrowserBase Session Replay</h4>
-        <p className="text-sm text-muted-foreground">
-          View the full browser session recording on BrowserBase. This includes every page
-          navigation, click, and input the agent performed.
-        </p>
-
-        <div className="flex flex-wrap gap-2">
-          {bbReplayUrl && (
-            <Button asChild variant="default" size="sm">
-              <a href={bbReplayUrl} target="_blank" rel="noopener noreferrer">
-                <Play className="h-4 w-4 mr-2" />
-                Open BrowserBase Replay
-                <ExternalLink className="h-3 w-3 ml-2" />
-              </a>
-            </Button>
-          )}
-
-          {recordingUrl && (
-            <Button asChild variant="outline" size="sm">
-              <a href={recordingUrl} target="_blank" rel="noopener noreferrer">
-                <Video className="h-4 w-4 mr-2" />
-                Direct Recording Link
-                <ExternalLink className="h-3 w-3 ml-2" />
-              </a>
-            </Button>
-          )}
-
-          {debugUrl && (
-            <Button asChild variant="outline" size="sm">
-              <a href={debugUrl} target="_blank" rel="noopener noreferrer">
-                <Eye className="h-4 w-4 mr-2" />
-                Debug URL
-                <ExternalLink className="h-3 w-3 ml-2" />
-              </a>
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Embedded iframe for Browserbase replay */}
-      {bbReplayUrl && (
-        <div className="rounded-lg border overflow-hidden bg-black">
-          <iframe
-            src={bbReplayUrl}
-            className="w-full h-[400px]"
-            title="Session Replay"
-            sandbox="allow-scripts allow-same-origin allow-popups"
-          />
-        </div>
       )}
-
-      <div className="text-xs text-muted-foreground text-center">
-        <p>
-          Session ID: <code className="bg-muted px-1 rounded">{browserSessionId}</code>
-        </p>
-      </div>
     </div>
   );
-}
-
-// ========================================
-// EXPORT VIEW
-// ========================================
-
-function ExportView({ executionId }: { executionId: number }) {
-  const [isExporting, setIsExporting] = useState(false);
-  const reportQuery = trpc.executionHistory.exportReport.useQuery(
-    { executionId },
-    { enabled: false }
-  );
-
-  const handleExport = async () => {
-    setIsExporting(true);
-    try {
-      const result = await reportQuery.refetch();
-      if (result.data) {
-        // Generate a printable HTML report and trigger download
-        const report = result.data;
-        const html = generateReportHTML(report);
-        const blob = new Blob([html], { type: "text/html" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `execution-report-${executionId}.html`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    } catch (err) {
-      console.error("Export failed:", err);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-muted/50 rounded-lg p-4">
-        <h4 className="text-sm font-medium mb-2">Export Execution Report</h4>
-        <p className="text-sm text-muted-foreground mb-4">
-          Download a detailed HTML report of this execution including task details,
-          step timeline, and results. Open the downloaded file in a browser and use Print
-          to save as PDF.
-        </p>
-        <Button onClick={handleExport} disabled={isExporting} size="sm">
-          {isExporting ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4 mr-2" />
-          )}
-          {isExporting ? "Generating..." : "Download Report"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ========================================
-// HELPERS
-// ========================================
-
-function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-muted/50 rounded-lg p-3">
-      <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
-      <div className="text-sm font-medium">{children}</div>
-    </div>
-  );
-}
-
-function generateReportHTML(report: any): string {
-  const statusColor =
-    report.status === "success"
-      ? "#10B981"
-      : report.status === "failed"
-      ? "#EF4444"
-      : "#F59E0B";
-
-  const steps = (report.stepResults ?? [])
-    .map(
-      (step: any, i: number) => `
-    <div style="border-left: 3px solid ${step.success === false ? "#EF4444" : "#10B981"}; padding: 8px 12px; margin: 8px 0; background: #f9fafb; border-radius: 4px;">
-      <strong>Step ${i + 1}: ${step.toolName || step.action || step.name || "Action"}</strong>
-      ${step.reasoning ? `<p style="color: #3B82F6; font-style: italic; margin: 4px 0;">Reasoning: ${step.reasoning}</p>` : ""}
-      ${step.durationMs ? `<span style="color: #6B7280; font-size: 12px;">${step.durationMs}ms</span>` : ""}
-      ${step.error ? `<p style="color: #EF4444; margin: 4px 0;">Error: ${step.error}</p>` : ""}
-    </div>
-  `
-    )
-    .join("");
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Execution Report - ${report.title}</title>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 20px; color: #1F2937; }
-h1 { border-bottom: 3px solid #4F46E5; padding-bottom: 10px; }
-.meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
-.meta-item { background: #f9fafb; padding: 12px; border-radius: 8px; }
-.meta-label { font-size: 12px; color: #6B7280; text-transform: uppercase; }
-.meta-value { font-size: 18px; font-weight: 600; }
-.status { display: inline-block; padding: 4px 12px; border-radius: 12px; font-weight: 600; color: white; background: ${statusColor}; }
-.footer { margin-top: 40px; border-top: 2px solid #E5E7EB; padding-top: 12px; text-align: center; color: #9CA3AF; font-size: 12px; }
-</style></head><body>
-<h1>${report.title}</h1>
-<p style="color: #6B7280;">Execution Report - Generated ${report.generatedAt ? new Date(report.generatedAt).toLocaleString() : ""}</p>
-<div class="meta">
-  <div class="meta-item"><div class="meta-label">Status</div><div><span class="status">${report.status}</span></div></div>
-  <div class="meta-item"><div class="meta-label">Duration</div><div class="meta-value">${formatDuration(report.duration)}</div></div>
-  <div class="meta-item"><div class="meta-label">Steps</div><div class="meta-value">${report.stepsCompleted}/${report.stepsTotal}</div></div>
-  <div class="meta-item"><div class="meta-label">Started</div><div class="meta-value" style="font-size:14px">${report.startedAt ? new Date(report.startedAt).toLocaleString() : "--"}</div></div>
-</div>
-${report.taskDescription ? `<h2>Task Description</h2><p>${report.taskDescription}</p>` : ""}
-${report.error ? `<h2 style="color:#EF4444">Error</h2><pre style="background:#FEF2F2;padding:12px;border-radius:8px;overflow:auto">${report.error}</pre>` : ""}
-${steps ? `<h2>Step Timeline</h2>${steps}` : ""}
-<div class="footer"><p>Generated by Bottleneck Bots</p></div>
-</body></html>`;
 }
