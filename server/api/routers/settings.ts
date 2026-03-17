@@ -187,8 +187,14 @@ function generatePKCEChallenge(verifier: string): string {
 }
 
 /**
+ * Get the application base URL from APP_URL env var, falling back to localhost for development.
+ */
+const BASE_URL = (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+
+/**
  * OAuth provider configurations
- * PLACEHOLDER: Add your OAuth app credentials to .env
+ * In production, set APP_URL to derive redirect URIs automatically,
+ * or override individual URIs with provider-specific env vars.
  */
 const OAUTH_CONFIGS = {
   google: {
@@ -197,7 +203,7 @@ const OAUTH_CONFIGS = {
     scope: "openid email profile",
     clientId: process.env.GOOGLE_CLIENT_ID || "PLACEHOLDER_GOOGLE_CLIENT_ID",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "PLACEHOLDER_GOOGLE_CLIENT_SECRET",
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/oauth/google/callback",
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || `${BASE_URL}/api/oauth/google/callback`,
   },
   gmail: {
     authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
@@ -205,7 +211,7 @@ const OAUTH_CONFIGS = {
     scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
     clientId: process.env.GMAIL_CLIENT_ID || "PLACEHOLDER_GMAIL_CLIENT_ID",
     clientSecret: process.env.GMAIL_CLIENT_SECRET || "PLACEHOLDER_GMAIL_CLIENT_SECRET",
-    redirectUri: process.env.GMAIL_REDIRECT_URI || "http://localhost:3000/api/oauth/callback/gmail",
+    redirectUri: process.env.GMAIL_REDIRECT_URI || `${BASE_URL}/api/oauth/callback/gmail`,
   },
   outlook: {
     authUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
@@ -213,7 +219,7 @@ const OAUTH_CONFIGS = {
     scope: "openid email profile offline_access Mail.Read Mail.Send",
     clientId: process.env.OUTLOOK_CLIENT_ID || "PLACEHOLDER_OUTLOOK_CLIENT_ID",
     clientSecret: process.env.OUTLOOK_CLIENT_SECRET || "PLACEHOLDER_OUTLOOK_CLIENT_SECRET",
-    redirectUri: process.env.OUTLOOK_REDIRECT_URI || "http://localhost:3000/api/oauth/callback/outlook",
+    redirectUri: process.env.OUTLOOK_REDIRECT_URI || `${BASE_URL}/api/oauth/callback/outlook`,
   },
   facebook: {
     authUrl: "https://www.facebook.com/v18.0/dialog/oauth",
@@ -221,7 +227,7 @@ const OAUTH_CONFIGS = {
     scope: "email public_profile pages_show_list pages_read_engagement",
     clientId: process.env.FACEBOOK_CLIENT_ID || "PLACEHOLDER_FACEBOOK_CLIENT_ID",
     clientSecret: process.env.FACEBOOK_CLIENT_SECRET || "PLACEHOLDER_FACEBOOK_CLIENT_SECRET",
-    redirectUri: process.env.FACEBOOK_REDIRECT_URI || "http://localhost:3000/api/oauth/callback/facebook",
+    redirectUri: process.env.FACEBOOK_REDIRECT_URI || `${BASE_URL}/api/oauth/callback/facebook`,
   },
   instagram: {
     authUrl: "https://api.instagram.com/oauth/authorize",
@@ -229,7 +235,7 @@ const OAUTH_CONFIGS = {
     scope: "user_profile user_media",
     clientId: process.env.INSTAGRAM_CLIENT_ID || "PLACEHOLDER_INSTAGRAM_CLIENT_ID",
     clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || "PLACEHOLDER_INSTAGRAM_CLIENT_SECRET",
-    redirectUri: process.env.INSTAGRAM_REDIRECT_URI || "http://localhost:3000/api/oauth/callback/instagram",
+    redirectUri: process.env.INSTAGRAM_REDIRECT_URI || `${BASE_URL}/api/oauth/callback/instagram`,
   },
   linkedin: {
     authUrl: "https://www.linkedin.com/oauth/v2/authorization",
@@ -237,7 +243,7 @@ const OAUTH_CONFIGS = {
     scope: "r_liteprofile r_emailaddress w_member_social",
     clientId: process.env.LINKEDIN_CLIENT_ID || "PLACEHOLDER_LINKEDIN_CLIENT_ID",
     clientSecret: process.env.LINKEDIN_CLIENT_SECRET || "PLACEHOLDER_LINKEDIN_CLIENT_SECRET",
-    redirectUri: process.env.LINKEDIN_REDIRECT_URI || "http://localhost:3000/api/oauth/callback/linkedin",
+    redirectUri: process.env.LINKEDIN_REDIRECT_URI || `${BASE_URL}/api/oauth/callback/linkedin`,
   },
 };
 
