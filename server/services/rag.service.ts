@@ -19,7 +19,6 @@ import { serviceLoggers } from "../lib/logger";
 
 const logger = serviceLoggers.rag;
 
-<<<<<<< HEAD
 // ========================================
 // SOP PROCESSING TYPES
 // ========================================
@@ -117,10 +116,6 @@ function processSOPContent(content: string, docCategory: string): SOPProcessingR
 
   return { category, steps, priority, tags: [...new Set(tags)], summary };
 }
-=======
-/** Knowledge chunk category types for tagging */
-export type KnowledgeCategory = "sop" | "process" | "policy" | "reference" | "training" | "general";
->>>>>>> worktree-agent-a3dc1bfd
 
 export interface IngestDocumentInput {
   platform: string;

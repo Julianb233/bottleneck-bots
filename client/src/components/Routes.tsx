@@ -18,6 +18,8 @@ import CampaignDetails from '@/pages/CampaignDetails';
 import CreditPurchase from '@/pages/CreditPurchase';
 import Training from '@/pages/Training';
 import TaskTemplates from '@/pages/TaskTemplates';
+import AgentSkills from '@/pages/AgentSkills';
+import ExecutionHistory from '@/pages/ExecutionHistory';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { UserManagement } from '@/pages/admin/UserManagement';
 import { SystemHealth } from '@/pages/admin/SystemHealth';
@@ -53,6 +55,8 @@ export function Routes() {
           <Route path="/credits" component={CreditPurchase} />
           <Route path="/training" component={Training} />
           <Route path="/templates" component={TaskTemplates} />
+          <Route path="/agent-skills" component={AgentSkills} />
+          <Route path="/execution-history" component={ExecutionHistory} />
           {/* Admin routes */}
           <Route path="/admin" component={AdminDashboard} />
           <Route path="/admin/users" component={UserManagement} />

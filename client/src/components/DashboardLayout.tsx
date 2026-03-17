@@ -36,7 +36,8 @@ import {
   Shield,
   Bot,
   GraduationCap,
-  FileStack
+  FileStack,
+  Sparkles,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -49,6 +50,7 @@ const menuItems = [
   { icon: Bot, label: "AI Agent", path: "/agent" },
   { icon: GraduationCap, label: "Training", path: "/training" },
   { icon: FileStack, label: "Templates", path: "/templates" },
+  { icon: Sparkles, label: "Agent Skills", path: "/agent-skills" },
   { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
   { icon: Workflow, label: "Workflow Builder", path: "/workflow-builder" },
@@ -338,12 +340,12 @@ function DashboardLayoutContent({
 
       <SidebarInset>
         {isMobile && (
-          <div className="flex border-b h-14 items-center justify-between bg-white px-2 sticky top-0 z-40">
+          <div className="flex border-b h-14 items-center justify-between bg-background px-2 sticky top-0 z-40">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="h-9 w-9 rounded-lg" />
               <div className="flex items-center gap-3">
                 <div className="flex flex-col gap-1">
-                  <span className="tracking-tight text-gray-900">
+                  <span className="tracking-tight text-foreground">
                     {activeMenuItem?.label ?? APP_TITLE}
                   </span>
                 </div>
@@ -351,7 +353,7 @@ function DashboardLayoutContent({
             </div>
           </div>
         )}
-        <main className="flex-1 p-4 bg-gray-50">{children}</main>
+        <main className="flex-1 p-4 bg-muted/30">{children}</main>
       </SidebarInset>
     </>
   );

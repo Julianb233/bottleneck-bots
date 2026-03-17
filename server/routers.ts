@@ -43,6 +43,7 @@ import { agentTrainingRouter } from "./api/routers/agentTraining";
 import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
+import { executionHistoryRouter } from "./api/routers/executionHistory";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -142,6 +143,9 @@ export const appRouter = router({
 
   // GHL Automation (48 GoHighLevel browser automation functions)
   ghlAutomation: ghlAutomationRouter,
+
+  // Execution History (past executions, timeline, replay, export)
+  executionHistory: executionHistoryRouter,
 });
 
 export type AppRouter = typeof appRouter;

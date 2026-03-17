@@ -40,7 +40,6 @@ import {
   BookOpen,
   Sparkles,
   CheckCircle2,
-<<<<<<< HEAD
   Eye,
   RotateCcw,
   ChevronDown,
@@ -48,14 +47,6 @@ import {
   ListOrdered,
   Tag,
   X,
-=======
-  ChevronDown,
-  ChevronRight,
-  RotateCcw,
-  Eye,
-  ListOrdered,
-  Tag,
->>>>>>> worktree-agent-a3dc1bfd
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -80,7 +71,6 @@ const PLATFORMS = [
 
 const CATEGORY_COLORS: Record<string, string> = {
   sop: 'bg-blue-100 text-blue-700',
-<<<<<<< HEAD
   process: 'bg-indigo-100 text-indigo-700',
   policy: 'bg-orange-100 text-orange-700',
   reference: 'bg-gray-100 text-gray-700',
@@ -90,70 +80,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   general: 'bg-gray-100 text-gray-500',
 };
 
-=======
-  process: 'bg-purple-100 text-purple-700',
-  policy: 'bg-amber-100 text-amber-700',
-  reference: 'bg-cyan-100 text-cyan-700',
-  training: 'bg-emerald-100 text-emerald-700',
-  general: 'bg-gray-100 text-gray-700',
-  business: 'bg-orange-100 text-orange-700',
-  technical: 'bg-indigo-100 text-indigo-700',
-};
-
-function ChunkPreview({ sourceId }: { sourceId: number }) {
-  const chunksQuery = trpc.rag.getSourceChunks.useQuery(
-    { sourceId, limit: 10 },
-    { enabled: true }
-  );
-
-  if (chunksQuery.isLoading) {
-    return <div className="py-4 text-center text-gray-400 text-sm">Loading chunks...</div>;
-  }
-
-  if (!chunksQuery.data?.chunks?.length) {
-    return <div className="py-4 text-center text-gray-400 text-sm">No chunks found</div>;
-  }
-
-  return (
-    <div className="space-y-2 max-h-80 overflow-y-auto">
-      {chunksQuery.data.chunks.map((chunk: any) => {
-        const meta = chunk.metadata || {};
-        const priority = meta.priority || 50;
-        const knowledgeCategory = meta.knowledgeCategory || 'general';
-        return (
-          <div key={chunk.id} className="border rounded-lg p-3 bg-gray-50 text-sm">
-            <div className="flex items-center gap-2 mb-2">
-              <Badge variant="outline" className="text-xs">
-                Chunk {chunk.chunkIndex + 1}
-              </Badge>
-              <Badge className={cn('text-xs', CATEGORY_COLORS[knowledgeCategory] || CATEGORY_COLORS.general)}>
-                {knowledgeCategory}
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                {chunk.tokenCount} tokens
-              </Badge>
-              {priority > 70 && (
-                <Badge className="bg-amber-100 text-amber-700 text-xs">
-                  High Priority
-                </Badge>
-              )}
-            </div>
-            <p className="text-gray-600 whitespace-pre-wrap line-clamp-4">
-              {chunk.content}
-            </p>
-          </div>
-        );
-      })}
-      {chunksQuery.data.total > 10 && (
-        <p className="text-xs text-gray-400 text-center">
-          Showing 10 of {chunksQuery.data.total} chunks
-        </p>
-      )}
-    </div>
-  );
-}
-
->>>>>>> worktree-agent-a3dc1bfd
 export function DocumentsTab() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -162,11 +88,7 @@ export function DocumentsTab() {
   const [selectedPlatform, setSelectedPlatform] = useState('general');
   const [urlToIngest, setUrlToIngest] = useState('');
   const [deleteId, setDeleteId] = useState<number | null>(null);
-<<<<<<< HEAD
   const [expandedSourceId, setExpandedSourceId] = useState<number | null>(null);
-=======
-  const [expandedId, setExpandedId] = useState<number | null>(null);
->>>>>>> worktree-agent-a3dc1bfd
   const [filterCategory, setFilterCategory] = useState<string>('all');
 
   const sourcesQuery = trpc.rag.listSources.useQuery({
@@ -239,7 +161,6 @@ export function DocumentsTab() {
     },
   });
 
-<<<<<<< HEAD
   const reprocessMutation = trpc.rag.reprocessDocument.useMutation({
     onSuccess: (data) => {
       toast.success(data.message);
@@ -248,15 +169,6 @@ export function DocumentsTab() {
     },
     onError: (error) => {
       toast.error(`Re-process failed: ${error.message}`);
-=======
-  const reprocessMutation = trpc.rag.reprocessSource.useMutation({
-    onSuccess: (data) => {
-      toast.success(data.message);
-      sourcesQuery.refetch();
-    },
-    onError: (error) => {
-      toast.error(`Reprocess failed: ${error.message}`);
->>>>>>> worktree-agent-a3dc1bfd
     },
   });
 
@@ -370,7 +282,6 @@ export function DocumentsTab() {
   const formatDate = (date: Date | string) =>
     new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-<<<<<<< HEAD
   const toggleExpand = (sourceId: number) => {
     setExpandedSourceId(expandedSourceId === sourceId ? null : sourceId);
   };
@@ -384,15 +295,6 @@ export function DocumentsTab() {
   const totalDocs = sourcesQuery.data?.count || 0;
   const totalChunks = sourcesQuery.data?.sources?.reduce((acc: number, s: any) => acc + (s.chunkCount || 0), 0) || 0;
   const sopCount = sourcesQuery.data?.sources?.filter((s: any) => s.category === 'sop' || s.category === 'process').length || 0;
-=======
-  // Compute stats from sources
-  const sources = sourcesQuery.data?.sources || [];
-  const sopCount = sources.filter((s: any) => {
-    const meta = s.metadata as Record<string, any> || {};
-    return meta.knowledgeCategory === 'sop' || s.category === 'sop';
-  }).length;
-  const totalChunks = sources.reduce((acc: number, s: any) => acc + (s.chunkCount || 0), 0);
->>>>>>> worktree-agent-a3dc1bfd
 
   return (
     <div className="space-y-6">
@@ -419,24 +321,7 @@ export function DocumentsTab() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{totalChunks}</p>
-<<<<<<< HEAD
                 <p className="text-xs text-gray-500">Chunks</p>
-=======
-                <p className="text-xs text-gray-500">Knowledge Chunks</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <ListOrdered className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{sopCount}</p>
-                <p className="text-xs text-gray-500">SOPs</p>
->>>>>>> worktree-agent-a3dc1bfd
               </div>
             </div>
           </CardContent>
@@ -448,7 +333,6 @@ export function DocumentsTab() {
                 <ListOrdered className="w-5 h-5 text-purple-600" />
               </div>
               <div>
-<<<<<<< HEAD
                 <p className="text-2xl font-bold">{sopCount}</p>
                 <p className="text-xs text-gray-500">SOPs / Processes</p>
               </div>
@@ -464,10 +348,6 @@ export function DocumentsTab() {
               <div>
                 <p className="text-2xl font-bold">Active</p>
                 <p className="text-xs text-gray-500">RAG Status</p>
-=======
-                <p className="text-2xl font-bold">RAG</p>
-                <p className="text-xs text-gray-500">Active</p>
->>>>>>> worktree-agent-a3dc1bfd
               </div>
             </div>
           </CardContent>
@@ -482,13 +362,9 @@ export function DocumentsTab() {
               <Upload className="w-5 h-5" />
               Upload Documents
             </CardTitle>
-<<<<<<< HEAD
             <CardDescription>
               Upload SOPs, process docs, or training materials. Documents are auto-categorized and SOP steps are extracted.
             </CardDescription>
-=======
-            <CardDescription>Drag & drop or click to upload PDFs, Word docs, Markdown, or text files. SOPs are auto-detected and tagged.</CardDescription>
->>>>>>> worktree-agent-a3dc1bfd
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -542,11 +418,7 @@ export function DocumentsTab() {
             {isUploading && (
               <div className="space-y-2">
                 <Progress value={uploadProgress} className="h-2" />
-<<<<<<< HEAD
                 <p className="text-xs text-gray-500 text-center">Processing... {uploadProgress}%</p>
-=======
-                <p className="text-xs text-gray-500 text-center">Processing document... {uploadProgress}%</p>
->>>>>>> worktree-agent-a3dc1bfd
               </div>
             )}
           </CardContent>
@@ -589,7 +461,6 @@ export function DocumentsTab() {
               Knowledge Base
             </CardTitle>
             <CardDescription>
-<<<<<<< HEAD
               Browse, preview, and manage your agent's training documents
             </CardDescription>
           </div>
@@ -608,22 +479,6 @@ export function DocumentsTab() {
                 <SelectItem value="training">Training</SelectItem>
                 <SelectItem value="reference">Reference</SelectItem>
                 <SelectItem value="general">General</SelectItem>
-=======
-              Browse, preview, and manage your agent's training documents and knowledge chunks
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={filterCategory} onValueChange={setFilterCategory}>
-              <SelectTrigger className="w-[140px]">
-                <Tag className="w-3 h-3 mr-1" />
-                <SelectValue placeholder="Filter" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {CATEGORIES.map((cat) => (
-                  <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                ))}
->>>>>>> worktree-agent-a3dc1bfd
               </SelectContent>
             </Select>
             <Button
@@ -639,7 +494,6 @@ export function DocumentsTab() {
         </CardHeader>
         <CardContent>
           {sourcesQuery.isLoading ? (
-<<<<<<< HEAD
             <div className="text-center py-8 text-gray-500">Loading...</div>
           ) : !filteredSources.length ? (
             <div className="text-center py-8">
@@ -648,14 +502,6 @@ export function DocumentsTab() {
                 {filterCategory !== 'all' ? `No ${filterCategory} documents found` : 'No documents uploaded yet'}
               </p>
               <p className="text-sm text-gray-400">Upload your first document above</p>
-=======
-            <div className="text-center py-8 text-gray-500">Loading knowledge base...</div>
-          ) : !sources.length ? (
-            <div className="text-center py-8">
-              <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500">No documents uploaded yet</p>
-              <p className="text-sm text-gray-400">Upload your first document above to start training your agent</p>
->>>>>>> worktree-agent-a3dc1bfd
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -668,56 +514,30 @@ export function DocumentsTab() {
                     <TableHead className="hidden md:table-cell">Type</TableHead>
                     <TableHead className="hidden md:table-cell">Platform</TableHead>
                     <TableHead className="text-center">Chunks</TableHead>
-<<<<<<< HEAD
                     <TableHead className="hidden lg:table-cell">Priority</TableHead>
-=======
-                    <TableHead className="hidden sm:table-cell">Status</TableHead>
->>>>>>> worktree-agent-a3dc1bfd
                     <TableHead className="hidden sm:table-cell">Added</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-<<<<<<< HEAD
                   {filteredSources.map((source: any) => {
                     const isExpanded = expandedSourceId === source.id;
                     const metadata = source.metadata || {};
                     const categoryColor = CATEGORY_COLORS[source.category] || CATEGORY_COLORS.general;
                     const priority = metadata.priority;
                     const sopStepCount = metadata.stepCount;
-=======
-                  {sources.map((source: any) => {
-                    const meta = source.metadata as Record<string, any> || {};
-                    const knowledgeCategory = meta.knowledgeCategory || source.category || 'general';
-                    const sopStepCount = meta.sopStepCount || 0;
-                    const isExpanded = expandedId === source.id;
->>>>>>> worktree-agent-a3dc1bfd
 
                     return (
                       <>
                         <TableRow key={source.id} className={cn(isExpanded && 'bg-gray-50')}>
-<<<<<<< HEAD
                           <TableCell className="w-8 p-2">
-=======
-                          <TableCell>
->>>>>>> worktree-agent-a3dc1bfd
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0"
-<<<<<<< HEAD
                               onClick={() => toggleExpand(source.id)}
                             >
                               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-=======
-                              onClick={() => setExpandedId(isExpanded ? null : source.id)}
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="w-4 h-4" />
-                              ) : (
-                                <ChevronRight className="w-4 h-4" />
-                              )}
->>>>>>> worktree-agent-a3dc1bfd
                             </Button>
                           </TableCell>
                           <TableCell>
@@ -726,28 +546,14 @@ export function DocumentsTab() {
                               <div>
                                 <span className="font-medium truncate max-w-[200px] block">{source.title}</span>
                                 {sopStepCount > 0 && (
-<<<<<<< HEAD
                                   <span className="text-xs text-blue-600">{sopStepCount} SOP steps</span>
-=======
-                                  <span className="text-xs text-blue-600">{sopStepCount} SOP steps detected</span>
->>>>>>> worktree-agent-a3dc1bfd
                                 )}
                               </div>
                             </div>
                           </TableCell>
                           <TableCell className="hidden md:table-cell">
-<<<<<<< HEAD
                             <Badge className={cn('text-xs', categoryColor)}>
                               {source.category}
-=======
-                            <Badge className={cn('text-xs', CATEGORY_COLORS[knowledgeCategory] || CATEGORY_COLORS.general)}>
-                              {knowledgeCategory}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell">
-                            <Badge variant="outline" className="text-xs">
-                              {source.sourceType || 'text'}
->>>>>>> worktree-agent-a3dc1bfd
                             </Badge>
                           </TableCell>
                           <TableCell className="hidden md:table-cell">
@@ -758,7 +564,6 @@ export function DocumentsTab() {
                               {source.chunkCount}
                             </Badge>
                           </TableCell>
-<<<<<<< HEAD
                           <TableCell className="hidden lg:table-cell">
                             {priority !== undefined ? (
                               <div className="flex items-center gap-1">
@@ -778,13 +583,6 @@ export function DocumentsTab() {
                             ) : (
                               <span className="text-xs text-gray-400">--</span>
                             )}
-=======
-                          <TableCell className="hidden sm:table-cell">
-                            <div className="flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                              <span className="text-xs text-emerald-600">Ready</span>
-                            </div>
->>>>>>> worktree-agent-a3dc1bfd
                           </TableCell>
                           <TableCell className="hidden sm:table-cell text-gray-500 text-sm">
                             {formatDate(source.createdAt)}
@@ -794,13 +592,8 @@ export function DocumentsTab() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-<<<<<<< HEAD
                                 className="h-8 w-8 p-0 text-gray-500 hover:text-blue-600 hover:bg-blue-50"
                                 onClick={() => toggleExpand(source.id)}
-=======
-                                className="h-8 w-8 p-0 text-gray-500 hover:text-blue-600"
-                                onClick={() => setExpandedId(isExpanded ? null : source.id)}
->>>>>>> worktree-agent-a3dc1bfd
                                 title="Preview chunks"
                               >
                                 <Eye className="w-4 h-4" />
@@ -808,17 +601,10 @@ export function DocumentsTab() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-<<<<<<< HEAD
                                 className="h-8 w-8 p-0 text-gray-500 hover:text-amber-600 hover:bg-amber-50"
                                 onClick={() => reprocessMutation.mutate({ sourceId: source.id })}
                                 disabled={reprocessMutation.isPending}
                                 title="Re-process with SOP detection"
-=======
-                                className="h-8 w-8 p-0 text-gray-500 hover:text-amber-600"
-                                onClick={() => reprocessMutation.mutate({ sourceId: source.id })}
-                                disabled={reprocessMutation.isPending}
-                                title="Reprocess document"
->>>>>>> worktree-agent-a3dc1bfd
                               >
                                 <RotateCcw className={cn('w-4 h-4', reprocessMutation.isPending && 'animate-spin')} />
                               </Button>
@@ -826,11 +612,7 @@ export function DocumentsTab() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setDeleteId(source.id)}
-<<<<<<< HEAD
                                 className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-=======
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
->>>>>>> worktree-agent-a3dc1bfd
                                 title="Delete document"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -838,7 +620,6 @@ export function DocumentsTab() {
                             </div>
                           </TableCell>
                         </TableRow>
-<<<<<<< HEAD
 
                         {/* Expanded chunk preview row */}
                         {isExpanded && (
@@ -912,35 +693,6 @@ export function DocumentsTab() {
                                     <p className="text-sm text-gray-500">No chunks found</p>
                                   )}
                                 </div>
-=======
-                        {isExpanded && (
-                          <TableRow key={`${source.id}-chunks`}>
-                            <TableCell colSpan={9} className="bg-gray-50 p-4">
-                              <div className="space-y-3">
-                                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                                  <BookOpen className="w-4 h-4" />
-                                  Knowledge Chunks Preview
-                                </div>
-                                {meta.sopSteps && meta.sopSteps.length > 0 && (
-                                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                                    <p className="text-sm font-medium text-blue-800 mb-2 flex items-center gap-1">
-                                      <ListOrdered className="w-4 h-4" />
-                                      Extracted SOP Steps
-                                    </p>
-                                    <ol className="list-decimal list-inside space-y-1 text-sm text-blue-700">
-                                      {(meta.sopSteps as any[]).map((step: any) => (
-                                        <li key={step.stepNumber}>
-                                          {step.instruction}
-                                          {step.details && (
-                                            <span className="text-blue-500 ml-1">- {step.details.substring(0, 80)}...</span>
-                                          )}
-                                        </li>
-                                      ))}
-                                    </ol>
-                                  </div>
-                                )}
-                                <ChunkPreview sourceId={source.id} />
->>>>>>> worktree-agent-a3dc1bfd
                               </div>
                             </TableCell>
                           </TableRow>
@@ -961,11 +713,7 @@ export function DocumentsTab() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Document</AlertDialogTitle>
             <AlertDialogDescription>
-<<<<<<< HEAD
               Are you sure you want to delete this training document? This will remove all associated chunks and cannot be undone.
-=======
-              Are you sure you want to delete this training document? This will remove all knowledge chunks and cannot be undone.
->>>>>>> worktree-agent-a3dc1bfd
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
