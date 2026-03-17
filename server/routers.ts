@@ -40,6 +40,7 @@ import { subAccountsRouter } from "./api/routers/subAccounts";
 import { agentPermissionsRouter } from "./api/routers/agentPermissions";
 import { agentMemoryRouter } from "./api/routers/agentMemory";
 import { costsRouter } from "./api/routers/costs";
+import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -130,6 +131,9 @@ export const appRouter = router({
 
   // Agent Memory (Browser Agent Training & Learning)
   agentMemory: agentMemoryRouter,
+
+  // GHL Automation (48 GoHighLevel browser automation functions)
+  ghlAutomation: ghlAutomationRouter,
 });
 
 export type AppRouter = typeof appRouter;
