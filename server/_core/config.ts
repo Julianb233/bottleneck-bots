@@ -31,11 +31,14 @@ const ENV_VALIDATIONS: EnvValidation[] = [
   // Critical - Application won't function without these
   { name: 'DATABASE_URL', required: true, category: 'database', description: 'PostgreSQL database connection string' },
   { name: 'JWT_SECRET', required: true, category: 'auth', description: 'Secret key for JWT token signing' },
-  
+
+  // Application URL - Required in production for OAuth redirect URIs, Stripe redirects, and email links
+  { name: 'APP_URL', required: false, category: 'other', description: 'Production base URL (e.g., https://app.bottleneckbots.com) - all OAuth redirect URIs derive from this' },
+
   // Authentication - At least one OAuth method should be configured
   { name: 'GOOGLE_CLIENT_ID', required: false, category: 'auth', description: 'Google OAuth client ID for sign-in' },
   { name: 'GOOGLE_CLIENT_SECRET', required: false, category: 'auth', description: 'Google OAuth client secret' },
-  { name: 'GOOGLE_REDIRECT_URI', required: false, category: 'auth', description: 'Google OAuth callback URL' },
+  { name: 'GOOGLE_REDIRECT_URI', required: false, category: 'auth', description: 'Google OAuth callback URL (optional - derived from APP_URL)' },
   
   // Browser Automation
   { name: 'BROWSERBASE_API_KEY', required: false, category: 'browser', description: 'Browserbase API key for browser automation' },
@@ -79,11 +82,16 @@ function validateEnvironment(): void {
     }
   }
   
+  // Check APP_URL in production - all OAuth redirect URIs derive from this
+  if (isProduction && !process.env.APP_URL) {
+    errors.push('❌ APP_URL - Production base URL required for OAuth redirect URIs, Stripe redirects, and email links (REQUIRED)');
+  }
+
   // Check for OAuth configuration
   const hasGoogleOAuth = !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;
   const hasManusOAuth = !!process.env.OAUTH_SERVER_URL;
   const hasEmailAuth = true; // Email/password auth is always available
-  
+
   if (!hasGoogleOAuth && !hasManusOAuth) {
     warnings.push('⚠️  No OAuth provider configured (GOOGLE_CLIENT_ID or OAUTH_SERVER_URL). Only email/password login will be available.');
   }
