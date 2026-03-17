@@ -139,11 +139,23 @@ function App() {
 
   useEffect(() => {
     if (user) {
+      const path = window.location.pathname;
+      // Don't redirect authenticated users away from public pages they explicitly navigated to
+      const publicOnlyPaths = ['/privacy', '/terms', '/features'];
+      if (publicOnlyPaths.includes(path)) {
+        return; // Let them stay on the public page
+      }
       // User is logged in - check if onboarding is completed
       if (user.onboardingCompleted === false) {
         setCurrentView('ONBOARDING');
       } else {
-        setCurrentView('DASHBOARD');
+        // If user is on login/signup, redirect to dashboard
+        if (path === '/login' || path === '/signup' || path === '/') {
+          setCurrentView('DASHBOARD');
+        } else if (currentView === 'LANDING' || currentView === 'LOGIN') {
+          // If state was set to LANDING/LOGIN but user is authenticated, go to dashboard
+          setCurrentView('DASHBOARD');
+        }
       }
     }
   }, [user]);

@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 
 export default function ForgotPassword() {
   const navigateTo = (path: string) => {
-    window.history.pushState({}, '', path);
     window.location.href = path;
   };
   const [email, setEmail] = useState('');
