@@ -36,6 +36,12 @@ export {
 } from './EnhancedReasoningDisplay';
 export type { ReasoningStep, ThinkingStream } from './EnhancedReasoningDisplay';
 
+// Error handling
+export { ExecutionErrorDisplay } from './ExecutionErrorDisplay';
+
+// Scheduling
+export { CronExpressionBuilder } from './CronExpressionBuilder';
+
 // Existing enhanced components
 export { BrowserLiveView } from './BrowserLiveView';
 export { ReasoningChain } from './ReasoningChain';

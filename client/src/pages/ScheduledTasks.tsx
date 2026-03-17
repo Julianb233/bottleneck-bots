@@ -87,6 +87,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { CronExpressionBuilder } from '@/components/agent/CronExpressionBuilder';
 import { useBulkOperations } from '@/hooks/useBulkOperations';
 import { useSavedViewsStore, SavedView } from '@/stores/savedViewsStore';
 import { BulkOperationsToolbar } from '@/components/BulkOperationsToolbar';
@@ -1186,18 +1187,12 @@ export default function ScheduledTasksPage() {
 
               <div>
                 <Label htmlFor="cronExpression">
-                  Cron Expression {formData.scheduleType === 'cron' && '*'}
+                  Schedule {formData.scheduleType === 'cron' && '*'}
                 </Label>
-                <Input
-                  id="cronExpression"
+                <CronExpressionBuilder
                   value={formData.cronExpression}
-                  onChange={(e) => setFormData({ ...formData, cronExpression: e.target.value })}
-                  placeholder="0 9 * * *"
-                  disabled={formData.scheduleType !== 'cron'}
+                  onChange={(expr) => setFormData({ ...formData, cronExpression: expr })}
                 />
-                <p className="text-xs text-slate-500 mt-1">
-                  Format: minute hour day month weekday (e.g., "0 9 * * *" = 9 AM daily)
-                </p>
               </div>
             </div>
 
