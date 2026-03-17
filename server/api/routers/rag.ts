@@ -622,6 +622,55 @@ export const ragRouter = router({
     }),
 
   /**
+   * Get chunks for a specific source (knowledge base browser preview)
+   */
+  getSourceChunks: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .query(async ({ input }) => {
+      try {
+        const chunks = await ragService.getSourceChunks(input.sourceId);
+        return { success: true, chunks, count: chunks.length };
+      } catch (error) {
+        console.error("[RAG Router] Get source chunks failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to get chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
+   * Retrieve structured knowledge for agent task execution
+   */
+  retrieveForTask: publicProcedure
+    .input(z.object({
+      taskDescription: z.string().min(1),
+      platforms: z.array(z.string()).optional(),
+      maxTokens: z.number().min(100).max(10000).optional(),
+    }))
+    .query(async ({ input }) => {
+      try {
+        const result = await ragService.retrieveForTask(input.taskDescription, {
+          platforms: input.platforms,
+          maxTokens: input.maxTokens,
+        });
+        return {
+          success: true,
+          sopContext: result.sopContext,
+          referenceContext: result.referenceContext,
+          sopSteps: result.sopSteps,
+          chunkCount: result.allChunks.length,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Retrieve for task failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to retrieve task knowledge: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
    * Seed platform keywords (admin operation)
    * This should be called once during initial setup
    */

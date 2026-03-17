@@ -779,7 +779,6 @@ class RAGService {
       throw error;
     }
   }
-}
 
   /**
    * Re-process an existing document (delete chunks and re-ingest with SOP processing)
@@ -981,6 +980,30 @@ class RAGService {
       logger.error({ error }, 'Get knowledge summary failed');
       throw error;
     }
+  }
+
+  async getSourceChunks(sourceId: number): Promise<DocumentChunk[]> {
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
+    const chunks = await db.select({ id: documentationChunks.id, sourceId: documentationChunks.sourceId, chunkIndex: documentationChunks.chunkIndex, content: documentationChunks.content, tokenCount: documentationChunks.tokenCount, metadata: documentationChunks.metadata }).from(documentationChunks).where(eq(documentationChunks.sourceId, sourceId)).orderBy(documentationChunks.chunkIndex);
+    return chunks as unknown as DocumentChunk[];
+  }
+
+  async retrieveForTask(taskDescription: string, options: { platforms?: string[]; maxTokens?: number } = {}): Promise<{ sopContext: string; referenceContext: string; allChunks: DocumentChunk[]; sopSteps: Array<{ stepNumber: number; title: string; instruction: string }> }> {
+    const maxTokens = options.maxTokens || 4000;
+    const chunks = await this.retrieve(taskDescription, { topK: 15, platforms: options.platforms, minSimilarity: 0.5, prioritizeSOPs: true });
+    let sopContext = "", referenceContext = "", tokenCount = 0;
+    const sopSteps: Array<{ stepNumber: number; title: string; instruction: string }> = [];
+    const usedChunks: DocumentChunk[] = [];
+    for (const chunk of chunks) {
+      if (tokenCount + chunk.tokenCount > maxTokens) break;
+      const metadata = (chunk.metadata as Record<string, any>) || {};
+      const cat = metadata.knowledgeCategory || metadata.category || "general";
+      if (cat === "sop" || cat === "process") { sopContext += `\n[SOP] ${chunk.content}\n`; if (metadata.sopStepNumber) { sopSteps.push({ stepNumber: metadata.sopStepNumber, title: metadata.sopStepTitle || "", instruction: chunk.content }); } } else { referenceContext += `\n[${cat.toUpperCase()}] ${chunk.content}\n`; }
+      tokenCount += chunk.tokenCount;
+      usedChunks.push(chunk);
+    }
+    return { sopContext: sopContext.trim(), referenceContext: referenceContext.trim(), allChunks: usedChunks, sopSteps: sopSteps.sort((a, b) => a.stepNumber - b.stepNumber) };
   }
 }
 
