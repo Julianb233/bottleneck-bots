@@ -961,20 +961,11 @@ export const scheduledTasksRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
       }
 
-      // Calculate next N run times
-      const runs: Date[] = [];
-      let current = new Date();
-
-      for (let i = 0; i < input.count; i++) {
-        const next = cronSchedulerService.getNextRunTime(
-          task.cronExpression,
-          task.timezone,
-          current
-        );
-        if (!next) break;
-        runs.push(next);
-        current = new Date(next.getTime() + 1000); // Move past this run time
-      }
+      const runs = cronSchedulerService.getNextNRunTimes(
+        task.cronExpression,
+        input.count,
+        task.timezone
+      );
 
       return {
         taskId: task.id,
