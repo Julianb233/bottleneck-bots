@@ -38,6 +38,7 @@ import {
   GraduationCap,
   FileStack,
   Sparkles,
+  History,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -51,6 +52,7 @@ const menuItems = [
   { icon: GraduationCap, label: "Training", path: "/training" },
   { icon: FileStack, label: "Templates", path: "/templates" },
   { icon: Sparkles, label: "Agent Skills", path: "/agent-skills" },
+  { icon: History, label: "Execution History", path: "/execution-history" },
   { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
   { icon: Workflow, label: "Workflow Builder", path: "/workflow-builder" },
@@ -264,7 +266,7 @@ function DashboardLayoutContent({
                       className={`min-h-[44px] transition-all font-normal ${
                         isActive
                           ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"
-                          : "hover:bg-gray-100"
+                          : "hover:bg-accent"
                       }`}
                       data-tour={tourId}
                     >
