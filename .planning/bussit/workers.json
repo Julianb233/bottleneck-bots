@@ -5,11 +5,11 @@
       "taskId": "a2258abe6a2ddffda",
       "sessionId": "session-2026-03-17T10-42-29-024656Z",
       "registeredAt": "2026-03-17T10:43:47.704169Z",
-      "lastHeartbeat": "2026-03-17T10:44:11.032290Z",
+      "lastHeartbeat": "2026-03-17T10:56:23.794119Z",
       "status": "running",
       "shutdownRequested": false,
       "focus": "Day 1-2 (Deploy + Training)",
-      "currentTask": "1-04-build"
+      "currentTask": "1-02-build"
     },
     {
       "id": "worker-2",
@@ -26,10 +26,11 @@
       "taskId": "a24cbdbe902715cfa",
       "sessionId": "session-2026-03-17T10-42-29-024656Z",
       "registeredAt": "2026-03-17T10:43:47.704169Z",
-      "lastHeartbeat": "2026-03-17T10:43:47.704169Z",
+      "lastHeartbeat": "2026-03-17T10:56:21.094293Z",
       "status": "running",
       "shutdownRequested": false,
-      "focus": "Day 4-5 (Execution + Launch)"
+      "focus": "Day 4-5 (Execution + Launch)",
+      "currentTask": "04-02-build"
     }
   ],
   "maxWorkers": 3,

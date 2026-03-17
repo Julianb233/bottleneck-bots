@@ -3,8 +3,10 @@ import { trpc } from '@/lib/trpc';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Slider } from '@/components/ui/slider';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import {
   Select,
@@ -13,540 +15,424 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   Globe,
-  Zap,
+  Database,
   Mail,
   MessageSquare,
   Phone,
-  FileOutput,
-  Shield,
-  ShieldCheck,
-  ShieldAlert,
+  FileText,
   BarChart3,
-  Activity,
-  Lock,
-  Unlock,
-  Info,
-  RefreshCw,
-  Loader2,
-  TrendingUp,
+  Settings2,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
+  Clock,
+  Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
-// Skill definitions with metadata
-interface SkillDefinition {
-  id: string;
-  name: string;
-  description: string;
-  icon: typeof Globe;
-  category: 'safe' | 'moderate' | 'dangerous';
-  tools: string[];
-  color: string;
-  bgColor: string;
-}
-
-const SKILLS: SkillDefinition[] = [
-  {
-    id: 'browser_automation',
-    name: 'Browser Automation',
-    description: 'Navigate websites, click elements, fill forms, extract data, and take screenshots using BrowserBase.',
-    icon: Globe,
-    category: 'moderate',
-    tools: ['browser_navigate', 'browser_click', 'browser_type', 'browser_extract', 'browser_screenshot', 'browser_scroll', 'browser_wait', 'browser_select'],
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-50',
-  },
-  {
-    id: 'ghl_api',
-    name: 'GoHighLevel API',
-    description: 'Manage contacts, pipelines, campaigns, workflows, and appointments through the GHL API.',
-    icon: Zap,
-    category: 'moderate',
-    tools: ['http_request', 'store_data', 'retrieve_data'],
-    color: 'text-emerald-600',
-    bgColor: 'bg-emerald-50',
-  },
-  {
-    id: 'email',
-    name: 'Email',
-    description: 'Send emails, manage campaigns, and process email templates on behalf of your agency.',
-    icon: Mail,
-    category: 'moderate',
-    tools: ['http_request'],
-    color: 'text-purple-600',
-    bgColor: 'bg-purple-50',
-  },
-  {
-    id: 'sms',
-    name: 'SMS Messaging',
-    description: 'Send SMS messages to contacts through GHL or integrated messaging platforms.',
-    icon: MessageSquare,
-    category: 'moderate',
-    tools: ['http_request'],
-    color: 'text-orange-600',
-    bgColor: 'bg-orange-50',
-  },
-  {
-    id: 'voice',
-    name: 'Voice Calling',
-    description: 'Make and receive voice calls using VAPI AI voice integration.',
-    icon: Phone,
-    category: 'moderate',
-    tools: ['http_request'],
-    color: 'text-pink-600',
-    bgColor: 'bg-pink-50',
-  },
-  {
-    id: 'file_creation',
-    name: 'File Creation',
-    description: 'Generate documents, spreadsheets, PDFs, and CSV reports from collected data.',
-    icon: FileOutput,
-    category: 'dangerous',
-    tools: ['file_write', 'file_edit'],
-    color: 'text-amber-600',
-    bgColor: 'bg-amber-50',
-  },
-  {
-    id: 'data_read',
-    name: 'Data & Documentation',
-    description: 'Read files, search documents, and retrieve knowledge from the RAG system.',
-    icon: Shield,
-    category: 'safe',
-    tools: ['file_read', 'file_list', 'file_search', 'retrieve_documentation', 'retrieve_data'],
-    color: 'text-teal-600',
-    bgColor: 'bg-teal-50',
-  },
-];
-
-type PermissionMode = 'read-only' | 'read-write';
-
-interface SkillConfig {
-  enabled: boolean;
-  permission: PermissionMode;
-  rateLimit: number; // executions per hour
-}
-
-const DEFAULT_RATE_LIMITS: Record<string, number> = {
-  browser_automation: 30,
-  ghl_api: 60,
-  email: 20,
-  sms: 15,
-  voice: 10,
-  file_creation: 20,
-  data_read: 100,
+// Map skill icon strings to Lucide components
+const ICON_MAP: Record<string, React.ElementType> = {
+  Globe,
+  Database,
+  Mail,
+  MessageSquare,
+  Phone,
+  FileText,
 };
 
-// Simulated usage data (would come from analytics API in production)
-const USAGE_STATS: Record<string, { totalExecutions: number; successRate: number; lastUsed: string }> = {
-  browser_automation: { totalExecutions: 247, successRate: 94, lastUsed: '2h ago' },
-  ghl_api: { totalExecutions: 512, successRate: 98, lastUsed: '15m ago' },
-  email: { totalExecutions: 89, successRate: 99, lastUsed: '1d ago' },
-  sms: { totalExecutions: 34, successRate: 97, lastUsed: '3d ago' },
-  voice: { totalExecutions: 12, successRate: 91, lastUsed: '5d ago' },
-  file_creation: { totalExecutions: 67, successRate: 100, lastUsed: '4h ago' },
-  data_read: { totalExecutions: 1023, successRate: 99, lastUsed: '5m ago' },
-};
-
-const CATEGORY_LABELS: Record<string, { label: string; color: string; icon: typeof Shield }> = {
-  safe: { label: 'Safe', color: 'text-emerald-600 bg-emerald-50 border-emerald-200', icon: ShieldCheck },
-  moderate: { label: 'Moderate', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Shield },
-  dangerous: { label: 'Elevated', color: 'text-red-600 bg-red-50 border-red-200', icon: ShieldAlert },
+const CATEGORY_COLORS: Record<string, string> = {
+  automation: 'bg-blue-100 text-blue-700',
+  communication: 'bg-purple-100 text-purple-700',
+  integration: 'bg-amber-100 text-amber-700',
+  content: 'bg-emerald-100 text-emerald-700',
 };
 
 export default function AgentSkills() {
-  const [skills, setSkills] = useState<Record<string, SkillConfig>>(() => {
-    const initial: Record<string, SkillConfig> = {};
-    SKILLS.forEach((s) => {
-      initial[s.id] = {
-        enabled: true,
-        permission: 'read-write',
-        rateLimit: DEFAULT_RATE_LIMITS[s.id] || 30,
-      };
-    });
-    return initial;
+  const [activeTab, setActiveTab] = useState('configuration');
+
+  // Fetch skills list
+  const skillsQuery = trpc.agentSkillConfig.list.useQuery();
+
+  // Fetch analytics
+  const analyticsQuery = trpc.agentSkillConfig.analytics.useQuery({ periodDays: 30 });
+
+  // Update mutation
+  const updateMutation = trpc.agentSkillConfig.update.useMutation({
+    onSuccess: () => {
+      skillsQuery.refetch();
+      analyticsQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Update failed: ${error.message}`);
+    },
   });
 
-  const [hasChanges, setHasChanges] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  // Fetch current permissions from backend
-  const permissionsQuery = trpc.agentPermissions.getMyPermissions.useQuery();
-  const permLevelQuery = trpc.agentPermissions.getPermissionLevel.useQuery();
-  const limitsQuery = trpc.agentPermissions.checkExecutionLimits.useQuery();
-
-  const permissionLevel = permLevelQuery.data?.permissionLevel ?? 'view_only';
-  const permissionDescription = permLevelQuery.data?.description ?? '';
-
-  const updateSkill = (skillId: string, updates: Partial<SkillConfig>) => {
-    setSkills((prev) => ({
-      ...prev,
-      [skillId]: { ...prev[skillId], ...updates },
-    }));
-    setHasChanges(true);
+  const handleToggle = (skillId: string, enabled: boolean) => {
+    updateMutation.mutate({ skillId, enabled });
+    toast.success(`Skill ${enabled ? 'enabled' : 'disabled'}`);
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    // In production, this would call a tRPC mutation to persist skill config.
-    // For now, simulate a save.
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    toast.success('Skill configuration saved');
-    setHasChanges(false);
-    setSaving(false);
+  const handlePermissionChange = (skillId: string, permission: 'read-only' | 'read-write') => {
+    updateMutation.mutate({ skillId, permission });
+    toast.success('Permission updated');
   };
 
-  const handleResetDefaults = () => {
-    const defaults: Record<string, SkillConfig> = {};
-    SKILLS.forEach((s) => {
-      defaults[s.id] = {
-        enabled: true,
-        permission: 'read-write',
-        rateLimit: DEFAULT_RATE_LIMITS[s.id] || 30,
-      };
-    });
-    setSkills(defaults);
-    setHasChanges(true);
-    toast.info('Reset to default configuration');
+  const handleRateLimitChange = (skillId: string, rateLimit: number) => {
+    if (rateLimit < 1 || rateLimit > 1000) return;
+    updateMutation.mutate({ skillId, rateLimit });
+    toast.success('Rate limit updated');
   };
 
-  const enabledCount = Object.values(skills).filter((s) => s.enabled).length;
-  const totalTools = SKILLS.reduce((sum, s) => {
-    if (skills[s.id]?.enabled) return sum + s.tools.length;
-    return sum;
-  }, 0);
+  const skills = skillsQuery.data?.skills ?? [];
+  const analytics = analyticsQuery.data?.analytics;
 
   return (
-    <TooltipProvider>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Agent Skills</h1>
-            <p className="text-gray-500 mt-1">
-              Configure which capabilities your AI agent can use during task execution.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleResetDefaults} disabled={saving}>
-              <RefreshCw className="w-4 h-4 mr-1.5" />
-              Reset Defaults
-            </Button>
-            <Button
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700"
-              onClick={handleSave}
-              disabled={!hasChanges || saving}
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4 mr-1.5" />
-              )}
-              {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Agent Skills</h1>
+        <p className="text-muted-foreground mt-1">
+          Configure which capabilities your AI agent can use, set permissions, and monitor usage.
+        </p>
+      </div>
 
-        {/* Permission Level Card */}
-        <Card className="border-emerald-200 bg-emerald-50/30">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-emerald-100">
-                  <Shield className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-gray-900">Permission Level</h3>
-                    <Badge
-                      className={cn(
-                        'text-xs',
-                        permissionLevel === 'admin' ? 'bg-purple-100 text-purple-700' :
-                        permissionLevel === 'execute_advanced' ? 'bg-blue-100 text-blue-700' :
-                        permissionLevel === 'execute_basic' ? 'bg-emerald-100 text-emerald-700' :
-                        'bg-gray-100 text-gray-700'
-                      )}
-                    >
-                      {permissionLevel.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-600 mt-0.5">{permissionDescription}</p>
-                </div>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-emerald-100">
+                <Zap className="h-5 w-5 text-emerald-600" />
               </div>
-              {limitsQuery.data?.limits && (
-                <div className="flex items-center gap-6 text-sm">
-                  <div className="text-center">
-                    <p className="font-semibold text-gray-900">
-                      {limitsQuery.data.limits.currentActive}/{limitsQuery.data.limits.maxConcurrent}
-                    </p>
-                    <p className="text-xs text-gray-500">Concurrent</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="font-semibold text-gray-900">
-                      {limitsQuery.data.limits.monthlyUsed}/{limitsQuery.data.limits.monthlyLimit}
-                    </p>
-                    <p className="text-xs text-gray-500">Monthly</p>
-                  </div>
-                </div>
-              )}
+              <div>
+                <p className="text-sm text-muted-foreground">Active Skills</p>
+                <p className="text-2xl font-bold">
+                  {skillsQuery.isLoading ? (
+                    <Skeleton className="h-8 w-12" />
+                  ) : (
+                    skills.filter(s => s.enabled).length
+                  )}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
-
-        {/* Summary Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Activity className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{enabledCount}/{SKILLS.length}</p>
-                  <p className="text-xs text-gray-500">Skills Active</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-100 rounded-lg">
-                  <Zap className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{totalTools}</p>
-                  <p className="text-xs text-gray-500">Tools Available</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">
-                    {Object.values(USAGE_STATS).reduce((s, u) => s + u.totalExecutions, 0).toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-500">Total Executions</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 rounded-lg">
-                  <BarChart3 className="w-5 h-5 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">
-                    {Math.round(
-                      Object.values(USAGE_STATS).reduce((s, u) => s + u.successRate, 0) /
-                        Object.values(USAGE_STATS).length
-                    )}%
-                  </p>
-                  <p className="text-xs text-gray-500">Avg Success Rate</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Skills List */}
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800">Skill Configuration</h2>
-
-          {SKILLS.map((skill) => {
-            const config = skills[skill.id];
-            const usage = USAGE_STATS[skill.id];
-            const catInfo = CATEGORY_LABELS[skill.category];
-            const CatIcon = catInfo.icon;
-            const SkillIcon = skill.icon;
-
-            return (
-              <Card
-                key={skill.id}
-                className={cn(
-                  'transition-all',
-                  !config.enabled && 'opacity-60 bg-gray-50'
-                )}
-              >
-                <CardContent className="py-5">
-                  <div className="flex items-start gap-4">
-                    {/* Icon */}
-                    <div className={cn('p-2.5 rounded-lg shrink-0', skill.bgColor)}>
-                      <SkillIcon className={cn('w-5 h-5', skill.color)} />
-                    </div>
-
-                    {/* Main content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-gray-900">{skill.name}</h3>
-                        <Badge variant="outline" className={cn('text-[10px] border', catInfo.color)}>
-                          <CatIcon className="w-3 h-3 mr-1" />
-                          {catInfo.label}
-                        </Badge>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {skill.tools.length} tools
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-500 mb-3">{skill.description}</p>
-
-                      {/* Config row */}
-                      {config.enabled && (
-                        <div className="flex flex-wrap items-center gap-4 mt-3 pt-3 border-t">
-                          {/* Permission mode */}
-                          <div className="flex items-center gap-2">
-                            <label className="text-xs font-medium text-gray-600 whitespace-nowrap">
-                              Permission:
-                            </label>
-                            <Select
-                              value={config.permission}
-                              onValueChange={(val: PermissionMode) =>
-                                updateSkill(skill.id, { permission: val })
-                              }
-                            >
-                              <SelectTrigger className="h-8 w-[140px] text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="read-only">
-                                  <span className="flex items-center gap-1.5">
-                                    <Lock className="w-3 h-3" />
-                                    Read Only
-                                  </span>
-                                </SelectItem>
-                                <SelectItem value="read-write">
-                                  <span className="flex items-center gap-1.5">
-                                    <Unlock className="w-3 h-3" />
-                                    Read + Write
-                                  </span>
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* Rate limit */}
-                          <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-                            <label className="text-xs font-medium text-gray-600 whitespace-nowrap">
-                              Rate Limit:
-                            </label>
-                            <Slider
-                              value={[config.rateLimit]}
-                              onValueChange={([val]) => updateSkill(skill.id, { rateLimit: val })}
-                              min={1}
-                              max={200}
-                              step={1}
-                              className="flex-1"
-                            />
-                            <span className="text-xs text-gray-500 w-[60px] text-right whitespace-nowrap">
-                              {config.rateLimit}/hr
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Usage analytics */}
-                      {config.enabled && usage && (
-                        <div className="flex items-center gap-6 mt-3 text-xs text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <Activity className="w-3 h-3" />
-                            {usage.totalExecutions.toLocaleString()} executions
-                          </span>
-                          <span className="flex items-center gap-1">
-                            {usage.successRate >= 95 ? (
-                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                            ) : usage.successRate >= 80 ? (
-                              <AlertTriangle className="w-3 h-3 text-amber-500" />
-                            ) : (
-                              <XCircle className="w-3 h-3 text-red-500" />
-                            )}
-                            {usage.successRate}% success
-                          </span>
-                          <span>Last used: {usage.lastUsed}</span>
-                          <div className="flex-1 max-w-[120px]">
-                            <Progress
-                              value={usage.successRate}
-                              className="h-1.5"
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Toggle */}
-                    <div className="shrink-0 pt-1">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div>
-                            <Switch
-                              checked={config.enabled}
-                              onCheckedChange={(checked) =>
-                                updateSkill(skill.id, { enabled: checked })
-                              }
-                            />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{config.enabled ? 'Disable' : 'Enable'} {skill.name}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Tool Reference */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Info className="w-4 h-4" />
-              Risk Categories Reference
-            </CardTitle>
-            <CardDescription>
-              Tools are categorized by their potential impact. Your subscription tier determines which categories you can access.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid md:grid-cols-3 gap-4">
-              {Object.entries(CATEGORY_LABELS).map(([key, info]) => {
-                const CIcon = info.icon;
-                return (
-                  <div key={key} className={cn('rounded-lg border p-3', info.color.split(' ').slice(1).join(' '))}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <CIcon className="w-4 h-4" />
-                      <h4 className="font-medium text-sm">{info.label} Risk</h4>
-                    </div>
-                    <p className="text-xs text-gray-600">
-                      {key === 'safe' && 'Read-only operations: file reading, documentation lookup, data retrieval, and browser navigation.'}
-                      {key === 'moderate' && 'Write operations: API calls, data storage, browser interactions (click, type, scroll), and plan updates.'}
-                      {key === 'dangerous' && 'Elevated access: file writing, shell execution, and browser session management. Requires admin permissions.'}
-                    </p>
-                  </div>
-                );
-              })}
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-100">
+                <BarChart3 className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Executions (30d)</p>
+                <p className="text-2xl font-bold">
+                  {analyticsQuery.isLoading ? (
+                    <Skeleton className="h-8 w-16" />
+                  ) : (
+                    analytics?.totalExecutions.toLocaleString() ?? '0'
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-100">
+                <CheckCircle2 className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Success Rate</p>
+                <p className="text-2xl font-bold">
+                  {analyticsQuery.isLoading ? (
+                    <Skeleton className="h-8 w-14" />
+                  ) : (
+                    `${analytics?.overallSuccessRate ?? 0}%`
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-100">
+                <Settings2 className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Skills</p>
+                <p className="text-2xl font-bold">
+                  {skillsQuery.isLoading ? (
+                    <Skeleton className="h-8 w-10" />
+                  ) : (
+                    skills.length
+                  )}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
-    </TooltipProvider>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="configuration">Configuration</TabsTrigger>
+          <TabsTrigger value="analytics">Usage Analytics</TabsTrigger>
+        </TabsList>
+
+        {/* Configuration Tab */}
+        <TabsContent value="configuration" className="mt-4">
+          {skillsQuery.isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <Skeleton className="h-6 w-40" />
+                    <Skeleton className="h-4 w-60" />
+                  </CardHeader>
+                  <CardContent>
+                    <Skeleton className="h-20 w-full" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {skills.map((skill) => {
+                const IconComponent = ICON_MAP[skill.icon] ?? Settings2;
+                return (
+                  <Card
+                    key={skill.skillId}
+                    className={`transition-all ${!skill.enabled ? 'opacity-60' : ''}`}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg ${skill.enabled ? 'bg-emerald-100' : 'bg-gray-100'}`}>
+                            <IconComponent
+                              className={`h-5 w-5 ${skill.enabled ? 'text-emerald-600' : 'text-gray-400'}`}
+                            />
+                          </div>
+                          <div>
+                            <CardTitle className="text-base">{skill.name}</CardTitle>
+                            <Badge
+                              variant="secondary"
+                              className={`mt-1 text-xs ${CATEGORY_COLORS[skill.category] ?? ''}`}
+                            >
+                              {skill.category}
+                            </Badge>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={skill.enabled}
+                          onCheckedChange={(checked) => handleToggle(skill.skillId, checked)}
+                          disabled={updateMutation.isPending}
+                        />
+                      </div>
+                      <CardDescription className="mt-2 text-xs">
+                        {skill.description}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Permission */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Permission Level</Label>
+                        <Select
+                          value={skill.permission}
+                          onValueChange={(value) =>
+                            handlePermissionChange(skill.skillId, value as 'read-only' | 'read-write')
+                          }
+                          disabled={!skill.enabled || updateMutation.isPending}
+                        >
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="read-only">Read Only</SelectItem>
+                            <SelectItem value="read-write">Read & Write</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Rate Limit */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">
+                          Rate Limit (per hour)
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={1000}
+                            value={skill.rateLimit}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              if (!isNaN(val)) {
+                                handleRateLimitChange(skill.skillId, val);
+                              }
+                            }}
+                            className="h-8 text-sm"
+                            disabled={!skill.enabled || updateMutation.isPending}
+                          />
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">/hr</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Analytics Tab */}
+        <TabsContent value="analytics" className="mt-4 space-y-4">
+          {analyticsQuery.isLoading ? (
+            <Card>
+              <CardContent className="pt-6">
+                <Skeleton className="h-64 w-full" />
+              </CardContent>
+            </Card>
+          ) : analytics ? (
+            <>
+              {/* Usage Bar Chart (CSS-based) */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Executions by Skill (Last {analytics.periodDays} days)</CardTitle>
+                  <CardDescription>Total executions and success rates per skill</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {analytics.skills
+                      .filter(s => s.totalExecutions > 0)
+                      .sort((a, b) => b.totalExecutions - a.totalExecutions)
+                      .map((record) => {
+                        const skill = skills.find(s => s.skillId === record.skillId);
+                        const maxExec = Math.max(...analytics.skills.map(s => s.totalExecutions), 1);
+                        const pct = (record.totalExecutions / maxExec) * 100;
+
+                        return (
+                          <div key={record.skillId} className="space-y-1">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-medium">{skill?.name ?? record.skillId}</span>
+                              <div className="flex items-center gap-3 text-muted-foreground text-xs">
+                                <span>{record.totalExecutions} executions</span>
+                                <Badge
+                                  variant="secondary"
+                                  className={
+                                    record.successRate >= 90
+                                      ? 'bg-green-100 text-green-700'
+                                      : record.successRate >= 70
+                                        ? 'bg-yellow-100 text-yellow-700'
+                                        : 'bg-red-100 text-red-700'
+                                  }
+                                >
+                                  {record.successRate}% success
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-emerald-500 transition-all"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    {analytics.skills.every(s => s.totalExecutions === 0) && (
+                      <p className="text-sm text-muted-foreground text-center py-8">
+                        No usage data available yet. Enable skills and start using your agent.
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Detailed Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Detailed Usage</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Skill</TableHead>
+                        <TableHead className="text-right">Executions</TableHead>
+                        <TableHead className="text-right">Success</TableHead>
+                        <TableHead className="text-right">Failures</TableHead>
+                        <TableHead className="text-right">Success Rate</TableHead>
+                        <TableHead className="text-right">Avg Duration</TableHead>
+                        <TableHead className="text-right">Last Used</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {analytics.skills.map((record) => {
+                        const skill = skills.find(s => s.skillId === record.skillId);
+                        return (
+                          <TableRow key={record.skillId}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {skill?.enabled ? (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                ) : (
+                                  <XCircle className="h-3.5 w-3.5 text-gray-400" />
+                                )}
+                                {skill?.name ?? record.skillId}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">{record.totalExecutions}</TableCell>
+                            <TableCell className="text-right text-green-600">{record.successCount}</TableCell>
+                            <TableCell className="text-right text-red-600">{record.failureCount}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge
+                                variant="secondary"
+                                className={
+                                  record.successRate >= 90
+                                    ? 'bg-green-100 text-green-700'
+                                    : record.successRate >= 70
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : record.totalExecutions === 0
+                                        ? 'bg-gray-100 text-gray-500'
+                                        : 'bg-red-100 text-red-700'
+                                }
+                              >
+                                {record.successRate}%
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {record.avgDurationMs > 0 ? `${(record.avgDurationMs / 1000).toFixed(1)}s` : '-'}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground text-xs">
+                              {record.lastUsed
+                                ? new Date(record.lastUsed).toLocaleDateString()
+                                : '-'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </>
+          ) : null}
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }

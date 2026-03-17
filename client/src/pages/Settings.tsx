@@ -70,6 +70,7 @@ import {
 import { toast } from 'sonner';
 import { FeatureTip } from '@/components/tour/FeatureTip';
 import { TourPrompt } from '@/components/tour';
+import { GHLConnectionCard } from '@/components/GHLConnectionCard';
 
 // Types
 type ApiKeyService = 'OpenAI' | 'Browserbase' | 'GoHighLevel' | 'Custom';
@@ -663,6 +664,9 @@ export const Settings: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* GoHighLevel CRM Integration */}
+            <GHLConnectionCard />
           </TabsContent>
 
           {/* Webhooks Tab */}

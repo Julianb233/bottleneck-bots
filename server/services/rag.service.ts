@@ -152,7 +152,9 @@ export interface RetrieveOptions {
   topK?: number;
   platforms?: string[];
   categories?: string[];
+  knowledgeCategories?: DocumentKnowledgeCategory[];
   minSimilarity?: number;
+  prioritizeSOPs?: boolean;
 }
 
 export interface SystemPromptResult {

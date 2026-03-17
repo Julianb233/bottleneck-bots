@@ -43,6 +43,7 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 import { CommandPalette } from './CommandPalette';
+import { HelpDrawer } from './help/HelpDrawer';
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -154,7 +155,9 @@ function DashboardLayoutContent({
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const allMenuItems = [...menuItems, ...adminOnlyItems];
-  const activeMenuItem = allMenuItems.find(item => item.path === location);
+  const activeMenuItem = allMenuItems.find(item =>
+    item.path === "/" ? location === "/" : location.startsWith(item.path)
+  );
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -245,7 +248,7 @@ function DashboardLayoutContent({
           <SidebarContent className="gap-0" data-tour="sidebar-nav">
             <SidebarMenu className="px-2 py-1">
               {menuItems.map(item => {
-                const isActive = location === item.path;
+                const isActive = item.path === "/" ? location === "/" : location.startsWith(item.path);
                 const tourId =
                   item.path === "/" ? "nav-dashboard" :
                   item.path === "/lead-lists" ? "nav-leads" :

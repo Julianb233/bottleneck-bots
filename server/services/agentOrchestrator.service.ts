@@ -900,6 +900,14 @@ export class AgentOrchestratorService {
         throw error;
       }
 
+      // Skill-level access control: verify the tool's parent skill is enabled, has correct
+      // permission (read vs read-write), and hasn't exceeded its rate limit for this user.
+      const skillCfg = getAgentSkillConfigService();
+      const skillResult = await skillCfg.checkSkillPermission(state.userId, toolName);
+      if (!skillResult.allowed) {
+        throw new Error(`Skill blocked: ${skillResult.reason}`);
+      }
+
       // Special handling for certain tools that need state
       let result: unknown;
       if (toolName === "browser_create_session") {
@@ -1022,6 +1030,9 @@ export class AgentOrchestratorService {
         });
       }
 
+      // Record successful skill usage for analytics (fire-and-forget)
+      getAgentSkillConfigService().recordSkillUsage(state.userId, toolName, true, duration).catch(() => {});
+
       return {
         success: true,
         result,
@@ -1029,19 +1040,23 @@ export class AgentOrchestratorService {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Record failed skill usage for analytics (fire-and-forget)
+      getAgentSkillConfigService().recordSkillUsage(state.userId, toolName, false, duration).catch(() => {});
 
       // Emit tool complete event with error
       if (emitter) {
         emitter.toolComplete({
           toolName,
-          result: { error: error instanceof Error ? error.message : 'Unknown error' },
+          result: { error: errorMessage },
           duration,
         });
       }
 
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
         duration,
       };
     }

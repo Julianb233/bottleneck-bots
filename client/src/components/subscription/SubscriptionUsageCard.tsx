@@ -245,7 +245,82 @@ export function SubscriptionUsageCard({
             </div>
           </div>
         )}
+
+        {/* Cancellation notice */}
+        {data.subscription?.cancelAtPeriodEnd && (
+          <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+            <div className="flex items-start gap-2">
+              <XCircle className="w-4 h-4 text-orange-500 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-orange-700">Cancellation scheduled</p>
+                <p className="text-xs text-orange-600 mt-0.5">
+                  Your subscription will end on {new Date(data.subscription.currentPeriodEnd).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+            <ResumeButton />
+          </div>
+        )}
+
+        {/* Billing management */}
+        <BillingActions />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Resume subscription button (undo cancellation)
+ */
+function ResumeButton() {
+  const resumeMutation = trpc.subscription.resume.useMutation({
+    onSuccess: () => {
+      window.location.reload();
+    },
+  });
+
+  return (
+    <button
+      onClick={() => resumeMutation.mutate()}
+      disabled={resumeMutation.isPending}
+      className="mt-2 w-full px-3 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-colors"
+    >
+      {resumeMutation.isPending ? (
+        <Loader2 className="w-3 h-3 animate-spin" />
+      ) : (
+        <RotateCcw className="w-3 h-3" />
+      )}
+      Resume Subscription
+    </button>
+  );
+}
+
+/**
+ * Billing management actions (manage billing, view invoices)
+ */
+function BillingActions() {
+  const billingPortal = trpc.subscription.getBillingPortalUrl.useMutation({
+    onSuccess: (data) => {
+      if (data.url) {
+        window.open(data.url, '_blank');
+      }
+    },
+  });
+
+  return (
+    <div className="pt-2 border-t border-gray-100">
+      <button
+        onClick={() => billingPortal.mutate({})}
+        disabled={billingPortal.isPending}
+        className="w-full px-3 py-2 text-slate-600 hover:text-slate-800 hover:bg-slate-50 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-colors"
+      >
+        {billingPortal.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin" />
+        ) : (
+          <CreditCard className="w-3 h-3" />
+        )}
+        Manage Billing
+      </button>
     </div>
   );
 }

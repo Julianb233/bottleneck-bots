@@ -115,7 +115,7 @@ export function UpgradeModal({ isOpen, onClose, currentTierSlug }: UpgradeModalP
     },
   });
 
-  const createCheckout = trpc.subscription.createCheckout.useMutation({
+  const createCheckout = trpc.subscription.createCheckoutSession.useMutation({
     onSuccess: (data) => {
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;

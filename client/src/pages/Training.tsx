@@ -57,6 +57,7 @@ import { cn } from '@/lib/utils';
 import WorkflowsTab from '@/components/training/WorkflowsTab';
 import SkillsTab from '@/components/training/SkillsTab';
 import BehaviorTab from '@/components/training/BehaviorTab';
+import { PageEmptyState } from '@/components/onboarding/PageEmptyState';
 import KnowledgeBaseBrowser from '@/components/training/KnowledgeBaseBrowser';
 
 const CATEGORIES = [
@@ -508,11 +509,18 @@ export default function Training() {
               {sourcesQuery.isLoading ? (
                 <div className="text-center py-8 text-gray-500">Loading...</div>
               ) : !sourcesQuery.data?.sources?.length ? (
-                <div className="text-center py-8">
-                  <FileText className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                  <p className="text-gray-500">No documents uploaded yet</p>
-                  <p className="text-sm text-gray-400">Upload your first document above</p>
-                </div>
+                <PageEmptyState
+                  icon={FileText}
+                  title="No training documents yet"
+                  description="Upload SOPs, process docs, or business documents to train your AI agent. It will reference these when executing tasks."
+                  actions={[
+                    {
+                      label: 'Upload Document',
+                      onClick: () => document.getElementById('file-upload')?.click(),
+                      icon: Upload,
+                    },
+                  ]}
+                />
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
