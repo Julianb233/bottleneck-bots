@@ -308,31 +308,57 @@ export function dryRunWorkflow(workflow: Workflow): {
 }
 
 /**
- * Execute workflow (placeholder - actual execution happens on backend)
+ * Execute workflow via the backend tRPC API (workflows.execute mutation).
+ *
+ * Call this from React components using:
+ *   const executeMutation = trpc.workflows.execute.useMutation();
+ *   executeMutation.mutate({ workflowId, variables });
+ *
+ * This standalone function is kept for non-React contexts and validates
+ * client-side before sending the request.
  */
 export async function executeWorkflow(
   workflow: Workflow,
   variables?: Record<string, any>
 ): Promise<WorkflowExecutionResult> {
-  // Validate first
+  // Validate client-side first
   const validation = validateWorkflow(workflow);
   if (!validation.valid) {
     throw new Error(`Workflow validation failed: ${validation.errors.join(', ')}`);
   }
 
-  // PLACEHOLDER: This would actually call the backend API
-  // For now, return mock execution result
-  console.log('[Workflow Execution] Starting workflow:', workflow.name);
-  console.log('[Workflow Execution] Variables:', variables);
+  if (!workflow.id) {
+    throw new Error('Workflow must be saved before execution (missing id)');
+  }
+
+  // Call the real backend API
+  const response = await fetch('/api/trpc/workflows.execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      json: {
+        workflowId: workflow.id,
+        variables,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    const message = errorData?.error?.message || `Workflow execution failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  const data = await response.json();
+  const result = data.result?.data?.json ?? data.result?.data ?? data;
 
   return {
-    workflowId: workflow.id || 0,
-    status: 'completed',
+    workflowId: result.workflowId ?? workflow.id,
+    status: result.status ?? 'completed',
     input: variables,
-    output: {
-      message: 'Workflow execution is a placeholder. Backend integration required.',
-    },
-    stepResults: [],
+    output: result.output ?? {},
+    stepResults: result.stepResults ?? [],
     startedAt: new Date(),
     completedAt: new Date(),
     duration: 0,
