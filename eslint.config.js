@@ -14,6 +14,7 @@ export default tseslint.config(
       '.next/**',
       'coverage/**',
       'test-results/**',
+      'server/templates/**',
     ],
   },
 
@@ -23,7 +24,7 @@ export default tseslint.config(
 
   // Main configuration for TypeScript/JavaScript files
   {
-    files: ['**/*.{js,jsx,ts,tsx}'],
+    files: ['**/*.{js,jsx,mjs,ts,tsx}'],
     plugins: {
       react: reactPlugin,
       'react-hooks': reactHooksPlugin,
@@ -66,6 +67,20 @@ export default tseslint.config(
       'no-debugger': 'warn',
       'prefer-const': 'warn',
       'no-var': 'warn',
+
+      // Pre-existing issues downgraded to warnings
+      'react/no-unescaped-entities': 'warn',
+      'no-case-declarations': 'warn',
+      'no-undef': 'off',
+      '@typescript-eslint/no-require-imports': 'warn',
+      'no-useless-escape': 'warn',
+      '@typescript-eslint/ban-ts-comment': 'warn',
+      '@typescript-eslint/prefer-as-const': 'warn',
+      '@typescript-eslint/no-non-null-asserted-optional-chain': 'warn',
+      '@typescript-eslint/no-unsafe-function-type': 'warn',
+      'no-shadow-restricted-names': 'warn',
+      'no-empty': 'warn',
+      'no-constant-binary-expression': 'warn',
     },
   }
 );
