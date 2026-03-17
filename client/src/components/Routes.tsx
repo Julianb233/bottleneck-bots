@@ -17,6 +17,7 @@ import AICampaigns from '@/pages/AICampaigns';
 import CampaignDetails from '@/pages/CampaignDetails';
 import CreditPurchase from '@/pages/CreditPurchase';
 import Training from '@/pages/Training';
+import AgentTraining from '@/pages/AgentTraining';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { UserManagement } from '@/pages/admin/UserManagement';
 import { SystemHealth } from '@/pages/admin/SystemHealth';
@@ -51,6 +52,7 @@ export function Routes() {
           <Route path="/ai-campaigns/:id" component={CampaignDetails} />
           <Route path="/credits" component={CreditPurchase} />
           <Route path="/training" component={Training} />
+          <Route path="/agent-training" component={AgentTraining} />
           {/* Admin routes */}
           <Route path="/admin" component={AdminDashboard} />
           <Route path="/admin/users" component={UserManagement} />
