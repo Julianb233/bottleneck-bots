@@ -20,17 +20,6 @@ export function useAuth() {
     refetchOnWindowFocus: false,
   });
 
-  // Logout mutation
-  const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => {
-      toast.success('Logged out successfully');
-      setLocation('/login');
-    },
-    onError: (error) => {
-      toast.error('Logout failed: ' + error.message);
-    },
-  });
-
   /**
    * Login function (using REST API since auth is not in tRPC)
    */
