@@ -21,7 +21,6 @@ import {
   buildTaskPrompt,
   buildObservationPrompt,
   buildErrorRecoveryPrompt,
-  type RAGContext
 } from "./agentPrompts";
 import { AgentSSEEmitter } from "../_core/agent-sse-events";
 import {
@@ -407,6 +406,7 @@ export class AgentOrchestratorService {
           platforms: params.platforms,
           categories: params.categories,
           minSimilarity: 0.5,
+          userId: this.currentUserId,
         });
 
         if (chunks.length === 0) {
@@ -1348,7 +1348,7 @@ export class AgentOrchestratorService {
       });
 
       // Fetch RAG context and training context on first iteration
-      let ragContext: RAGContext | undefined;
+      let ragDocumentContext = "";
       let trainingPromptFragment = "";
       if (state.iterations === 0) {
         // Load RAG documentation context and user training context in parallel
@@ -1356,20 +1356,21 @@ export class AgentOrchestratorService {
           ragService.buildSystemPrompt(state.taskDescription, {
             maxDocumentationTokens: 3000,
             includeExamples: true,
+            userId: state.userId,
           }),
           trainingContextService.loadForUser(state.userId),
         ]);
 
-        if (ragResult.status === "fulfilled") {
-          ragContext = {
-            relevantSelectors: ragResult.value.retrievedChunks.map(chunk => ({
-              elementName: 'document',
-              selector: chunk.content.substring(0, 100),
-              reliability: chunk.similarity || 0,
-            })),
-          };
-          console.log(`[Agent] RAG context loaded: ${ragResult.value.retrievedChunks.length} chunks, platforms: ${ragResult.value.detectedPlatforms.join(', ')}`);
-        } else {
+        if (ragResult.status === "fulfilled" && ragResult.value.retrievedChunks.length > 0) {
+          // Build a documentation context section from retrieved RAG chunks
+          const chunks = ragResult.value.retrievedChunks;
+          const docSections = chunks.map((chunk, i) => {
+            const similarity = ((chunk.similarity || 0) * 100).toFixed(1);
+            return `### Reference ${i + 1} (${similarity}% relevant)\n${chunk.content}`;
+          });
+          ragDocumentContext = `\n\n<documentation_context>\n**Retrieved Documentation** (${chunks.length} sources, platforms: ${ragResult.value.detectedPlatforms.join(', ') || 'general'})\n\n${docSections.join('\n\n---\n\n')}\n</documentation_context>`;
+          console.log(`[Agent] RAG context loaded: ${chunks.length} chunks, platforms: ${ragResult.value.detectedPlatforms.join(', ')}`);
+        } else if (ragResult.status === "rejected") {
           console.warn('[Agent] Failed to load RAG context:', ragResult.reason);
         }
 
@@ -1382,12 +1383,11 @@ export class AgentOrchestratorService {
         }
       }
 
-      // Call Claude with function calling
+      // Call Claude with function calling — include RAG docs + training context
       const systemPrompt = buildSystemPrompt({
         userId: state.userId,
         taskDescription: state.taskDescription,
-        ragContext,
-      }) + trainingPromptFragment;
+      }) + ragDocumentContext + trainingPromptFragment;
 
       const apiCallStartTime = Date.now();
       const response = await this.claude.messages.create({
