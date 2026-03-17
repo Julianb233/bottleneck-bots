@@ -78,6 +78,9 @@ import {
   getExecutionControl,
 } from "./security";
 
+// Skill Configuration Service
+import { getAgentSkillConfigService } from "./agentSkillConfig.service";
+
 // ========================================
 // TYPES & INTERFACES
 // ========================================
@@ -899,6 +902,15 @@ export class AgentOrchestratorService {
         throw error;
       }
 
+      // SKILL CONFIG: Check if the required skill is enabled and has correct permissions
+      const skillConfigService = getAgentSkillConfigService();
+      const skillCheck = await skillConfigService.checkToolAllowed(state.userId, toolName);
+      if (!skillCheck.allowed) {
+        throw new Error(
+          `Skill check failed: ${skillCheck.reason} (Tool: ${toolName}, Skill: ${skillCheck.skillId})`
+        );
+      }
+
       // Special handling for certain tools that need state
       let result: unknown;
       if (toolName === "browser_create_session") {
@@ -1011,6 +1023,9 @@ export class AgentOrchestratorService {
       }
 
       const duration = Date.now() - startTime;
+
+      // Record skill usage for rate limiting
+      skillConfigService.recordToolUsage(state.userId, toolName);
 
       // Emit tool complete event
       if (emitter) {
