@@ -35,7 +35,6 @@ export function Routes() {
       <DashboardLayout>
         <Switch>
           <Route path="/" component={DashboardHome} />
-          <Route path="/dashboard" component={DashboardHome} />
           <Route path="/agent" component={AgentDashboard} />
           <Route path="/scheduled-tasks" component={ScheduledTasksPage} />
           <Route path="/workflow-builder" component={WorkflowBuilder} />

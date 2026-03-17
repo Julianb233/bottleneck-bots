@@ -44,6 +44,13 @@ import {
   Workflow,
   Zap,
   MessageSquare,
+  ChevronDown,
+  ChevronRight,
+  RotateCcw,
+  Eye,
+  Tag,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -74,6 +81,8 @@ export default function Training() {
   const [selectedPlatform, setSelectedPlatform] = useState('general');
   const [urlToIngest, setUrlToIngest] = useState('');
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [expandedDocId, setExpandedDocId] = useState<number | null>(null);
+  const [reprocessingId, setReprocessingId] = useState<number | null>(null);
 
   // Fetch training documents
   const sourcesQuery = trpc.rag.listSources.useQuery({
@@ -122,6 +131,25 @@ export default function Training() {
       toast.error(`Delete failed: ${error.message}`);
     },
   });
+
+  // Reprocess mutation
+  const reprocessMutation = trpc.rag.reprocessDocument.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Re-processed: ${data.chunkCount} chunks`);
+      setReprocessingId(null);
+      sourcesQuery.refetch();
+    },
+    onError: (error) => {
+      toast.error(`Reprocess failed: ${error.message}`);
+      setReprocessingId(null);
+    },
+  });
+
+  // Chunks query (only when a document is expanded)
+  const chunksQuery = trpc.rag.getDocumentChunks.useQuery(
+    { sourceId: expandedDocId! },
+    { enabled: expandedDocId !== null }
+  );
 
   // Handle file upload
   const handleFileUpload = useCallback(
@@ -485,53 +513,190 @@ export default function Training() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-8"></TableHead>
                         <TableHead>Title</TableHead>
                         <TableHead className="hidden md:table-cell">Category</TableHead>
                         <TableHead className="hidden md:table-cell">Platform</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
                         <TableHead className="text-center">Chunks</TableHead>
                         <TableHead className="hidden sm:table-cell">Added</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {sourcesQuery.data.sources.map((source: any) => (
-                        <TableRow key={source.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                              <span className="font-medium truncate max-w-[200px]">{source.title}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell">
-                            <Badge variant="secondary" className="text-xs">
-                              {source.category}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell">
-                            <Badge variant="outline" className="text-xs">
-                              {source.platform}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
-                              {source.chunkCount}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell text-gray-500 text-sm">
-                            {formatDate(source.createdAt)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              onClick={() => setDeleteId(source.id)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {sourcesQuery.data.sources.map((source: any) => {
+                        const meta = source.metadata || {};
+                        const isSOP = meta.isSOP;
+                        const docCategory = meta.detectedCategory;
+                        const isExpanded = expandedDocId === source.id;
+                        const isReprocessing = reprocessingId === source.id;
+                        const status = source.chunkCount > 0 ? 'ready' : 'processing';
+
+                        return (
+                          <React.Fragment key={source.id}>
+                            <TableRow className={cn(isExpanded && 'bg-gray-50')}>
+                              <TableCell className="w-8 px-2">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => setExpandedDocId(isExpanded ? null : source.id)}
+                                  className="h-6 w-6"
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-4 h-4" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                  <div>
+                                    <span className="font-medium truncate max-w-[200px] block">{source.title}</span>
+                                    {isSOP && (
+                                      <span className="text-xs text-blue-600 flex items-center gap-1 mt-0.5">
+                                        <Tag className="w-3 h-3" />
+                                        SOP {meta.sopStepCount ? `(${meta.sopStepCount} steps)` : ''}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                <Badge
+                                  variant="secondary"
+                                  className={cn(
+                                    'text-xs',
+                                    docCategory === 'sop' && 'bg-blue-100 text-blue-700',
+                                    docCategory === 'process' && 'bg-purple-100 text-purple-700',
+                                    docCategory === 'policy' && 'bg-amber-100 text-amber-700',
+                                  )}
+                                >
+                                  {docCategory || source.category}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                <Badge variant="outline" className="text-xs">
+                                  {source.platform}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {status === 'ready' ? (
+                                  <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 gap-1">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Ready
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 gap-1">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Processing
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                                  {source.chunkCount}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell text-gray-500 text-sm">
+                                {formatDate(source.createdAt)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    onClick={() => {
+                                      setReprocessingId(source.id);
+                                      reprocessMutation.mutate({ sourceId: source.id });
+                                    }}
+                                    disabled={isReprocessing}
+                                    className="text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                                    title="Re-process document"
+                                  >
+                                    {isReprocessing ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <RotateCcw className="w-4 h-4" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    onClick={() => setDeleteId(source.id)}
+                                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                    title="Delete document"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                            {/* Expanded chunk preview */}
+                            {isExpanded && (
+                              <TableRow>
+                                <TableCell colSpan={8} className="bg-gray-50 p-0">
+                                  <div className="p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                      <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                                        <Eye className="w-4 h-4" />
+                                        Document Chunks
+                                      </h4>
+                                      {source.sourceType && (
+                                        <Badge variant="outline" className="text-xs">
+                                          {source.sourceType}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {chunksQuery.isLoading ? (
+                                      <div className="flex items-center gap-2 text-gray-500 text-sm py-4">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Loading chunks...
+                                      </div>
+                                    ) : chunksQuery.data?.chunks?.length ? (
+                                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                                        {chunksQuery.data.chunks.map((chunk: any, index: number) => (
+                                          <div
+                                            key={chunk.id || index}
+                                            className="bg-white border rounded-lg p-3 text-sm"
+                                          >
+                                            <div className="flex items-center justify-between mb-1">
+                                              <span className="text-xs font-medium text-gray-500">
+                                                Chunk {chunk.chunkIndex + 1}
+                                              </span>
+                                              <div className="flex items-center gap-2">
+                                                {chunk.metadata?.isSOP && (
+                                                  <Badge className="bg-blue-100 text-blue-700 text-xs px-1.5 py-0">
+                                                    SOP
+                                                  </Badge>
+                                                )}
+                                                {chunk.metadata?.documentCategory && (
+                                                  <Badge variant="outline" className="text-xs px-1.5 py-0">
+                                                    {chunk.metadata.documentCategory}
+                                                  </Badge>
+                                                )}
+                                                <span className="text-xs text-gray-400">
+                                                  {chunk.tokenCount} tokens
+                                                </span>
+                                              </div>
+                                            </div>
+                                            <p className="text-gray-700 whitespace-pre-wrap line-clamp-4">
+                                              {chunk.content}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-gray-500 py-2">No chunks found</p>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

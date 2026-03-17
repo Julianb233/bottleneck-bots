@@ -18,23 +18,6 @@ import { serviceLoggers } from "../lib/logger";
 
 const logger = serviceLoggers.rag;
 
-export type DocumentKnowledgeCategory = "sop" | "process" | "policy" | "reference" | "training" | "general";
-
-export interface SOPStep {
-  stepNumber: number;
-  title: string;
-  instruction: string;
-  expectedOutcome?: string;
-}
-
-export interface SOPMetadata {
-  isSOPDocument: boolean;
-  steps: SOPStep[];
-  objective?: string;
-  prerequisites?: string[];
-  totalSteps: number;
-}
-
 export interface IngestDocumentInput {
   platform: string;
   category: string;
@@ -44,10 +27,14 @@ export interface IngestDocumentInput {
   sourceType?: "markdown" | "html" | "pdf" | "docx";
   version?: string;
   userId: number;
-  knowledgeCategory?: DocumentKnowledgeCategory;
   chunkingOptions?: {
     maxTokens?: number;
     overlapTokens?: number;
+  };
+  sopMetadata?: {
+    detectedCategory?: string;
+    isSOP?: boolean;
+    sopSteps?: Array<{ stepNumber: number; title: string; description: string }>;
   };
 }
 
@@ -71,9 +58,7 @@ export interface RetrieveOptions {
   topK?: number;
   platforms?: string[];
   categories?: string[];
-  knowledgeCategories?: DocumentKnowledgeCategory[];
   minSimilarity?: number;
-  prioritizeSOPs?: boolean;
 }
 
 export interface SystemPromptResult {
@@ -116,129 +101,6 @@ function chunkDocument(
 
 class RAGService {
   /**
-   * Detect if a document is an SOP and extract step sequences
-   */
-  extractSOPMetadata(content: string): SOPMetadata {
-    const steps: SOPStep[] = [];
-    let isSOPDocument = false;
-
-    // Detect SOP patterns in the content
-    const sopIndicators = [
-      /\bSOP\b/i,
-      /standard operating procedure/i,
-      /step[\s-]*by[\s-]*step/i,
-      /procedure\s*:/i,
-      /workflow\s*:/i,
-      /checklist\s*:/i,
-    ];
-
-    isSOPDocument = sopIndicators.some(pattern => pattern.test(content));
-
-    // Extract numbered steps (e.g., "1. Do X", "Step 1:", "1) Do X")
-    const stepPatterns = [
-      /(?:^|\n)\s*(?:step\s+)?(\d+)[.):\s]+\s*(.+?)(?=\n\s*(?:step\s+)?\d+[.):\s]|\n\n|\n(?=[A-Z#])|$)/gis,
-      /(?:^|\n)\s*[-*]\s+(.+?)(?=\n\s*[-*]\s|\n\n|$)/gm,
-    ];
-
-    // Try numbered step extraction first
-    const numberedStepRegex = /(?:^|\n)\s*(?:step\s+)?(\d+)[.):\s]+\s*(.+?)(?=\n\s*(?:step\s+)?\d+[.):\s]|\n\n|$)/gis;
-    let match;
-    while ((match = numberedStepRegex.exec(content)) !== null) {
-      const stepNum = parseInt(match[1]);
-      const stepText = match[2].trim();
-      if (stepText.length > 5) {
-        // Split step text into title and instruction
-        const firstSentence = stepText.split(/[.!?]\s/)[0];
-        steps.push({
-          stepNumber: stepNum,
-          title: firstSentence.substring(0, 100),
-          instruction: stepText,
-        });
-      }
-    }
-
-    // If we found numbered steps, mark as SOP
-    if (steps.length >= 2) {
-      isSOPDocument = true;
-    }
-
-    // Extract objective if present
-    const objectiveMatch = content.match(/(?:objective|purpose|goal|overview)\s*[:\-]\s*(.+?)(?:\n\n|\n(?=[A-Z#\d]))/is);
-    const objective = objectiveMatch ? objectiveMatch[1].trim() : undefined;
-
-    // Extract prerequisites if present
-    const prereqMatch = content.match(/(?:prerequisites?|requirements?|before you begin)\s*[:\-]\s*([\s\S]+?)(?:\n\n(?=[A-Z#\d]))/is);
-    const prerequisites: string[] = [];
-    if (prereqMatch) {
-      const prereqText = prereqMatch[1];
-      const items = prereqText.split(/\n\s*[-*]\s+/).filter(Boolean);
-      prerequisites.push(...items.map(p => p.trim()).filter(p => p.length > 3));
-    }
-
-    return {
-      isSOPDocument,
-      steps: steps.sort((a, b) => a.stepNumber - b.stepNumber),
-      objective,
-      prerequisites: prerequisites.length > 0 ? prerequisites : undefined,
-      totalSteps: steps.length,
-    };
-  }
-
-  /**
-   * Classify the knowledge category of a document
-   */
-  classifyKnowledgeCategory(content: string, inputCategory: string): DocumentKnowledgeCategory {
-    const contentLower = content.toLowerCase();
-
-    // Check if explicitly set in input category
-    if (inputCategory === 'sop') return 'sop';
-    if (inputCategory === 'process') return 'process';
-    if (inputCategory === 'policy') return 'policy';
-    if (inputCategory === 'reference') return 'reference';
-    if (inputCategory === 'training') return 'training';
-
-    // Auto-detect from content
-    const sopIndicators = /\bsop\b|standard operating procedure|step[\s-]*by[\s-]*step|procedure\s*:|checklist/i;
-    const processIndicators = /workflow|process flow|flowchart|decision tree|automation/i;
-    const policyIndicators = /policy|compliance|regulation|guidelines|governance|must not|shall not|required to/i;
-
-    if (sopIndicators.test(contentLower)) return 'sop';
-    if (processIndicators.test(contentLower)) return 'process';
-    if (policyIndicators.test(contentLower)) return 'policy';
-
-    return 'general';
-  }
-
-  /**
-   * Calculate priority score for a chunk based on its category and content
-   * Higher priority chunks are returned first during retrieval
-   */
-  calculateChunkPriority(content: string, knowledgeCategory: DocumentKnowledgeCategory, isSOPStep: boolean): number {
-    let priority = 50; // Default middle priority
-
-    // SOP steps get higher base priority
-    if (isSOPStep) priority = 90;
-
-    // Category-based priority
-    switch (knowledgeCategory) {
-      case 'sop': priority = Math.max(priority, 85); break;
-      case 'process': priority = Math.max(priority, 75); break;
-      case 'policy': priority = Math.max(priority, 70); break;
-      case 'training': priority = Math.max(priority, 60); break;
-      case 'reference': priority = Math.max(priority, 50); break;
-      default: priority = Math.max(priority, 40);
-    }
-
-    // Boost for actionable content
-    const actionIndicators = /\b(click|navigate|type|enter|select|create|update|delete|submit|configure|set up)\b/i;
-    if (actionIndicators.test(content)) {
-      priority = Math.min(100, priority + 5);
-    }
-
-    return priority;
-  }
-
-  /**
    * Ingest a document into the RAG system
    */
   async ingest(input: IngestDocumentInput): Promise<IngestResult> {
@@ -272,6 +134,24 @@ class RAGService {
         };
       }
 
+      // Build metadata including SOP info
+      const sourceMetadata: Record<string, any> = {};
+      const sourceTags: string[] = [];
+      if (input.sopMetadata) {
+        if (input.sopMetadata.detectedCategory) {
+          sourceMetadata.detectedCategory = input.sopMetadata.detectedCategory;
+          sourceTags.push(input.sopMetadata.detectedCategory);
+        }
+        if (input.sopMetadata.isSOP) {
+          sourceMetadata.isSOP = true;
+          sourceTags.push('sop');
+          if (input.sopMetadata.sopSteps) {
+            sourceMetadata.sopStepCount = input.sopMetadata.sopSteps.length;
+            sourceMetadata.sopSteps = input.sopMetadata.sopSteps;
+          }
+        }
+      }
+
       // Create documentation source
       const [source] = await db
         .insert(documentationSources)
@@ -286,23 +166,12 @@ class RAGService {
           sourceType: input.sourceType || "markdown",
           version: input.version,
           isActive: true,
-          metadata: {},
-          tags: [],
+          metadata: sourceMetadata,
+          tags: sourceTags,
         })
         .returning();
 
       logger.info({ sourceId: source.id, platform: input.platform, title: input.title }, 'Created documentation source');
-
-      // Extract SOP metadata and classify knowledge category
-      const sopMetadata = this.extractSOPMetadata(input.content);
-      const knowledgeCategory = input.knowledgeCategory || this.classifyKnowledgeCategory(input.content, input.category);
-
-      logger.info({
-        sourceId: source.id,
-        knowledgeCategory,
-        isSOPDocument: sopMetadata.isSOPDocument,
-        sopStepCount: sopMetadata.totalSteps,
-      }, 'Document classification complete');
 
       // Chunk the content
       const chunkSize = input.chunkingOptions?.maxTokens || 1000;
@@ -314,40 +183,24 @@ class RAGService {
       // Generate embeddings for all chunks in batch
       const embeddings = await generateEmbeddings(chunks);
 
-      // Insert chunks with embeddings and SOP-specific metadata
-      const chunkValues = chunks.map((chunk, index) => {
-        // Check if this chunk contains an SOP step
-        const matchingStep = sopMetadata.steps.find(step =>
-          chunk.includes(step.instruction.substring(0, 50))
-        );
-        const isSOPStep = !!matchingStep;
-        const priority = this.calculateChunkPriority(chunk, knowledgeCategory, isSOPStep);
-
-        return {
-          sourceId: source.id,
-          chunkIndex: index,
-          content: chunk,
-          tokenCount: estimateTokens(chunk),
-          metadata: {
-            platform: input.platform,
-            category: input.category,
-            title: input.title,
-            chunkSize: chunk.length,
-            knowledgeCategory,
-            priority,
-            ...(isSOPStep && matchingStep ? {
-              isSOPStep: true,
-              sopStepNumber: matchingStep.stepNumber,
-              sopStepTitle: matchingStep.title,
-            } : {}),
-            ...(sopMetadata.isSOPDocument ? {
-              sopDocument: true,
-              sopTotalSteps: sopMetadata.totalSteps,
-              sopObjective: sopMetadata.objective,
-            } : {}),
-          },
-        };
-      });
+      // Insert chunks with embeddings
+      const chunkValues = chunks.map((chunk, index) => ({
+        sourceId: source.id,
+        chunkIndex: index,
+        content: chunk,
+        tokenCount: estimateTokens(chunk),
+        metadata: {
+          platform: input.platform,
+          category: input.category,
+          title: input.title,
+          chunkSize: chunk.length,
+          ...(input.sopMetadata?.detectedCategory && { documentCategory: input.sopMetadata.detectedCategory }),
+          ...(input.sopMetadata?.isSOP && { isSOP: true }),
+          ...(input.sopMetadata?.sopSteps && input.sopMetadata.sopSteps.length > 0 && {
+            sopStepCount: input.sopMetadata.sopSteps.length,
+          }),
+        },
+      }));
 
       await db.insert(documentationChunks).values(chunkValues);
 
@@ -529,30 +382,13 @@ class RAGService {
         sqlQuery = sql`${sqlQuery} AND s.category IN ${sql.join(options.categories.map(c => sql`${c}`), sql`, `)}`;
       }
 
-      // Add knowledge category filter
-      if (options.knowledgeCategories && options.knowledgeCategories.length > 0) {
-        sqlQuery = sql`${sqlQuery} AND c.metadata->>'knowledgeCategory' IN ${sql.join(options.knowledgeCategories.map(c => sql`${c}`), sql`, `)}`;
-      }
-
-      // Add similarity threshold and ordering, with optional SOP priority boost
-      if (options.prioritizeSOPs) {
-        sqlQuery = sql`
-          ${sqlQuery}
-          AND 1 - (c.embedding <=> ${sql.raw(vectorLiteral)}::vector) >= ${minSimilarity}
-          ORDER BY
-            CASE WHEN c.metadata->>'knowledgeCategory' = 'sop' THEN 0 ELSE 1 END,
-            COALESCE((c.metadata->>'priority')::int, 50) DESC,
-            c.embedding <=> ${sql.raw(vectorLiteral)}::vector
-          LIMIT ${topK}
-        `;
-      } else {
-        sqlQuery = sql`
-          ${sqlQuery}
-          AND 1 - (c.embedding <=> ${sql.raw(vectorLiteral)}::vector) >= ${minSimilarity}
-          ORDER BY c.embedding <=> ${sql.raw(vectorLiteral)}::vector
-          LIMIT ${topK}
-        `;
-      }
+      // Add similarity threshold and ordering
+      sqlQuery = sql`
+        ${sqlQuery}
+        AND 1 - (c.embedding <=> ${sql.raw(vectorLiteral)}::vector) >= ${minSimilarity}
+        ORDER BY c.embedding <=> ${sql.raw(vectorLiteral)}::vector
+        LIMIT ${topK}
+      `;
 
       const results = await db.execute(sqlQuery);
 
@@ -719,174 +555,6 @@ class RAGService {
   }
 
   /**
-   * Retrieve document knowledge for agent task execution
-   * Returns structured context including SOPs, processes, and reference docs
-   */
-  async retrieveForTask(taskDescription: string, options: {
-    userId?: number;
-    platforms?: string[];
-    maxTokens?: number;
-  } = {}): Promise<{
-    sopContext: string;
-    referenceContext: string;
-    allChunks: DocumentChunk[];
-    sopSteps: Array<{ stepNumber: number; title: string; instruction: string }>;
-  }> {
-    const maxTokens = options.maxTokens || 4000;
-
-    // Retrieve SOP-prioritized chunks
-    const chunks = await this.retrieve(taskDescription, {
-      topK: 15,
-      platforms: options.platforms,
-      minSimilarity: 0.5,
-      prioritizeSOPs: true,
-    });
-
-    let sopContext = "";
-    let referenceContext = "";
-    let tokenCount = 0;
-    const sopSteps: Array<{ stepNumber: number; title: string; instruction: string }> = [];
-    const usedChunks: DocumentChunk[] = [];
-
-    for (const chunk of chunks) {
-      if (tokenCount + chunk.tokenCount > maxTokens) break;
-
-      const metadata = chunk.metadata as Record<string, any> || {};
-      const knowledgeCategory = metadata.knowledgeCategory || 'general';
-
-      if (knowledgeCategory === 'sop' || metadata.isSOPStep) {
-        sopContext += `\n[SOP] ${chunk.content}\n`;
-        if (metadata.isSOPStep) {
-          sopSteps.push({
-            stepNumber: metadata.sopStepNumber || 0,
-            title: metadata.sopStepTitle || '',
-            instruction: chunk.content,
-          });
-        }
-      } else {
-        referenceContext += `\n[${knowledgeCategory.toUpperCase()}] ${chunk.content}\n`;
-      }
-
-      tokenCount += chunk.tokenCount;
-      usedChunks.push(chunk);
-    }
-
-    return {
-      sopContext: sopContext.trim(),
-      referenceContext: referenceContext.trim(),
-      allChunks: usedChunks,
-      sopSteps: sopSteps.sort((a, b) => a.stepNumber - b.stepNumber),
-    };
-  }
-
-  /**
-   * Re-process an existing document source (re-chunk and re-embed)
-   */
-  async reprocessSource(sourceId: number): Promise<IngestResult> {
-    const db = await getDb();
-    if (!db) {
-      throw new Error("Database not available");
-    }
-
-    try {
-      const [source] = await db
-        .select()
-        .from(documentationSources)
-        .where(eq(documentationSources.id, sourceId))
-        .limit(1);
-
-      if (!source) {
-        throw new Error(`Source ${sourceId} not found`);
-      }
-
-      // Delete existing chunks
-      await db
-        .delete(documentationChunks)
-        .where(eq(documentationChunks.sourceId, sourceId));
-
-      logger.info({ sourceId }, 'Deleted existing chunks for reprocessing');
-
-      // Re-ingest with current SOP processing logic
-      const result = await this.ingest({
-        platform: source.platform,
-        category: source.category,
-        title: source.title,
-        content: source.content,
-        sourceUrl: source.sourceUrl || undefined,
-        sourceType: (source.sourceType as "markdown" | "html" | "pdf" | "docx") || undefined,
-        version: source.version || undefined,
-        userId: source.userId || 0,
-      });
-
-      // Update source timestamp
-      await db
-        .update(documentationSources)
-        .set({ updatedAt: new Date() })
-        .where(eq(documentationSources.id, sourceId));
-
-      logger.info({ sourceId, chunkCount: result.chunkCount }, 'Reprocessing complete');
-
-      return result;
-    } catch (error) {
-      logger.error({ error, sourceId }, 'Reprocess source failed');
-      throw error;
-    }
-  }
-
-  /**
-   * Get chunks for a specific source with their metadata
-   */
-  async getSourceChunks(sourceId: number): Promise<{
-    chunks: Array<{
-      id: number;
-      chunkIndex: number;
-      content: string;
-      tokenCount: number;
-      metadata: Record<string, any>;
-    }>;
-    sopMetadata?: SOPMetadata;
-  }> {
-    const db = await getDb();
-    if (!db) {
-      throw new Error("Database not available");
-    }
-
-    const chunks = await db
-      .select({
-        id: documentationChunks.id,
-        chunkIndex: documentationChunks.chunkIndex,
-        content: documentationChunks.content,
-        tokenCount: documentationChunks.tokenCount,
-        metadata: documentationChunks.metadata,
-      })
-      .from(documentationChunks)
-      .where(eq(documentationChunks.sourceId, sourceId))
-      .orderBy(documentationChunks.chunkIndex);
-
-    // Check if this is an SOP document from chunk metadata
-    const firstChunk = chunks[0];
-    let sopMetadata: SOPMetadata | undefined;
-    if (firstChunk?.metadata && (firstChunk.metadata as any).sopDocument) {
-      const source = await db
-        .select({ content: documentationSources.content })
-        .from(documentationSources)
-        .where(eq(documentationSources.id, sourceId))
-        .limit(1);
-      if (source[0]) {
-        sopMetadata = this.extractSOPMetadata(source[0].content);
-      }
-    }
-
-    return {
-      chunks: chunks.map(c => ({
-        ...c,
-        metadata: (c.metadata as Record<string, any>) || {},
-      })),
-      sopMetadata,
-    };
-  }
-
-  /**
    * Delete a documentation source and its chunks
    */
   async deleteSource(sourceId: number): Promise<void> {
@@ -909,6 +577,131 @@ class RAGService {
       logger.info({ sourceId }, 'Deleted documentation source');
     } catch (error) {
       logger.error({ error, sourceId }, 'Delete source failed');
+      throw error;
+    }
+  }
+
+  /**
+   * Re-process a document: delete chunks and re-ingest with current settings
+   */
+  async reprocessDocument(sourceId: number): Promise<IngestResult> {
+    const db = await getDb();
+    if (!db) {
+      throw new Error("Database not available");
+    }
+
+    try {
+      // Get the existing source
+      const [source] = await db
+        .select()
+        .from(documentationSources)
+        .where(eq(documentationSources.id, sourceId))
+        .limit(1);
+
+      if (!source) {
+        throw new Error(`Source ${sourceId} not found`);
+      }
+
+      // Delete existing chunks
+      await db
+        .delete(documentationChunks)
+        .where(eq(documentationChunks.sourceId, sourceId));
+
+      logger.info({ sourceId }, 'Deleted existing chunks for reprocessing');
+
+      // Re-chunk and re-embed
+      const chunks = chunkDocument(source.content);
+      const embeddings = await generateEmbeddings(chunks);
+
+      // Detect SOP metadata from content
+      const { documentParserService } = await import('./document-parser.service');
+      const sopInfo = documentParserService.detectSOPContent(source.content);
+
+      const chunkValues = chunks.map((chunk, index) => ({
+        sourceId: sourceId,
+        chunkIndex: index,
+        content: chunk,
+        tokenCount: estimateTokens(chunk),
+        metadata: {
+          platform: source.platform,
+          category: source.category,
+          title: source.title,
+          chunkSize: chunk.length,
+          ...(sopInfo.category !== 'general' && { documentCategory: sopInfo.category }),
+          ...(sopInfo.isSOP && { isSOP: true, sopStepCount: sopInfo.steps.length }),
+        },
+      }));
+
+      await db.insert(documentationChunks).values(chunkValues);
+
+      // Update embeddings
+      for (let i = 0; i < chunks.length; i++) {
+        const embeddingVector = `[${embeddings[i].join(",")}]`;
+        await db.execute(sql`
+          UPDATE documentation_chunks
+          SET embedding = ${embeddingVector}::vector
+          WHERE source_id = ${sourceId} AND chunk_index = ${i}
+        `);
+      }
+
+      // Update source metadata with SOP info
+      const sourceMetadata: Record<string, any> = (source.metadata as Record<string, any>) || {};
+      if (sopInfo.isSOP) {
+        sourceMetadata.detectedCategory = sopInfo.category;
+        sourceMetadata.isSOP = true;
+        sourceMetadata.sopStepCount = sopInfo.steps.length;
+        sourceMetadata.sopSteps = sopInfo.steps;
+      }
+
+      await db
+        .update(documentationSources)
+        .set({
+          metadata: sourceMetadata,
+          updatedAt: new Date(),
+        })
+        .where(eq(documentationSources.id, sourceId));
+
+      const totalTokens = chunkValues.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
+
+      logger.info({ sourceId, chunkCount: chunks.length, totalTokens }, 'Document reprocessed');
+
+      return {
+        sourceId: sourceId,
+        chunkCount: chunks.length,
+        totalTokens,
+      };
+    } catch (error) {
+      logger.error({ error, sourceId }, 'Reprocess failed');
+      throw error;
+    }
+  }
+
+  /**
+   * Get chunks for a specific source
+   */
+  async getChunks(sourceId: number): Promise<DocumentChunk[]> {
+    const db = await getDb();
+    if (!db) {
+      throw new Error("Database not available");
+    }
+
+    try {
+      const chunks = await db
+        .select({
+          id: documentationChunks.id,
+          sourceId: documentationChunks.sourceId,
+          chunkIndex: documentationChunks.chunkIndex,
+          content: documentationChunks.content,
+          tokenCount: documentationChunks.tokenCount,
+          metadata: documentationChunks.metadata,
+        })
+        .from(documentationChunks)
+        .where(eq(documentationChunks.sourceId, sourceId))
+        .orderBy(documentationChunks.chunkIndex);
+
+      return chunks as unknown as DocumentChunk[];
+    } catch (error) {
+      logger.error({ error, sourceId }, 'Get chunks failed');
       throw error;
     }
   }

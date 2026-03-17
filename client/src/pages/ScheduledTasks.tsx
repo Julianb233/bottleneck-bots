@@ -805,21 +805,31 @@ export default function ScheduledTasksPage() {
                 ))}
               </div>
             ) : filteredTasks.length === 0 ? (
-              <div className="p-12 text-center">
-                <Calendar className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">No tasks found</h3>
-                <p className="text-slate-600 mb-6">
-                  {searchQuery || statusFilter !== 'all'
-                    ? 'Try adjusting your filters'
-                    : 'Create your first scheduled task to get started'}
-                </p>
-                {!searchQuery && statusFilter === 'all' && (
-                  <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    Create Task
-                  </Button>
-                )}
-              </div>
+              <PageEmptyState
+                icon={Calendar}
+                title={searchQuery || statusFilter !== 'all' ? 'No tasks match your filters' : 'No scheduled tasks yet'}
+                description={
+                  searchQuery || statusFilter !== 'all'
+                    ? 'Try adjusting your search or filter criteria to find what you are looking for.'
+                    : 'Schedule recurring tasks to automate your daily work. Your agent will run them on autopilot.'
+                }
+                actions={
+                  !searchQuery && statusFilter === 'all'
+                    ? [
+                        {
+                          label: 'Create Your First Task',
+                          onClick: () => setIsCreateDialogOpen(true),
+                          icon: Plus,
+                        },
+                        {
+                          label: 'View Help Guide',
+                          onClick: () => setLocation('/support'),
+                          variant: 'outline' as const,
+                        },
+                      ]
+                    : undefined
+                }
+              />
             ) : (
               <Table>
                 <TableHeader>

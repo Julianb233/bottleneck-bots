@@ -14,6 +14,9 @@ import {
   Clock,
   Sparkles,
   Loader2,
+  CreditCard,
+  XCircle,
+  RotateCcw,
 } from 'lucide-react';
 
 interface SubscriptionUsageCardProps {
