@@ -130,10 +130,11 @@ export async function createApp() {
   app.use("/api/onboarding", onboardingRouter);
   // SSE routes for real-time streaming
   registerSSERoutes(app);
+  // Stripe webhook route — MUST be before generic webhooks and body parsers
+  // Stripe needs the raw body for signature verification; Express JSON parsing breaks it
+  app.use("/api/webhooks/stripe", stripeWebhookRouter);
   // Webhook endpoints (public, token-authenticated)
   app.use("/api/webhooks", webhookEndpointsRouter);
-  // Stripe webhook route
-  app.use("/api/webhooks/stripe", stripeWebhookRouter);
 
   // Mount REST API v1 routes (includes /api/v1/health, /api/v1/tasks, etc.)
   const restApi = createRestApi();

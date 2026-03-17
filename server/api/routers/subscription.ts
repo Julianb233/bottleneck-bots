@@ -8,6 +8,7 @@ import { router, protectedProcedure, publicProcedure } from "../../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getSubscriptionService } from "../../services/subscription.service";
 import { TIER_SLUGS } from "../../../drizzle/schema-subscriptions";
+import Stripe from "stripe";
 
 // ========================================
 // INPUT SCHEMAS
@@ -210,7 +211,106 @@ export const subscriptionRouter = router({
     }),
 
   /**
-   * Create a new subscription
+   * Create a Stripe Checkout Session for a new subscription.
+   * Returns a checkout URL the client should redirect to.
+   */
+  createCheckoutSession: protectedProcedure
+    .input(
+      z.object({
+        tierSlug: z.enum(["starter", "growth", "professional", "enterprise"]),
+        paymentFrequency: z.enum(["weekly", "monthly", "six_month", "annual"]).default("monthly"),
+        successUrl: z.string().url().optional(),
+        cancelUrl: z.string().url().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeSecretKey) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Stripe is not configured. Please contact support.",
+        });
+      }
+
+      try {
+        const service = getSubscriptionService();
+
+        // Get tier details for pricing
+        const tier = await service.getTierBySlug(input.tierSlug);
+        if (!tier) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Tier not found: ${input.tierSlug}`,
+          });
+        }
+
+        // Calculate price based on frequency
+        let pricePerPeriod = tier.monthlyPriceCents;
+        let intervalLabel = "month";
+        switch (input.paymentFrequency) {
+          case "weekly":
+            pricePerPeriod = Math.round(tier.monthlyPriceCents * (1 + tier.weeklyPremiumPercent / 100) / 4);
+            intervalLabel = "week";
+            break;
+          case "six_month":
+            pricePerPeriod = Math.round(tier.monthlyPriceCents * 6 * (1 - tier.sixMonthDiscountPercent / 100));
+            intervalLabel = "6 months";
+            break;
+          case "annual":
+            pricePerPeriod = Math.round(tier.monthlyPriceCents * 12 * (1 - tier.annualDiscountPercent / 100));
+            intervalLabel = "year";
+            break;
+        }
+
+        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2024-12-18.acacia" as any });
+
+        const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+        const successUrl = input.successUrl || `${baseUrl}/settings/billing?success=true`;
+        const cancelUrl = input.cancelUrl || `${baseUrl}/settings/billing?canceled=true`;
+
+        // Create a one-time checkout that will trigger subscription creation via webhook
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: {
+                  name: `${tier.name} Plan`,
+                  description: `${tier.name} subscription — ${tier.maxAgents} agents, ${tier.monthlyExecutionLimit} executions/mo`,
+                },
+                unit_amount: pricePerPeriod,
+              },
+              quantity: 1,
+            },
+          ],
+          mode: "payment",
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          metadata: {
+            userId: String(ctx.user.id),
+            subscriptionTierSlug: input.tierSlug,
+            paymentFrequency: input.paymentFrequency,
+          },
+        });
+
+        return {
+          success: true,
+          checkoutUrl: session.url,
+          sessionId: session.id,
+        };
+      } catch (error) {
+        console.error("Failed to create checkout session:", error);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create checkout session",
+        });
+      }
+    }),
+
+  /**
+   * Create a new subscription (direct — for free tier or internal use)
    */
   create: protectedProcedure
     .input(createSubscriptionSchema)
@@ -231,7 +331,6 @@ export const subscriptionRouter = router({
           ctx.user.id,
           input.tierSlug,
           input.paymentFrequency
-          // TODO: Add Stripe integration
         );
 
         return {
@@ -251,14 +350,32 @@ export const subscriptionRouter = router({
 
   /**
    * Upgrade/downgrade subscription tier
+   * If user has a Stripe subscription, updates it via Stripe API too.
    */
   updateTier: protectedProcedure
     .input(updateTierSchema)
     .mutation(async ({ ctx, input }) => {
       try {
         const service = getSubscriptionService();
+        const currentSub = await service.getUserSubscription(ctx.user.id);
 
+        // Update local tier
         const subscription = await service.updateTier(ctx.user.id, input.newTierSlug);
+
+        // If there's a Stripe subscription, update its metadata so the next invoice reflects the change
+        if (currentSub?.subscription.stripeSubscriptionId && process.env.STRIPE_SECRET_KEY) {
+          try {
+            const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+              apiVersion: "2024-12-18.acacia" as any,
+            });
+            await stripe.subscriptions.update(currentSub.subscription.stripeSubscriptionId, {
+              metadata: { tierSlug: input.newTierSlug },
+            });
+          } catch (stripeError) {
+            console.error("Failed to update Stripe subscription metadata:", stripeError);
+            // Non-fatal — local tier is already updated
+          }
+        }
 
         return {
           success: true,
@@ -271,6 +388,70 @@ export const subscriptionRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update subscription tier",
+        });
+      }
+    }),
+
+  /**
+   * Cancel subscription
+   * If Stripe-managed, cancels at period end via Stripe API.
+   * Otherwise marks subscription for cancellation locally.
+   */
+  cancel: protectedProcedure
+    .input(
+      z.object({
+        reason: z.string().max(500).optional(),
+        cancelImmediately: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = getSubscriptionService();
+        const currentSub = await service.getUserSubscription(ctx.user.id);
+
+        if (!currentSub) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "No active subscription found",
+          });
+        }
+
+        // If Stripe-managed, cancel through Stripe (which fires customer.subscription.updated/deleted)
+        if (currentSub.subscription.stripeSubscriptionId && process.env.STRIPE_SECRET_KEY) {
+          try {
+            const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+              apiVersion: "2024-12-18.acacia" as any,
+            });
+
+            if (input.cancelImmediately) {
+              await stripe.subscriptions.cancel(currentSub.subscription.stripeSubscriptionId);
+            } else {
+              await stripe.subscriptions.update(currentSub.subscription.stripeSubscriptionId, {
+                cancel_at_period_end: true,
+                metadata: { cancellationReason: input.reason || "user_requested" },
+              });
+            }
+          } catch (stripeError) {
+            console.error("Failed to cancel Stripe subscription:", stripeError);
+            // Fall through to local cancellation
+          }
+        }
+
+        // Update local record
+        await service.cancelSubscription(ctx.user.id, input.reason, input.cancelImmediately);
+
+        return {
+          success: true,
+          message: input.cancelImmediately
+            ? "Subscription cancelled immediately"
+            : "Subscription will be cancelled at end of billing period",
+        };
+      } catch (error) {
+        console.error("Failed to cancel subscription:", error);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to cancel subscription",
         });
       }
     }),
