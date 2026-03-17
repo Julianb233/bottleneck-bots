@@ -10,6 +10,8 @@ export { SessionMetrics } from './SessionMetrics';
 export { BrowserSessionCard } from './BrowserSessionCard';
 export { BrowserControlToolbar } from './BrowserControlToolbar';
 export { LiveBrowserView } from './LiveBrowserView';
+export { ExecutionDetailPanel } from './ExecutionDetailPanel';
+export { ExecutionControls } from './ExecutionControls';
 
 export type {
   BrowserSession,
