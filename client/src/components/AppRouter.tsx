@@ -1,12 +1,12 @@
 import React, { Suspense, lazy } from 'react';
 import { Route, Switch, useLocation } from 'wouter';
 import { trpc } from '@/lib/trpc';
+import { Routes } from './Routes';
 
 // Lazy load pages
 const Login = lazy(() => import('@/pages/Login'));
 const Signup = lazy(() => import('@/pages/Signup'));
 const OnboardingFlow = lazy(() => import('./OnboardingFlow').then(m => ({ default: m.OnboardingFlow })));
-const Dashboard = lazy(() => import('./Dashboard').then(m => ({ default: m.Dashboard })));
 const LandingPage = lazy(() => import('./LandingPage').then(m => ({ default: m.LandingPage })));
 const FeaturesPage = lazy(() => import('./FeaturesPage').then(m => ({ default: m.FeaturesPage })));
 const PrivacyPolicy = lazy(() => import('@/pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
@@ -102,11 +102,10 @@ export function AppRouter() {
             <div>Redirecting...</div>
           )}
         </Route>
-        <Route path="/dashboard">
+        {/* Dashboard routes — delegates to Routes component for sub-routing */}
+        <Route path="/dashboard/:rest*">
           {user ? (
-            <main id="main-content">
-              <Dashboard userTier="WHITELABEL" credits={1000} />
-            </main>
+            <Routes />
           ) : (
             <div>Redirecting...</div>
           )}

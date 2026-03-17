@@ -44,20 +44,20 @@ import { Button } from "./ui/button";
 import { CommandPalette } from './CommandPalette';
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: Bot, label: "AI Agent", path: "/agent" },
-  { icon: GraduationCap, label: "Training", path: "/training" },
-  { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
-  { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
-  { icon: Workflow, label: "Workflow Builder", path: "/workflow-builder" },
-  { icon: Users, label: "Lead Lists", path: "/lead-lists" },
-  { icon: Megaphone, label: "AI Campaigns", path: "/ai-campaigns" },
-  { icon: CreditCard, label: "Credits", path: "/credits" },
-  { icon: Settings, label: "Settings", path: "/settings" },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: Bot, label: "AI Agent", path: "/dashboard/agent" },
+  { icon: GraduationCap, label: "Training", path: "/dashboard/training" },
+  { icon: Globe, label: "Browser Sessions", path: "/dashboard/browser-sessions" },
+  { icon: Calendar, label: "Scheduled Tasks", path: "/dashboard/scheduled-tasks" },
+  { icon: Workflow, label: "Workflow Builder", path: "/dashboard/workflow-builder" },
+  { icon: Users, label: "Lead Lists", path: "/dashboard/lead-lists" },
+  { icon: Megaphone, label: "AI Campaigns", path: "/dashboard/ai-campaigns" },
+  { icon: CreditCard, label: "Credits", path: "/dashboard/credits" },
+  { icon: Settings, label: "Settings", path: "/dashboard/settings" },
 ];
 
 const adminOnlyItems = [
-  { icon: Shield, label: "Admin", path: "/admin" },
+  { icon: Shield, label: "Admin", path: "/dashboard/admin" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
