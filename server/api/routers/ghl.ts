@@ -1,91 +1,131 @@
 /**
  * GHL tRPC Router
  *
- * Provides typed RPC endpoints for GHL integration management:
- * - ghl.status — connection health check per location
- * - ghl.listLocations — list all authorized GHL locations
+ * Provides typed RPC endpoints for GHL OAuth integration management:
+ * - ghl.connect — initiate OAuth authorization flow
+ * - ghl.status — list connection statuses for user
+ * - ghl.testConnection — verify a connection works
  * - ghl.disconnect — revoke and clean up a location
- *
- * Linear: AI-2877
+ * - ghl.configStatus — check if GHL OAuth is configured
  */
 
 import { z } from "zod";
 import { router, protectedProcedure } from "../../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { GHLService, GHLError } from "../../services/ghl.service";
+import { getGHLService } from "../../services/ghl.service";
 
 export const ghlRouter = router({
   /**
-   * Get connection status for a specific GHL location.
-   *
-   * @example
-   * ```ts
-   * const status = await trpc.ghl.status.query({ locationId: "abc123" });
-   * console.log(status.connected); // true
-   * ```
+   * Initiate GHL OAuth authorization flow.
+   * Returns an authorization URL for the user to visit.
    */
-  status: protectedProcedure
+  connect: protectedProcedure
     .input(
-      z.object({
-        locationId: z.string().min(1, "locationId is required"),
-      })
+      z
+        .object({
+          scopes: z.array(z.string()).optional(),
+        })
+        .optional()
     )
-    .query(async ({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       try {
-        const service = new GHLService(input.locationId, ctx.user.id);
-        const status = await service.getConnectionStatus();
-        return status;
-      } catch (err) {
-        if (err instanceof GHLError) {
-          throw new TRPCError({
-            code:
-              err.category === "auth"
-                ? "UNAUTHORIZED"
-                : err.category === "rate_limit"
-                  ? "TOO_MANY_REQUESTS"
-                  : "INTERNAL_SERVER_ERROR",
-            message: err.message,
-          });
-        }
+        const service = getGHLService();
+        const result = await service.initiateAuthorization(
+          ctx.user.id,
+          input?.scopes
+        );
+        return result;
+      } catch (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message:
-            err instanceof Error ? err.message : "Failed to check GHL status",
+            error instanceof Error
+              ? error.message
+              : "Failed to initiate GHL authorization",
         });
       }
     }),
 
   /**
-   * List all authorized GHL locations for the current user.
-   *
-   * @example
-   * ```ts
-   * const locations = await trpc.ghl.listLocations.query();
-   * locations.forEach(loc => console.log(loc.locationId, loc.connected));
-   * ```
+   * Get connection status for all GHL locations for the current user.
    */
-  listLocations: protectedProcedure.query(async ({ ctx }) => {
+  status: protectedProcedure.query(async ({ ctx }) => {
     try {
-      const locations = await GHLService.listLocations(ctx.user.id);
-      return locations;
-    } catch (err) {
+      const service = getGHLService();
+      const connections = await service.getConnectionStatus(ctx.user.id);
+      return { connections };
+    } catch (error) {
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
         message:
-          err instanceof Error
-            ? err.message
+          error instanceof Error
+            ? error.message
+            : "Failed to get GHL connection status",
+      });
+    }
+  }),
+
+  /**
+   * List all connected GHL locations for the current user.
+   */
+  listLocations: protectedProcedure.query(async ({ ctx }) => {
+    try {
+      const service = getGHLService();
+      const connections = await service.getConnections(ctx.user.id);
+      return {
+        locations: connections.map((c) => ({
+          id: c.id,
+          locationId: c.locationId,
+          locationName: c.locationName,
+          companyId: c.companyId,
+          status: c.status,
+          scopes: c.scopes,
+          connectedAt: c.connectedAt,
+          lastSyncAt: c.lastSyncAt,
+          lastError: c.lastError,
+        })),
+      };
+    } catch (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message:
+          error instanceof Error
+            ? error.message
             : "Failed to list GHL locations",
       });
     }
   }),
 
   /**
+   * Test a GHL connection by making a simple API call.
+   */
+  testConnection: protectedProcedure
+    .input(
+      z.object({
+        locationId: z.string().min(1, "locationId is required"),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = getGHLService();
+        const result = await service.testConnection(
+          ctx.user.id,
+          input.locationId
+        );
+        return result;
+      } catch (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to test GHL connection",
+        });
+      }
+    }),
+
+  /**
    * Disconnect a GHL location (revoke tokens and mark inactive).
-   *
-   * @example
-   * ```ts
-   * await trpc.ghl.disconnect.mutate({ locationId: "abc123" });
-   * ```
    */
   disconnect: protectedProcedure
     .input(
@@ -95,27 +135,18 @@ export const ghlRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        const service = new GHLService(input.locationId, ctx.user.id);
-        await service.disconnect();
+        const service = getGHLService();
+        await service.revokeAccess(ctx.user.id, input.locationId);
         return {
           success: true,
           message: `Disconnected GHL location ${input.locationId}`,
         };
-      } catch (err) {
-        if (err instanceof GHLError) {
-          throw new TRPCError({
-            code:
-              err.category === "auth"
-                ? "UNAUTHORIZED"
-                : "INTERNAL_SERVER_ERROR",
-            message: err.message,
-          });
-        }
+      } catch (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message:
-            err instanceof Error
-              ? err.message
+            error instanceof Error
+              ? error.message
               : "Failed to disconnect GHL location",
         });
       }
@@ -127,7 +158,8 @@ export const ghlRouter = router({
    */
   configStatus: protectedProcedure.query(async () => {
     return {
-      configured: !!process.env.GHL_CLIENT_ID && !!process.env.GHL_CLIENT_SECRET,
+      configured:
+        !!process.env.GHL_CLIENT_ID && !!process.env.GHL_CLIENT_SECRET,
       hasClientId: !!process.env.GHL_CLIENT_ID,
       hasClientSecret: !!process.env.GHL_CLIENT_SECRET,
     };

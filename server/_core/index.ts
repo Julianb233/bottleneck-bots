@@ -14,6 +14,7 @@ import { createContext } from "./context";
 // Only import serveStatic statically - setupVite is loaded dynamically for development only
 import { serveStatic } from "./vite";
 import { webhookEndpointsRouter } from "../api/webhookEndpoints";
+import { ghlOAuthRouter } from "../api/routes/ghl-oauth";
 import stripeWebhookRouter from "../api/webhooks/stripe";
 import { schedulerRunnerService } from "../services/schedulerRunner.service";
 import { memoryCleanupScheduler } from "../services/memory";
@@ -130,6 +131,8 @@ export async function createApp() {
   app.use("/api/onboarding", onboardingRouter);
   // SSE routes for real-time streaming
   registerSSERoutes(app);
+  // GHL OAuth callback route (must be Express route, not tRPC, for redirect)
+  app.use("/api/ghl/oauth", ghlOAuthRouter);
   // Webhook endpoints (public, token-authenticated)
   app.use("/api/webhooks", webhookEndpointsRouter);
   // Stripe webhook route

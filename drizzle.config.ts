@@ -15,6 +15,7 @@ export default defineConfig({
     "./drizzle/schema-auth.ts",
     "./drizzle/schema-costs.ts",
     "./drizzle/schema-email.ts",
+    "./drizzle/schema-ghl.ts",
     "./drizzle/schema-knowledge.ts",
     "./drizzle/schema-lead-enrichment.ts",
     "./drizzle/schema-memory.ts",
