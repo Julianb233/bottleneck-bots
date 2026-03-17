@@ -1521,12 +1521,39 @@ export class AgentOrchestratorService {
         state.errorCount++;
         state.consecutiveErrors++;
 
-        // Attempt recovery using failure recovery service
-        if (state.consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+        // ========================================
+        // ERROR HANDLING: Classify, recover, adapt strategy
+        // ========================================
+        const toolErrorMessage = toolResult.error || "Unknown tool error";
+        const classifiedErrorType = classifyError(toolErrorMessage);
+        const errorMetadata = getErrorMetadata(classifiedErrorType);
+
+        console.log(
+          `[Agent] Tool ${toolName} failed (attempt ${state.consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}). ` +
+          `Error: ${classifiedErrorType} (${errorMetadata.severity}), Retryable: ${errorMetadata.retryable}`
+        );
+
+        // Emit user-friendly error via SSE
+        if (emitter) {
+          const explained = explainError(toolErrorMessage);
+          emitter.thinking({
+            thought: `Error: ${explained.title}. ${explained.explanation}` +
+              (explained.suggestedActions.length > 0
+                ? ` Suggested: ${explained.suggestedActions[0]}`
+                : ''),
+            iteration: state.iterations,
+          });
+        }
+
+        // Attempt recovery using failure recovery + strategy adaptation
+        if (state.consecutiveErrors < MAX_CONSECUTIVE_ERRORS && errorMetadata.retryable) {
           try {
             const failureRecovery = getFailureRecoveryService();
-            const errorType = failureRecovery.analyzeFailure(
-              toolResult.error || "Unknown tool error",
+            const strategyAdaptation = getStrategyAdaptationService();
+
+            // Classify using failureRecovery's own analyzer
+            const frErrorType = failureRecovery.analyzeFailure(
+              toolErrorMessage,
               {
                 executionId: state.executionId.toString(),
                 sessionId: state.executionId.toString(),
@@ -1549,8 +1576,8 @@ export class AgentOrchestratorService {
               action: toolName,
               selector: toolParams.selector as string | undefined,
               url: toolParams.url as string | undefined,
-              errorMessage: toolResult.error || "Unknown error",
-              errorType,
+              errorMessage: toolErrorMessage,
+              errorType: frErrorType,
               timestamp: new Date(),
               attemptNumber: state.consecutiveErrors,
               previousAttempts,
@@ -1562,24 +1589,40 @@ export class AgentOrchestratorService {
               action: toolName,
               parameters: toolParams,
               strategy: RecoveryStrategy.RETRY_SAME,
-              error: toolResult.error || "Unknown error",
+              error: toolErrorMessage,
               timestamp: new Date(),
             });
             state.recoveryAttempts++;
             state.recoveryStrategiesUsed?.push(recoveryResult.strategyUsed);
 
+            // Record action result for strategy adaptation learning
+            try {
+              const siteUrl = (state.context.currentUrl as string) || (state.context.url as string) || '';
+              const siteDomain = siteUrl ? new URL(siteUrl).hostname : 'unknown';
+              strategyAdaptation.recordActionResult(
+                state.executionId.toString(),
+                toolName,
+                state.adaptedStrategy?.strategyId || 'default',
+                false,
+                toolResult.duration || 0,
+                siteDomain
+              );
+            } catch (adaptErr) {
+              console.warn('[Intelligence] Strategy adaptation recording failed:', adaptErr);
+            }
+
             if (recoveryResult.success || recoveryResult.shouldRetry) {
+              // Calculate backoff: 1s, 4s, 16s (exponential with base 1s, multiplier 4)
+              const backoffDelay = recoveryResult.waitBeforeRetry ||
+                Math.min(1000 * Math.pow(4, state.consecutiveErrors - 1), 16000);
+
               console.log(
                 `[Agent] Recovery strategy "${recoveryResult.strategyUsed}" suggests retry. ` +
-                `Wait: ${recoveryResult.waitBeforeRetry || 0}ms`
+                `Wait: ${backoffDelay}ms. Details: ${recoveryResult.details}`
               );
 
-              // Wait if the strategy suggests it
-              if (recoveryResult.waitBeforeRetry) {
-                await new Promise(resolve =>
-                  setTimeout(resolve, recoveryResult.waitBeforeRetry)
-                );
-              }
+              // Wait with exponential backoff
+              await new Promise(resolve => setTimeout(resolve, backoffDelay));
 
               // Reset consecutive errors on successful recovery
               if (recoveryResult.success) {
@@ -1588,7 +1631,16 @@ export class AgentOrchestratorService {
 
               if (emitter) {
                 emitter.thinking({
-                  thought: `Recovering from error: ${recoveryResult.details}`,
+                  thought: `Recovering from error using "${recoveryResult.strategyUsed}": ${recoveryResult.details}`,
+                  iteration: state.iterations,
+                });
+              }
+            } else if (recoveryResult.fallbackSuggested) {
+              // Strategy suggests fallback (e.g., fall back to API if browser fails)
+              console.log(`[Agent] Recovery suggests fallback: ${recoveryResult.fallbackSuggested}`);
+              if (emitter) {
+                emitter.thinking({
+                  thought: `Recovery exhausted for this approach. Falling back to: ${recoveryResult.fallbackSuggested}`,
                   iteration: state.iterations,
                 });
               }
@@ -1596,12 +1648,42 @@ export class AgentOrchestratorService {
           } catch (recoveryError) {
             console.warn("[Agent] Recovery attempt failed:", recoveryError);
           }
+        } else if (!errorMetadata.retryable) {
+          // Fatal/non-retryable error - skip straight to failure
+          console.log(`[Agent] Non-retryable error (${classifiedErrorType}). Marking as failed.`);
+          if (emitter) {
+            const explained = explainError(toolErrorMessage);
+            emitExplainedError(
+              state.userId,
+              state.executionId.toString(),
+              toolErrorMessage
+            );
+          }
+          state.status = 'failed';
+          return false;
         }
       } else {
         state.consecutiveErrors = 0;
         // Clear failure attempts on success
         if (state.failureAttempts.length > 0) {
           state.failureAttempts = [];
+        }
+
+        // Record successful action for strategy adaptation
+        try {
+          const strategyAdaptation = getStrategyAdaptationService();
+          const siteUrl = (state.context.currentUrl as string) || (state.context.url as string) || '';
+          const siteDomain = siteUrl ? new URL(siteUrl).hostname : 'unknown';
+          strategyAdaptation.recordActionResult(
+            state.executionId.toString(),
+            toolName,
+            state.adaptedStrategy?.strategyId || 'default',
+            true,
+            toolResult.duration || 0,
+            siteDomain
+          );
+        } catch (adaptErr) {
+          // Silently continue - strategy adaptation is non-critical
         }
       }
 

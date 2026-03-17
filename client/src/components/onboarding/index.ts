@@ -5,3 +5,4 @@ export { GHLConnectStep } from './GHLConnectStep';
 export { BrandSetupStep } from './BrandSetupStep';
 export { IntegrationsStep } from './IntegrationsStep';
 export { CompletionStep } from './CompletionStep';
+export { PageEmptyState } from './PageEmptyState';

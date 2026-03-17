@@ -7,7 +7,25 @@ import { TourProvider } from "./components/tour/TourProvider";
 import { SkipNavLink } from "./components/SkipNavLink";
 import { NotificationProvider } from "./components/notifications";
 import { trpc } from "@/lib/trpc";
+<<<<<<< HEAD
 import { AppRouter } from "./components/AppRouter";
+=======
+
+// Lazy load heavy components for better initial bundle size
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const RoutesComponent = lazy(() => import('./components/Routes').then(m => ({ default: m.Routes })));
+const AlexRamozyPage = lazy(() => import('./components/AlexRamozyPage').then(m => ({ default: m.AlexRamozyPage })));
+const LandingPage = lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
+const FeaturesPage = lazy(() => import('./components/FeaturesPage').then(m => ({ default: m.FeaturesPage })));
+const LoginScreen = lazy(() => import('./components/LoginScreen').then(m => ({ default: m.LoginScreen })));
+const OnboardingFlow = lazy(() => import('./components/OnboardingFlow').then(m => ({ default: m.OnboardingFlow })));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
+const TermsOfService = lazy(() => import('./pages/TermsOfService').then(m => ({ default: m.TermsOfService })));
+const OAuthCallback = lazy(() => import('./components/OAuthPopup').then(m => ({ default: m.OAuthCallback })));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+>>>>>>> worktree-agent-a20122b4
 
 // Loading spinner component
 const LoadingSpinner = () => (
@@ -45,9 +63,106 @@ function App() {
             >
               <SkipNavLink />
               <Toaster />
+<<<<<<< HEAD
               <Suspense fallback={<LoadingSpinner />}>
                 <AppRouter />
               </Suspense>
+=======
+
+            {/* Admin Preview Toggle - Only visible for admin user */}
+            {isAdmin && (
+              <button
+                onClick={toggleAdminPreview}
+                className="fixed bottom-4 right-4 z-50 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-sm font-medium transition-all hover:scale-105"
+                title={currentView === 'DASHBOARD' ? 'Preview Landing Page' : 'Back to Dashboard'}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                {currentView === 'DASHBOARD' ? 'Preview Site' : 'Dashboard'}
+              </button>
+            )}
+
+            <Suspense fallback={<LoadingSpinner />}>
+              {currentView === 'OAUTH_CALLBACK' && (
+                <OAuthCallback />
+              )}
+
+              {currentView === 'ALEX_RAMOZY' && (
+                <AlexRamozyPage onDemoClick={() => setCurrentView('LOGIN')} />
+              )}
+              {currentView === 'LANDING' && (
+                <LandingPage
+                  onLogin={() => {
+                    if (isAdminPreview && isAdmin) {
+                      // Admin in preview mode - go back to dashboard
+                      setIsAdminPreview(false);
+                      setCurrentView('DASHBOARD');
+                    } else {
+                      setCurrentView('LOGIN');
+                    }
+                  }}
+                  onNavigateToFeatures={() => setCurrentView('FEATURES')}
+                />
+              )}
+
+              {currentView === 'FEATURES' && (
+                <FeaturesPage
+                  onGetStarted={() => {
+                    if (user && !isAdminPreview) {
+                      // User is logged in - go to dashboard
+                      setCurrentView('DASHBOARD');
+                    } else {
+                      setCurrentView('LOGIN');
+                    }
+                  }}
+                  onNavigateHome={() => setCurrentView('LANDING')}
+                />
+              )}
+
+              {currentView === 'LOGIN' && (
+                <LoginScreen
+                  onAuthenticated={handleLogin}
+                  onBack={() => setCurrentView('LANDING')}
+                />
+              )}
+
+              {currentView === 'ONBOARDING' && (
+                <OnboardingFlow onComplete={async () => {
+                  // Refetch user data to get updated onboardingCompleted status
+                  await refetchUser();
+                  setCurrentView('DASHBOARD');
+                }} />
+              )}
+
+              {currentView === 'DASHBOARD' && (
+                <main id="main-content">
+                  <RoutesComponent />
+                </main>
+              )}
+
+              {currentView === 'PRIVACY' && (
+                <PrivacyPolicy onBack={() => setCurrentView('LANDING')} />
+              )}
+
+              {currentView === 'TERMS' && (
+                <TermsOfService onBack={() => setCurrentView('LANDING')} />
+              )}
+
+              {currentView === 'FORGOT_PASSWORD' && (
+                <ForgotPassword />
+              )}
+
+              {currentView === 'RESET_PASSWORD' && (
+                <ResetPassword />
+              )}
+
+              {currentView === 'NOT_FOUND' && (
+                <NotFound />
+              )}
+            </Suspense>
+>>>>>>> worktree-agent-a20122b4
             </TourProvider>
           </NotificationProvider>
         </TooltipProvider>

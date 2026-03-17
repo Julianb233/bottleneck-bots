@@ -254,13 +254,13 @@ async function processGHLEvent(
 
     if (connection) {
       await db.insert(ghlSyncLog).values({
+        connectionId: connection.id,
         userId: connection.userId,
-        locationId,
-        operation: "webhook",
-        entityType: eventType.toLowerCase(),
-        entityId: payload.id || null,
-        direction: "inbound",
+        syncType: `webhook:${eventType.toLowerCase()}`,
+        direction: "pull",
         status: "success",
+        recordsProcessed: 1,
+        metadata: { eventId: payload.id || null, locationId },
       });
     }
   } catch {
