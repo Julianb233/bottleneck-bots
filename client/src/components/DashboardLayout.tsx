@@ -35,7 +35,8 @@ import {
   LifeBuoy,
   Shield,
   Bot,
-  GraduationCap
+  GraduationCap,
+  History
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -50,6 +51,7 @@ const menuItems = [
   { icon: Globe, label: "Browser Sessions", path: "/dashboard/browser-sessions" },
   { icon: Calendar, label: "Scheduled Tasks", path: "/dashboard/scheduled-tasks" },
   { icon: Workflow, label: "Workflow Builder", path: "/dashboard/workflow-builder" },
+  { icon: History, label: "Execution History", path: "/dashboard/execution-history" },
   { icon: Users, label: "Lead Lists", path: "/dashboard/lead-lists" },
   { icon: Megaphone, label: "AI Campaigns", path: "/dashboard/ai-campaigns" },
   { icon: CreditCard, label: "Credits", path: "/dashboard/credits" },
