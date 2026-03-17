@@ -6,6 +6,7 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerGoogleAuthRoutes } from "./google-auth";
+import { registerGHLOAuthRoutes } from "./ghl-oauth";
 import { emailAuthRouter } from "./email-auth";
 import { onboardingRouter } from "./onboarding";
 import { registerSSERoutes } from "./sse-routes";
@@ -128,6 +129,8 @@ export async function createApp() {
   app.use("/api/auth", emailAuthRouter);
   // Onboarding routes
   app.use("/api/onboarding", onboardingRouter);
+  // GHL OAuth routes (callback + revoke)
+  registerGHLOAuthRoutes(app);
   // SSE routes for real-time streaming
   registerSSERoutes(app);
   // Webhook endpoints (public, token-authenticated)

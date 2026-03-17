@@ -131,6 +131,231 @@ const integrationConfig: Record<IntegrationProvider, { icon: string; color: stri
   LinkedIn: { icon: '💼', color: 'bg-blue-800' },
 };
 
+/**
+ * GHL Connection Card
+ * Manages GoHighLevel OAuth connections with connect/disconnect and status display
+ */
+const GHLConnectionCard: React.FC = () => {
+  const utils = trpc.useUtils();
+  const { data: configStatus } = trpc.ghl.configStatus.useQuery();
+  const { data: statusData, isLoading: statusLoading } = trpc.ghl.status.useQuery(undefined, {
+    retry: false,
+  });
+  const { data: locations, refetch: refetchLocations } = trpc.ghl.listLocations.useQuery(undefined, {
+    retry: false,
+  });
+
+  const connectMutation = trpc.ghl.connect.useMutation({
+    onSuccess: (data) => {
+      // Open GHL OAuth in new window
+      window.open(data.authorizationUrl, '_blank', 'width=600,height=700');
+      toast.success('GHL authorization window opened. Complete the flow in the new window.');
+    },
+    onError: (error) => toast.error(`Failed to connect GHL: ${error.message}`),
+  });
+
+  const disconnectMutation = trpc.ghl.disconnect.useMutation({
+    onSuccess: () => {
+      toast.success('GHL location disconnected');
+      utils.ghl.status.invalidate();
+      utils.ghl.listLocations.invalidate();
+    },
+    onError: (error) => toast.error(`Failed to disconnect: ${error.message}`),
+  });
+
+  const testMutation = trpc.ghl.testConnection.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success('GHL connection is healthy');
+      } else {
+        toast.error(`Connection test failed: ${data.error}`);
+      }
+    },
+    onError: (error) => toast.error(`Test failed: ${error.message}`),
+  });
+
+  const [disconnectLocationId, setDisconnectLocationId] = useState<string | null>(null);
+
+  // Check URL params for OAuth callback results
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ghl_connected') === 'true') {
+      toast.success(`GHL location connected: ${params.get('ghl_location') || 'Unknown'}`);
+      utils.ghl.status.invalidate();
+      utils.ghl.listLocations.invalidate();
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (params.get('ghl_error')) {
+      toast.error(`GHL connection failed: ${decodeURIComponent(params.get('ghl_error') || '')}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const isConfigured = configStatus?.configured ?? false;
+  const connectedLocations = locations?.filter((l) => l.status === 'connected') || [];
+  const hasConnections = connectedLocations.length > 0;
+
+  return (
+    <Card className="bg-slate-900/50 border-slate-800 mt-6">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-orange-600 flex items-center justify-center text-xl">
+              GHL
+            </div>
+            <div>
+              <CardTitle className="text-white">GoHighLevel</CardTitle>
+              <CardDescription>
+                Connect your GHL account to sync contacts, opportunities, and automate workflows
+              </CardDescription>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {statusLoading ? (
+              <Skeleton className="h-6 w-20" />
+            ) : hasConnections ? (
+              <Badge className="bg-green-500/20 text-green-500 border-green-500/30">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Connected
+              </Badge>
+            ) : (
+              <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30">
+                Not Connected
+              </Badge>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {!isConfigured && (
+          <div className="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm">
+            <AlertCircle className="w-4 h-4 inline mr-2" />
+            GHL OAuth is not configured. Set <code className="bg-slate-800 px-1 rounded">GHL_CLIENT_ID</code> and{' '}
+            <code className="bg-slate-800 px-1 rounded">GHL_CLIENT_SECRET</code> environment variables.
+          </div>
+        )}
+
+        {/* Connected Locations */}
+        {locations && locations.length > 0 && (
+          <div className="space-y-3 mb-4">
+            {locations.map((location) => (
+              <div
+                key={location.locationId}
+                className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700"
+              >
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="text-white font-medium text-sm">
+                      {location.locationName || location.locationId}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      {location.status === 'connected' ? (
+                        <Badge className="bg-green-500/20 text-green-500 border-green-500/30 text-xs">
+                          Connected
+                        </Badge>
+                      ) : location.status === 'needs_reauth' ? (
+                        <Badge className="bg-yellow-500/20 text-yellow-500 border-yellow-500/30 text-xs">
+                          Needs Re-auth
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-red-500/20 text-red-500 border-red-500/30 text-xs">
+                          Disconnected
+                        </Badge>
+                      )}
+                      {location.lastSyncAt && (
+                        <span className="text-xs text-slate-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Last sync: {new Date(location.lastSyncAt).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    {location.lastError && (
+                      <p className="text-xs text-red-400 mt-1">{location.lastError}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => testMutation.mutate({ locationId: location.locationId })}
+                    disabled={testMutation.isPending}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    {testMutation.isPending ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      'Test'
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDisconnectLocationId(location.locationId)}
+                    className="text-red-400 hover:text-red-300"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Connect Button */}
+        <Button
+          onClick={() => connectMutation.mutate()}
+          disabled={!isConfigured || connectMutation.isPending}
+          className="bg-orange-600 hover:bg-orange-700"
+        >
+          {connectMutation.isPending ? (
+            <>
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            <>
+              <ExternalLink className="w-4 h-4 mr-2" />
+              {hasConnections ? 'Connect Another Location' : 'Connect GoHighLevel'}
+            </>
+          )}
+        </Button>
+      </CardContent>
+
+      {/* Disconnect Confirmation Dialog */}
+      <AlertDialog
+        open={!!disconnectLocationId}
+        onOpenChange={(open) => !open && setDisconnectLocationId(null)}
+      >
+        <AlertDialogContent className="bg-slate-900 border-slate-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect GHL Location?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revoke access tokens and disable all automations for this GHL location.
+              You can reconnect at any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-700">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (disconnectLocationId) {
+                  disconnectMutation.mutate({ locationId: disconnectLocationId });
+                  setDisconnectLocationId(null);
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+};
+
 export const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState('api-keys');
   const { openPopup } = useOAuthPopup();
@@ -663,6 +888,9 @@ export const Settings: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* GHL Connection Card */}
+            <GHLConnectionCard />
           </TabsContent>
 
           {/* Webhooks Tab */}
