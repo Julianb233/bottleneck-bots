@@ -19,6 +19,7 @@ import CreditPurchase from '@/pages/CreditPurchase';
 import Training from '@/pages/Training';
 import TaskTemplates from '@/pages/TaskTemplates';
 import AgentSkills from '@/pages/AgentSkills';
+import Help from '@/pages/Help';
 import ExecutionHistory from '@/pages/ExecutionHistory';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { UserManagement } from '@/pages/admin/UserManagement';
@@ -28,7 +29,6 @@ import { ConfigCenter } from '@/pages/admin/ConfigCenter';
 import { CostsPage } from '@/pages/admin/CostsPage';
 import DashboardLayout from './DashboardLayout';
 import { Toaster } from '@/components/ui/sonner';
-import { FeaturesPage } from '@/components/FeaturesPage';
 
 export function Routes() {
   return (
@@ -56,6 +56,8 @@ export function Routes() {
           <Route path="/training" component={Training} />
           <Route path="/templates" component={TaskTemplates} />
           <Route path="/agent-skills" component={AgentSkills} />
+          <Route path="/task-templates" component={TaskTemplates} />
+          <Route path="/support" component={Help} />
           <Route path="/execution-history" component={ExecutionHistory} />
           {/* Admin routes */}
           <Route path="/admin" component={AdminDashboard} />
