@@ -89,6 +89,35 @@ const ACTION_TYPE_COLORS: Record<string, string> = {
   wait: 'bg-gray-100 text-gray-700',
 };
 
+interface TemplateStep {
+  order: number;
+  actionType: string;
+  description: string;
+}
+
+interface TemplateInput {
+  name: string;
+  label: string;
+  type: string;
+  placeholder: string;
+  required: boolean;
+  options?: string[];
+}
+
+interface TaskTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  steps: TemplateStep[];
+  tags: string[];
+  estimatedMinutes: number;
+  creditCost: number;
+  platform: string;
+  platformRequirements: string[];
+  inputs: TemplateInput[];
+}
+
 type ViewMode = 'grid' | 'list';
 
 export default function TaskTemplates() {
@@ -99,19 +128,39 @@ export default function TaskTemplates() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   // Fetch templates from backend
-  const { data: templates = [], isLoading } = trpc.taskTemplates.getAll.useQuery(undefined, {
+  const { data: rawTemplates = [], isLoading } = trpc.templates.getAll.useQuery(undefined, {
     refetchOnWindowFocus: false,
   });
 
-  const runMutation = trpc.taskTemplates.runFromTemplate.useMutation({
-    onSuccess: (data) => {
-      toast.success(data.message, {
-        description: `Estimated: ~${data.estimatedMinutes} min | ${data.creditCost} credits`,
-      });
+  // Transform DB templates to UI format
+  const templates: TaskTemplate[] = rawTemplates.map((t: any) => {
+    const parsedSteps = typeof t.steps === 'string' ? JSON.parse(t.steps) : (t.steps || []);
+    return {
+      id: String(t.id),
+      name: t.name || '',
+      description: t.description || '',
+      category: t.category || 'general',
+      steps: parsedSteps.map((s: any, i: number) => ({
+        order: i + 1,
+        actionType: (s.action || 'browser').toLowerCase(),
+        description: s.description || '',
+      })),
+      tags: [t.category || 'general'],
+      estimatedMinutes: parsedSteps.length * 2,
+      creditCost: Math.max(1, parsedSteps.length),
+      platform: t.category === 'ghl' ? 'GoHighLevel' : 'General',
+      platformRequirements: [],
+      inputs: [],
+    };
+  });
+
+  const runMutation = trpc.templates.execute.useMutation({
+    onSuccess: (data: any) => {
+      toast.success(data.message || 'Task started successfully');
       setSelectedTemplateId(null);
       setInputValues({});
     },
-    onError: (err) => {
+    onError: (err: any) => {
       toast.error(err.message);
     },
   });
@@ -143,8 +192,7 @@ export default function TaskTemplates() {
   const handleRunTemplate = () => {
     if (!selectedTemplate) return;
     runMutation.mutate({
-      templateId: selectedTemplate.id,
-      inputs: inputValues,
+      id: parseInt(selectedTemplate.id, 10),
     });
   };
 
