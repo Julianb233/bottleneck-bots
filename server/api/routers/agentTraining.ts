@@ -16,6 +16,7 @@ import { TRPCError } from "@trpc/server";
 import { getDb } from "../../db";
 import { eq, and } from "drizzle-orm";
 import { knowledgeEntries } from "../../../drizzle/schema-agent";
+import { getAgentSkillConfigService } from "../../services/agentSkillConfig.service";
 
 // ========================================
 // CONSTANTS — DEFAULT CONFIGURATIONS
@@ -477,6 +478,47 @@ export const agentTrainingRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: error instanceof Error ? error.message : "Failed to update behavior configuration",
+        });
+      }
+    }),
+
+  // ========================================
+  // SKILL ANALYTICS
+  // ========================================
+
+  /**
+   * Get skill usage analytics for the authenticated user.
+   * Returns per-skill metrics including total executions, success rate,
+   * average duration, and top tools used per skill.
+   */
+  getSkillAnalytics: protectedProcedure.query(async ({ ctx }) => {
+    try {
+      const service = getAgentSkillConfigService();
+      const analytics = await service.getSkillAnalytics(ctx.user.id);
+      return { success: true, analytics };
+    } catch (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: error instanceof Error ? error.message : "Failed to get skill analytics",
+      });
+    }
+  }),
+
+  /**
+   * Check if a specific tool is allowed by the user's skill config.
+   * Useful for UI previews and debugging.
+   */
+  checkSkillPermission: protectedProcedure
+    .input(z.object({ toolName: z.string().min(1) }))
+    .query(async ({ input, ctx }) => {
+      try {
+        const service = getAgentSkillConfigService();
+        const result = await service.checkSkillPermission(ctx.user.id, input.toolName);
+        return { success: true, ...result };
+      } catch (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: error instanceof Error ? error.message : "Failed to check skill permission",
         });
       }
     }),

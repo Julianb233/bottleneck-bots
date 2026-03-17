@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { trpc } from '@/lib/trpc';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -28,6 +31,12 @@ import {
   BarChart3,
   Save,
   RefreshCw,
+  Activity,
+  TrendingUp,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Gauge,
 } from 'lucide-react';
 
 // Types
@@ -42,8 +51,16 @@ interface Skill {
   rateLimit?: number;
 }
 
-interface SkillConfig {
-  skills: Skill[];
+interface SkillAnalytics {
+  skillId: string;
+  skillName: string;
+  totalExecutions: number;
+  successCount: number;
+  failureCount: number;
+  successRate: number;
+  avgDurationMs: number;
+  lastUsed: string | null;
+  topTools: Array<{ toolName: string; count: number }>;
 }
 
 // Skill metadata: icon and description per skill id
@@ -55,7 +72,6 @@ interface SkillMeta {
 }
 
 const SKILL_META: Record<string, SkillMeta> = {
-  // IDs match the backend DEFAULT_SKILLS
   'browser': {
     icon: Globe,
     description: 'Navigate websites, fill forms, click buttons',
@@ -108,7 +124,6 @@ const SKILL_META: Record<string, SkillMeta> = {
   },
 };
 
-// Fallback meta for unknown skills
 function getSkillMeta(skillId: string): SkillMeta {
   return (
     SKILL_META[skillId] ?? {
@@ -119,7 +134,7 @@ function getSkillMeta(skillId: string): SkillMeta {
   );
 }
 
-// Default skills if backend returns empty (mirroring server defaults)
+// Default skills if backend returns empty
 const DEFAULT_SKILLS: Skill[] = [
   { id: 'browser',       name: 'Browser Automation',   enabled: true,  permission: 'read-write' },
   { id: 'ghl_api',       name: 'GoHighLevel API',       enabled: true,  permission: 'read-write' },
@@ -133,13 +148,17 @@ const DEFAULT_SKILLS: Skill[] = [
   { id: 'reporting',     name: 'Report Generation',     enabled: true,  permission: 'read' },
 ];
 
-// Skill card component
+// ========================================
+// SKILL CARD
+// ========================================
 
 function SkillCard({
   skill,
+  analytics,
   onChange,
 }: {
   skill: Skill;
+  analytics?: SkillAnalytics;
   onChange: (updated: Skill) => void;
 }) {
   const meta = getSkillMeta(skill.id);
@@ -174,38 +193,90 @@ function SkillCard({
 
             <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{meta.description}</p>
 
-            {/* Permission selector — only shown when enabled */}
+            {/* Controls — only shown when enabled */}
             {skill.enabled && (
-              <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
-                <Label className="text-xs text-gray-500 flex-shrink-0">Permission</Label>
-                <Select
-                  value={skill.permission}
-                  onValueChange={(val) =>
-                    onChange({ ...skill, permission: val as Permission })
-                  }
-                >
-                  <SelectTrigger className="h-7 text-xs flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="read" className="text-xs">
-                      Read Only
-                    </SelectItem>
-                    <SelectItem value="read-write" className="text-xs">
-                      Read-Write
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <Badge
-                  className={cn(
-                    'text-xs flex-shrink-0',
-                    skill.permission === 'read-write'
-                      ? 'bg-amber-100 text-amber-700 hover:bg-amber-100'
-                      : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100'
-                  )}
-                >
-                  {skill.permission === 'read-write' ? 'R/W' : 'R'}
-                </Badge>
+              <div className="space-y-2 mt-3 pt-2 border-t border-gray-100">
+                {/* Permission selector */}
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-gray-500 flex-shrink-0">Permission</Label>
+                  <Select
+                    value={skill.permission}
+                    onValueChange={(val) =>
+                      onChange({ ...skill, permission: val as Permission })
+                    }
+                  >
+                    <SelectTrigger className="h-7 text-xs flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="read" className="text-xs">
+                        Read Only
+                      </SelectItem>
+                      <SelectItem value="read-write" className="text-xs">
+                        Read-Write
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Badge
+                    className={cn(
+                      'text-xs flex-shrink-0',
+                      skill.permission === 'read-write'
+                        ? 'bg-amber-100 text-amber-700 hover:bg-amber-100'
+                        : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100'
+                    )}
+                  >
+                    {skill.permission === 'read-write' ? 'R/W' : 'R'}
+                  </Badge>
+                </div>
+
+                {/* Rate limit */}
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-gray-500 flex-shrink-0">
+                    <Gauge className="w-3 h-3 inline mr-1" />
+                    Rate Limit
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="No limit"
+                    value={skill.rateLimit ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      onChange({
+                        ...skill,
+                        rateLimit: val === '' ? undefined : Math.max(0, parseInt(val, 10)),
+                      });
+                    }}
+                    className="h-7 text-xs flex-1"
+                  />
+                  <span className="text-[10px] text-gray-400 flex-shrink-0">/hr</span>
+                </div>
+
+                {/* Inline analytics mini-stats */}
+                {analytics && analytics.totalExecutions > 0 && (
+                  <div className="flex items-center gap-3 pt-1">
+                    <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                      <Activity className="w-3 h-3" />
+                      {analytics.totalExecutions} uses
+                    </span>
+                    <span className={cn(
+                      'text-[10px] flex items-center gap-0.5',
+                      analytics.successRate >= 80 ? 'text-emerald-500' :
+                      analytics.successRate >= 50 ? 'text-amber-500' : 'text-red-500'
+                    )}>
+                      <TrendingUp className="w-3 h-3" />
+                      {Math.round(analytics.successRate)}%
+                    </span>
+                    {analytics.avgDurationMs > 0 && (
+                      <span className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                        <Clock className="w-3 h-3" />
+                        {analytics.avgDurationMs < 1000
+                          ? `${Math.round(analytics.avgDurationMs)}ms`
+                          : `${(analytics.avgDurationMs / 1000).toFixed(1)}s`}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -215,13 +286,178 @@ function SkillCard({
   );
 }
 
-// Main component
+// ========================================
+// SKILL ANALYTICS PANEL
+// ========================================
+
+function SkillAnalyticsPanel({ analytics }: { analytics: SkillAnalytics[] }) {
+  const totalExecutions = analytics.reduce((s, a) => s + a.totalExecutions, 0);
+  const totalSuccess = analytics.reduce((s, a) => s + a.successCount, 0);
+  const totalFailure = analytics.reduce((s, a) => s + a.failureCount, 0);
+  const overallSuccessRate = totalExecutions > 0 ? (totalSuccess / totalExecutions) * 100 : 0;
+
+  const sortedByUsage = [...analytics]
+    .filter((a) => a.totalExecutions > 0)
+    .sort((a, b) => b.totalExecutions - a.totalExecutions);
+
+  if (totalExecutions === 0) {
+    return (
+      <div className="text-center py-12">
+        <Activity className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+        <p className="text-gray-500 font-medium">No Skill Usage Data Yet</p>
+        <p className="text-sm text-gray-400 mt-1">
+          Run agent tasks to see which skills are used most and their success rates.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Activity className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{totalExecutions}</p>
+                <p className="text-xs text-gray-500">Total Uses</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-100 rounded-lg">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{totalSuccess}</p>
+                <p className="text-xs text-gray-500">Successes</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <XCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{totalFailure}</p>
+                <p className="text-xs text-gray-500">Failures</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{Math.round(overallSuccessRate)}%</p>
+                <p className="text-xs text-gray-500">Success Rate</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Per-skill breakdown */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <BarChart3 className="w-5 h-5" />
+            Skill Usage Breakdown
+          </CardTitle>
+          <CardDescription>
+            Skills ranked by total usage with success rates
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {sortedByUsage.map((a) => {
+            const meta = getSkillMeta(a.skillId);
+            const Icon = meta.icon;
+            const maxExec = sortedByUsage[0]?.totalExecutions || 1;
+            const barWidth = (a.totalExecutions / maxExec) * 100;
+
+            return (
+              <div key={a.skillId} className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={cn('p-1 rounded', meta.color)}>
+                      <Icon className="w-3 h-3" />
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">{a.skillName}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    <span>{a.totalExecutions} uses</span>
+                    <span className={cn(
+                      a.successRate >= 80 ? 'text-emerald-600' :
+                      a.successRate >= 50 ? 'text-amber-600' : 'text-red-600'
+                    )}>
+                      {Math.round(a.successRate)}% success
+                    </span>
+                    {a.avgDurationMs > 0 && (
+                      <span className="text-gray-400">
+                        avg {a.avgDurationMs < 1000
+                          ? `${Math.round(a.avgDurationMs)}ms`
+                          : `${(a.avgDurationMs / 1000).toFixed(1)}s`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all',
+                      a.successRate >= 80 ? 'bg-emerald-500' :
+                      a.successRate >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                    )}
+                    style={{ width: `${barWidth}%` }}
+                  />
+                </div>
+                {/* Top tools */}
+                {a.topTools.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pl-7">
+                    {a.topTools.map((t) => (
+                      <Badge
+                        key={t.toolName}
+                        variant="outline"
+                        className="text-[10px] px-1.5 py-0 h-4"
+                      >
+                        {t.toolName} ({t.count})
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ========================================
+// MAIN COMPONENT
+// ========================================
 
 export default function SkillsTab() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [isDirty, setIsDirty] = useState(false);
+  const [activeTab, setActiveTab] = useState<'config' | 'analytics'>('config');
 
   const configQuery = trpc.agentTraining.getSkillConfig.useQuery();
+  const analyticsQuery = trpc.agentTraining.getSkillAnalytics.useQuery();
 
   const updateMutation = trpc.agentTraining.updateSkillConfig.useMutation({
     onSuccess: () => {
@@ -233,7 +469,6 @@ export default function SkillsTab() {
   });
 
   // Sync fetched config into local state
-  // Backend returns { success, skills, isDefault }
   useEffect(() => {
     if (configQuery.data) {
       const fetched = configQuery.data.skills;
@@ -256,6 +491,14 @@ export default function SkillsTab() {
   }
 
   const enabledCount = skills.filter((s) => s.enabled).length;
+
+  // Build analytics lookup
+  const analyticsMap = new Map<string, SkillAnalytics>();
+  if (analyticsQuery.data?.analytics) {
+    for (const a of analyticsQuery.data.analytics) {
+      analyticsMap.set(a.skillId, a as SkillAnalytics);
+    }
+  }
 
   if (configQuery.isLoading) {
     return (
@@ -290,46 +533,114 @@ export default function SkillsTab() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with tabs */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Agent Skills</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            Toggle capabilities your agent can use.{' '}
+            Toggle capabilities, set permissions and rate limits.{' '}
             <span className="font-medium text-emerald-600">{enabledCount}</span> of{' '}
             {skills.length} enabled.
           </p>
         </div>
 
-        <Button
-          onClick={handleSave}
-          disabled={!isDirty || updateMutation.isPending}
-          className={cn(
-            'transition-all',
-            isDirty
-              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              configQuery.refetch();
+              analyticsQuery.refetch();
+            }}
+            disabled={configQuery.isRefetching || analyticsQuery.isRefetching}
+          >
+            <RefreshCw className={cn(
+              'w-4 h-4 mr-1.5',
+              (configQuery.isRefetching || analyticsQuery.isRefetching) && 'animate-spin'
+            )} />
+            Refresh
+          </Button>
+          {activeTab === 'config' && (
+            <Button
+              onClick={handleSave}
+              disabled={!isDirty || updateMutation.isPending}
+              className={cn(
+                'transition-all',
+                isDirty
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              )}
+              size="sm"
+            >
+              <Save className="w-4 h-4 mr-1.5" />
+              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
           )}
-          size="sm"
-        >
-          <Save className="w-4 h-4 mr-1.5" />
-          {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-        </Button>
+        </div>
       </div>
 
-      {/* Skills grid */}
-      <div className="grid sm:grid-cols-2 gap-4">
-        {skills.map((skill) => (
-          <SkillCard key={skill.id} skill={skill} onChange={handleSkillChange} />
-        ))}
-      </div>
+      {/* Sub-tabs: Configuration | Analytics */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'config' | 'analytics')}>
+        <TabsList className="w-auto">
+          <TabsTrigger value="config" className="gap-1.5">
+            <Zap className="w-4 h-4" />
+            Configuration
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="gap-1.5">
+            <BarChart3 className="w-4 h-4" />
+            Analytics
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Unsaved changes notice */}
-      {isDirty && (
-        <p className="text-xs text-amber-600 text-center">
-          You have unsaved changes — click "Save Changes" to apply them.
-        </p>
-      )}
+        <TabsContent value="config" className="space-y-4 mt-4">
+          {/* Skills grid */}
+          <div className="grid sm:grid-cols-2 gap-4">
+            {skills.map((skill) => (
+              <SkillCard
+                key={skill.id}
+                skill={skill}
+                analytics={analyticsMap.get(skill.id)}
+                onChange={handleSkillChange}
+              />
+            ))}
+          </div>
+
+          {/* Unsaved changes notice */}
+          {isDirty && (
+            <p className="text-xs text-amber-600 text-center">
+              You have unsaved changes -- click "Save Changes" to apply them.
+            </p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="analytics" className="mt-4">
+          {analyticsQuery.isLoading ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full rounded-xl" />
+                ))}
+              </div>
+              <Skeleton className="h-64 w-full rounded-xl" />
+            </div>
+          ) : analyticsQuery.isError ? (
+            <div className="text-center py-12">
+              <p className="text-red-500 font-medium">Failed to load analytics</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => analyticsQuery.refetch()}
+              >
+                <RefreshCw className="w-4 h-4 mr-1.5" />
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <SkillAnalyticsPanel analytics={(analyticsQuery.data?.analytics || []) as SkillAnalytics[]} />
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
