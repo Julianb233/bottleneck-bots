@@ -39,6 +39,11 @@ const DEFAULT_BEHAVIOR = {
   personality: "You are a helpful, professional AI assistant for agency operations.",
   responseStyle: "professional" as const,
   verbosity: "balanced" as const,
+  languagePreferences: {
+    primaryLanguage: "en",
+    supportedLanguages: ["en"],
+    autoDetect: true,
+  },
   escalationRules: [
     {
       condition: "Payment or billing related actions",

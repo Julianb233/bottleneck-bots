@@ -2255,10 +2255,34 @@ export class AgentOrchestratorService {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       emitExplainedError(userId, execution.id.toString(), errorMessage);
 
+      // ========================================
+      // ALERTS: Notify on fatal execution error
+      // ========================================
+      try {
+        const { alertingService } = await import('./alerting.service');
+        const explained = explainError(errorMessage);
+        await alertingService.createNotification({
+          userId,
+          title: `Fatal Execution Error: ${explained.title}`,
+          message: `${explained.explanation}. ${explained.suggestedActions[0] || 'Please check logs and retry.'}`,
+          type: 'error',
+          priority: 10,
+          metadata: {
+            executionId: execution.id,
+            taskId,
+            errorType: classifyError(errorMessage),
+            severity: 'critical',
+            fatal: true,
+          },
+        });
+      } catch (alertError) {
+        console.warn('[Alerts] Failed to create fatal error notification:', alertError);
+      }
+
       await db.update(taskExecutions)
         .set({
           status: "failed",
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: errorMessage,
           completedAt: new Date(),
         })
         .where(eq(taskExecutions.id, execution.id));

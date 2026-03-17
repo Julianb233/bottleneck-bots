@@ -7,25 +7,7 @@ import { TourProvider } from "./components/tour/TourProvider";
 import { SkipNavLink } from "./components/SkipNavLink";
 import { NotificationProvider } from "./components/notifications";
 import { trpc } from "@/lib/trpc";
-<<<<<<< HEAD
 import { AppRouter } from "./components/AppRouter";
-=======
-
-// Lazy load heavy components for better initial bundle size
-const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
-const RoutesComponent = lazy(() => import('./components/Routes').then(m => ({ default: m.Routes })));
-const AlexRamozyPage = lazy(() => import('./components/AlexRamozyPage').then(m => ({ default: m.AlexRamozyPage })));
-const LandingPage = lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
-const FeaturesPage = lazy(() => import('./components/FeaturesPage').then(m => ({ default: m.FeaturesPage })));
-const LoginScreen = lazy(() => import('./components/LoginScreen').then(m => ({ default: m.LoginScreen })));
-const OnboardingFlow = lazy(() => import('./components/OnboardingFlow').then(m => ({ default: m.OnboardingFlow })));
-const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
-const TermsOfService = lazy(() => import('./pages/TermsOfService').then(m => ({ default: m.TermsOfService })));
-const OAuthCallback = lazy(() => import('./components/OAuthPopup').then(m => ({ default: m.OAuthCallback })));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
-const ResetPassword = lazy(() => import('./pages/ResetPassword'));
-const NotFound = lazy(() => import('./pages/NotFound'));
->>>>>>> worktree-agent-a20122b4
 
 // Loading spinner component
 const LoadingSpinner = () => (
