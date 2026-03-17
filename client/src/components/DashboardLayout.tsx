@@ -1,4 +1,4 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -35,9 +35,7 @@ import {
   LifeBuoy,
   Shield,
   Bot,
-  GraduationCap,
-  BookOpen,
-  FileStack
+  GraduationCap
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -46,21 +44,20 @@ import { Button } from "./ui/button";
 import { CommandPalette } from './CommandPalette';
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: Bot, label: "AI Agent", path: "/agent" },
-  { icon: GraduationCap, label: "Training", path: "/training" },
-  { icon: Globe, label: "Browser Sessions", path: "/browser-sessions" },
-  { icon: Calendar, label: "Scheduled Tasks", path: "/scheduled-tasks" },
-  { icon: FileStack, label: "Task Templates", path: "/task-templates" },
-  { icon: Workflow, label: "Workflow Builder", path: "/workflow-builder" },
-  { icon: Users, label: "Lead Lists", path: "/lead-lists" },
-  { icon: Megaphone, label: "AI Campaigns", path: "/ai-campaigns" },
-  { icon: CreditCard, label: "Credits", path: "/credits" },
-  { icon: Settings, label: "Settings", path: "/settings" },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: Bot, label: "AI Agent", path: "/dashboard/agent" },
+  { icon: GraduationCap, label: "Training", path: "/dashboard/training" },
+  { icon: Globe, label: "Browser Sessions", path: "/dashboard/browser-sessions" },
+  { icon: Calendar, label: "Scheduled Tasks", path: "/dashboard/scheduled-tasks" },
+  { icon: Workflow, label: "Workflow Builder", path: "/dashboard/workflow-builder" },
+  { icon: Users, label: "Lead Lists", path: "/dashboard/lead-lists" },
+  { icon: Megaphone, label: "AI Campaigns", path: "/dashboard/ai-campaigns" },
+  { icon: CreditCard, label: "Credits", path: "/dashboard/credits" },
+  { icon: Settings, label: "Settings", path: "/dashboard/settings" },
 ];
 
 const adminOnlyItems = [
-  { icon: Shield, label: "Admin", path: "/admin" },
+  { icon: Shield, label: "Admin", path: "/dashboard/admin" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -77,13 +74,13 @@ export default function DashboardLayout({
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
-  const { loading, user } = useAuth();
+  const { isLoading, user } = useAuth();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  if (loading) {
+  if (isLoading) {
     return <DashboardLayoutSkeleton />
   }
 

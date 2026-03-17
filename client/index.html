@@ -84,34 +84,27 @@
     })(window,document,'script','dataLayer','GTM-XXXXXXX');</script>
     -->
 
-    <!-- Google Ads & Analytics (gtag.js) - Replace with your IDs -->
-    <!-- GA4 Measurement ID: G-XXXXXXXXXX -->
-    <!-- Google Ads Conversion ID: AW-XXXXXXXXX -->
+    <!-- Google Ads & Analytics (gtag.js) -->
+    <!-- DISABLED: Uncomment and replace AW-XXXXXXXXX / G-XXXXXXXXXX with real IDs -->
+    <!-- Set VITE_GOOGLE_ADS_ID and VITE_GA4_ID env vars, then uncomment below -->
+    <!--
     <script async src="https://www.googletagmanager.com/gtag/js?id=AW-XXXXXXXXX"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-
-      // Initialize consent mode (GDPR compliance)
       gtag('consent', 'default', {
         'analytics_storage': 'denied',
         'ad_storage': 'denied',
         'wait_for_update': 500
       });
-
-      // Configure Google Ads
-      gtag('config', 'AW-XXXXXXXXX', {
-        'allow_enhanced_conversions': true
-      });
-
-      // Configure GA4 (optional - add if you want separate GA4 tracking)
-      // gtag('config', 'G-XXXXXXXXXX', {
-      //   'send_page_view': true
-      // });
+      gtag('config', 'AW-XXXXXXXXX', { 'allow_enhanced_conversions': true });
     </script>
+    -->
 
     <!-- Meta Pixel Code -->
+    <!-- DISABLED: Uncomment and replace XXXXXXXXXXXXXXXXX with real Pixel ID -->
+    <!--
     <script>
       !function(f,b,e,v,n,t,s)
       {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -124,6 +117,7 @@
       fbq('init', 'XXXXXXXXXXXXXXXXX');
       fbq('track', 'PageView');
     </script>
+    -->
   </head>
 
   <body>
