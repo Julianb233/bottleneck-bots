@@ -6,6 +6,7 @@
 
 import { Router, Request, Response } from "express";
 import { webhookReceiverService } from "../services/webhookReceiver.service";
+import { processGHLWebhookEvent } from "../services/ghlWorkflow.service";
 
 export const webhookEndpointsRouter = Router();
 
@@ -171,6 +172,85 @@ webhookEndpointsRouter.post("/email/:token", async (req: Request, res: Response)
     console.error("Email webhook error:", error);
     return res.status(500).json({ success: false, error: "Internal server error" });
   }
+});
+
+// ========================================
+// GHL WEBHOOK RECEIVER
+// ========================================
+
+/**
+ * GHL inbound webhook receiver
+ * POST /api/webhooks/ghl/:locationId
+ *
+ * Receives events from GoHighLevel (contact, opportunity, appointment, form, etc.)
+ * and routes them to configured platform workflow triggers.
+ *
+ * GHL sends webhooks in the format:
+ * { type: 'ContactCreate', locationId: '...', ...eventData }
+ *
+ * Linear: AI-2880
+ */
+webhookEndpointsRouter.post("/ghl/:locationId", async (req: Request, res: Response) => {
+  const { locationId } = req.params;
+  const headers: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (typeof value === "string") {
+      headers[key.toLowerCase()] = value;
+    }
+  }
+
+  // GHL event type from payload
+  const eventType = req.body?.type || req.body?.eventType || "Unknown";
+
+  console.log(`[GHL Webhook] Received ${eventType} for location ${locationId}`);
+
+  try {
+    const result = await processGHLWebhookEvent({
+      locationId,
+      eventType,
+      eventId: req.body?.id || req.body?.eventId,
+      payload: req.body,
+      headers,
+    });
+
+    if (!result.success) {
+      console.error(`[GHL Webhook] Processing failed: ${result.errors.join(", ")}`);
+      return res.status(200).json({
+        success: false,
+        eventId: result.eventId,
+        errors: result.errors,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      eventId: result.eventId,
+      triggersMatched: result.triggersMatched,
+      triggersExecuted: result.triggersExecuted,
+    });
+  } catch (error) {
+    console.error("[GHL Webhook] Endpoint error:", error);
+    // Always return 200 to GHL so they don't keep retrying
+    return res.status(200).json({
+      success: false,
+      error: "Internal processing error",
+    });
+  }
+});
+
+/**
+ * GHL webhook verification
+ * GET /api/webhooks/ghl/:locationId
+ *
+ * GHL may send a GET request to verify the endpoint is active.
+ */
+webhookEndpointsRouter.get("/ghl/:locationId", async (_req: Request, res: Response) => {
+  return res.json({
+    success: true,
+    message: "GHL webhook endpoint is active",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 /**
