@@ -28,6 +28,7 @@ import {
 } from "../lib/sentry";
 import { createRestApi } from "../api/rest";
 import { registerGhlOAuthRoutes } from "./ghl-oauth";
+import { registerGHLOAuthRoutes } from "./ghl-oauth-routes";
 
 // Initialize Sentry as early as possible
 initSentry();
@@ -136,6 +137,8 @@ export async function createApp() {
   // Stripe webhook route — MUST be before generic webhooks and body parsers
   // Stripe needs the raw body for signature verification; Express JSON parsing breaks it
   app.use("/api/webhooks/stripe", stripeWebhookRouter);
+  // GHL OAuth callback route
+  registerGHLOAuthRoutes(app);
   // Webhook endpoints (public, token-authenticated)
   app.use("/api/webhooks", webhookEndpointsRouter);
 

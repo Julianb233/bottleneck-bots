@@ -4,7 +4,7 @@
  */
 
 import type { Express, Request, Response } from "express";
-import { getGhlService } from "../services/ghl.service";
+import { getGHLService } from "../services/ghl.service";
 import { sdk } from "./sdk";
 
 function getQueryParam(req: Request, key: string): string | undefined {
@@ -13,6 +13,28 @@ function getQueryParam(req: Request, key: string): string | undefined {
 }
 
 export function registerGhlOAuthRoutes(app: Express) {
+  /**
+   * GET /api/ghl/oauth/authorize
+   * Initiate GHL OAuth flow — redirects user to GHL authorization page
+   */
+  app.get("/api/ghl/oauth/authorize", async (req: Request, res: Response) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+      if (!user) {
+        res.redirect(302, "/login?returnTo=/settings");
+        return;
+      }
+
+      const ghl = getGHLService();
+      const { authorizationUrl } = await ghl.initiateAuthorization(user.id);
+      res.redirect(302, authorizationUrl);
+    } catch (error) {
+      console.error("[GHL OAuth] Authorize error:", error);
+      const message = error instanceof Error ? error.message : "Failed to start OAuth flow";
+      res.redirect(302, `/settings?tab=integrations&ghl=error&message=${encodeURIComponent(message)}`);
+    }
+  });
+
   /**
    * GET /api/ghl/oauth/callback
    * Handle GHL OAuth callback — exchange code for tokens and store connection
@@ -27,30 +49,19 @@ export function registerGhlOAuthRoutes(app: Express) {
     }
 
     try {
-      // Authenticate the user from session
-      const user = await sdk.authenticateRequest(req);
-      if (!user) {
-        // Redirect to login with return URL
-        res.redirect(302, "/login?returnTo=/settings");
+      const ghl = getGHLService();
+      const result = await ghl.handleCallback(code, state);
+
+      if (!result.success) {
+        console.error("[GHL OAuth] Callback failed:", result.error);
+        res.redirect(
+          302,
+          `/settings?tab=integrations&ghl=error&message=${encodeURIComponent(result.error || "OAuth failed")}`
+        );
         return;
       }
 
-      const ghl = getGhlService();
-
-      // Build the redirect URI (must match what was sent in authorization request)
-      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
-      const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
-      const redirectUri = `${protocol}://${host}/api/ghl/oauth/callback`;
-
-      // Exchange code for tokens
-      const tokenData = await ghl.exchangeCodeForTokens(code, state, redirectUri);
-
-      // Store connection
-      await ghl.storeConnection(user.id, tokenData);
-
-      console.log(`[GHL OAuth] Successfully connected for user ${user.id}, location ${tokenData.locationId}`);
-
-      // Redirect to settings page with success
+      console.log(`[GHL OAuth] Connected location ${result.locationId}`);
       res.redirect(302, "/settings?tab=integrations&ghl=connected");
     } catch (error) {
       console.error("[GHL OAuth] Callback error:", error);
@@ -61,7 +72,7 @@ export function registerGhlOAuthRoutes(app: Express) {
 
   /**
    * POST /api/ghl/oauth/revoke
-   * Revoke GHL access for a connection
+   * Revoke GHL access for a location
    */
   app.post("/api/ghl/oauth/revoke", async (req: Request, res: Response) => {
     try {
@@ -71,15 +82,14 @@ export function registerGhlOAuthRoutes(app: Express) {
         return;
       }
 
-      const connectionId = req.body?.connectionId;
-      if (!connectionId || typeof connectionId !== "number") {
-        res.status(400).json({ error: "connectionId is required" });
+      const locationId = req.body?.locationId;
+      if (!locationId || typeof locationId !== "string") {
+        res.status(400).json({ error: "locationId is required" });
         return;
       }
 
-      const ghl = getGhlService();
-      await ghl.disconnect(user.id, connectionId);
-
+      const ghl = getGHLService();
+      await ghl.revokeAccess(user.id, locationId);
       res.json({ success: true });
     } catch (error) {
       console.error("[GHL OAuth] Revoke error:", error);

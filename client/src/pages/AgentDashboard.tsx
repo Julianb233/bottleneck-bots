@@ -7,6 +7,7 @@ import {
   TaskInput,
   TaskTemplates,
   ExecutionErrorDisplay,
+  ExecutionLivePanel,
 } from '@/components/agent';
 import type { TaskTemplate } from '@/components/agent';
 import { LiveBrowserView } from '@/components/browser/LiveBrowserView';
@@ -369,69 +370,10 @@ export function AgentDashboard() {
             </TabsList>
           </div>
 
-          <TabsContent value="preview" className="flex-1 m-0 overflow-hidden">
-            {activeBrowserSession?.debugUrl ? (
-              <div className="h-full flex flex-col">
-                {/* Status bar */}
-                <div className="px-4 py-2 bg-gray-50 border-b flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                      </span>
-                      <span className="text-xs font-medium text-gray-600">Live Session</span>
-                    </div>
-                    {/* SSE Connection Status */}
-                    <div className="flex items-center gap-1 text-xs">
-                      {sseConnected ? (
-                        <Wifi className="w-3 h-3 text-green-500" />
-                      ) : (
-                        <WifiOff className="w-3 h-3 text-gray-400" />
-                      )}
-                      <span className={sseConnected ? 'text-green-600' : 'text-gray-400'}>
-                        {connectionState === 'connecting' ? 'Connecting...' : sseConnected ? 'Real-time' : 'Polling'}
-                      </span>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs gap-1"
-                    onClick={() => window.open(activeBrowserSession.debugUrl, '_blank')}
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Open in Tab
-                  </Button>
-                </div>
-
-                {/* Browser iframe */}
-                <div className="flex-1 relative">
-                  <iframe
-                    src={activeBrowserSession.debugUrl}
-                    className="absolute inset-0 w-full h-full border-none"
-                    title="Live Browser Preview"
-                    allow="clipboard-read; clipboard-write"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center p-6 text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                  <Monitor className="w-8 h-8 text-gray-400" />
-                </div>
-                <h3 className="font-semibold text-gray-900 mb-2">No Active Session</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Start an agent task that uses browser automation to see the live preview here.
-                </p>
-                {currentExecution && statusInfo && (
-                  <Badge variant="secondary" className={cn('gap-1', statusInfo.color)}>
-                    <statusInfo.icon className="w-3 h-3" />
-                    {statusInfo.label}
-                  </Badge>
-                )}
-              </div>
-            )}
+          <TabsContent value="preview" className="flex-1 m-0 overflow-auto">
+            <div className="p-3">
+              <ExecutionLivePanel sseConnected={sseConnected} />
+            </div>
           </TabsContent>
 
           <TabsContent value="templates" className="flex-1 m-0 overflow-hidden">

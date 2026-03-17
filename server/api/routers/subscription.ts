@@ -644,4 +644,65 @@ export const subscriptionRouter = router({
         });
       }
     }),
+
+  /**
+   * Resume a cancelled subscription (undo cancel_at_period_end)
+   */
+  resume: protectedProcedure.mutation(async ({ ctx }) => {
+    try {
+      const service = getSubscriptionService();
+      const currentSub = await service.getUserSubscription(ctx.user.id);
+      if (!currentSub) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No subscription found" });
+      }
+      if (!currentSub.subscription.cancelAtPeriodEnd) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Subscription is not scheduled for cancellation" });
+      }
+      if (currentSub.subscription.stripeSubscriptionId && process.env.STRIPE_SECRET_KEY) {
+        try {
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" as any });
+          await stripe.subscriptions.update(currentSub.subscription.stripeSubscriptionId, { cancel_at_period_end: false });
+        } catch (e) { console.error("Failed to resume on Stripe:", e); }
+      }
+      const { getDb } = await import("../../db");
+      const { userSubscriptions } = await import("../../../drizzle/schema-subscriptions");
+      const { eq } = await import("drizzle-orm");
+      const db = await getDb();
+      if (db) {
+        await db.update(userSubscriptions).set({ cancelAtPeriodEnd: false, cancellationReason: null, updatedAt: new Date() }).where(eq(userSubscriptions.userId, ctx.user.id));
+      }
+      return { success: true, message: "Subscription resumed successfully" };
+    } catch (error) {
+      if (error instanceof TRPCError) throw error;
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to resume subscription" });
+    }
+  }),
+
+  /**
+   * Get Stripe Billing Portal URL for self-serve billing management
+   */
+  getBillingPortalUrl: protectedProcedure
+    .input(z.object({ returnUrl: z.string().url().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = getSubscriptionService();
+        const currentSub = await service.getUserSubscription(ctx.user.id);
+        if (!currentSub?.subscription.stripeCustomerId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No Stripe customer found" });
+        }
+        if (!process.env.STRIPE_SECRET_KEY) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Stripe is not configured" });
+        }
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2024-12-18.acacia" as any });
+        const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+        const portalSession = await stripe.billingPortal.sessions.create({
+          customer: currentSub.subscription.stripeCustomerId,
+          return_url: input.returnUrl || `${baseUrl}/dashboard`,
+        });
+        return { success: true, url: portalSession.url };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to open billing portal" });
+      }
+    }),
 });

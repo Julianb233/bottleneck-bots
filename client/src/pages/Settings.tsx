@@ -667,6 +667,10 @@ export const Settings: React.FC = () => {
 
             {/* GoHighLevel CRM Integration */}
             <GHLConnectionCard />
+            {/* GoHighLevel Connection */}
+            <div className="mt-6">
+              <GHLConnectionCard />
+            </div>
           </TabsContent>
 
           {/* Webhooks Tab */}

@@ -1,0 +1,87 @@
+{
+  "task": "3-01-build",
+  "title": "GHL OAuth + Core Service Layer",
+  "status": "completed",
+  "completedAt": "2026-03-17T00:00:00Z",
+  "summary": "Complete GHL OAuth service with token management, rate limiting, tRPC router, OAuth callback routes, and Settings UI integration",
+  "filesCreated": [
+    "drizzle/schema-ghl.ts",
+    "server/_core/ghl-oauth-routes.ts",
+    "client/src/components/GHLConnectionCard.tsx",
+    "server/api/routers/pipelines.ts",
+    "server/api/routers/ghlAutomation.ts"
+  ],
+  "filesModified": [
+    "server/api/routers/ghl.ts",
+    "server/routers.ts",
+    "server/_core/index.ts",
+    "client/src/pages/Settings.tsx"
+  ],
+  "existingFilesPreserved": [
+    "server/services/ghl.service.ts",
+    "server/services/credentialVault.service.ts",
+    "server/services/oauthState.service.ts"
+  ],
+  "deliverables": {
+    "ghlService": {
+      "status": "already-complete",
+      "features": [
+        "OAuth 2.0 authorization code flow with PKCE",
+        "Token storage with encryption via credentialVault",
+        "Automatic token refresh (5 min before expiry)",
+        "Rate limiter (100 req/min per location with token bucket)",
+        "Circuit breaker (5 failures = open, 30s reset)",
+        "Multi-location support (agency + location tokens)",
+        "Base HTTP client with retry (3 attempts, exponential backoff)",
+        "Batch request support",
+        "Connection management (connect, disconnect, test)",
+        "Sync logging"
+      ]
+    },
+    "trpcRouter": {
+      "status": "rewritten",
+      "reason": "Original router imported non-existent GHLError class and used wrong service API (constructor-based vs singleton)",
+      "procedures": [
+        "ghl.connect - initiates OAuth flow, returns authorization URL",
+        "ghl.status - connection status for all user locations",
+        "ghl.listLocations - list authorized GHL locations",
+        "ghl.disconnect - revoke access and disconnect location",
+        "ghl.testConnection - test a connection via API call",
+        "ghl.configStatus - check if GHL OAuth env vars are set"
+      ]
+    },
+    "oauthRoutes": {
+      "status": "created",
+      "endpoint": "GET /api/ghl/oauth/callback",
+      "flow": "Exchanges code for tokens, stores in vault, redirects to /settings with success/error params"
+    },
+    "schema": {
+      "status": "created",
+      "tables": [
+        "ghl_connections - tracks connected GHL locations per user",
+        "ghl_sync_log - tracks sync operations"
+      ]
+    },
+    "ui": {
+      "status": "created",
+      "component": "GHLConnectionCard",
+      "location": "Settings page > OAuth Integrations tab",
+      "features": [
+        "Shows GHL config status (not configured warning)",
+        "Connect button opens OAuth popup",
+        "Lists connected locations with status badges",
+        "Disconnect with confirmation dialog",
+        "Test connection button",
+        "Re-auth button for expired tokens",
+        "Handles OAuth callback query params from redirect"
+      ]
+    }
+  },
+  "buildResult": "pass",
+  "notes": [
+    "ghl.service.ts was already comprehensive - no changes needed",
+    "Fixed duplicate ghlAutomationRouter import in routers.ts",
+    "Created stub routers for pipelines and ghlAutomation (pre-existing missing imports)",
+    "GHL_REDIRECT_URI env var should point to /api/ghl/oauth/callback"
+  ]
+}

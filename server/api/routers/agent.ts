@@ -36,6 +36,15 @@ const getExecutionSchema = z.object({
   executionId: z.number().int().positive(),
 });
 
+const pauseExecutionSchema = z.object({
+  executionId: z.number().int().positive(),
+  reason: z.string().optional(),
+});
+
+const resumeExecutionSchema = z.object({
+  executionId: z.number().int().positive(),
+});
+
 const listExecutionsSchema = z.object({
   limit: z.number().int().min(1).max(100).default(20),
   offset: z.number().int().min(0).default(0),
