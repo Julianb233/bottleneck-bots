@@ -262,7 +262,8 @@ function App() {
 
               {currentView === 'DASHBOARD' && (
                 <main id="main-content">
-                  <Dashboard userTier={userTier} credits={credits} />
+                  {/* Tier and credits are fetched from subscription API inside Dashboard */}
+                  <Dashboard />
                 </main>
               )}
 
