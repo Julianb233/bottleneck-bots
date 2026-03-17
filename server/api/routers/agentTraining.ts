@@ -626,8 +626,13 @@ export const agentTrainingRouter = router({
     .input(
       z.object({
         personality: z.string().min(1),
-        responseStyle: z.enum(["professional", "casual", "technical"]),
+        responseStyle: z.enum(["professional", "friendly", "casual", "technical"]),
         verbosity: z.enum(["concise", "detailed", "balanced"]),
+        languagePreferences: z.object({
+          primaryLanguage: z.string().default("en"),
+          supportedLanguages: z.array(z.string()).default(["en"]),
+          autoDetect: z.boolean().default(true),
+        }).optional(),
         escalationRules: z.array(escalationRuleSchema),
         customInstructions: z.string().optional(),
       })
@@ -666,6 +671,97 @@ export const agentTrainingRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: error instanceof Error ? error.message : "Failed to update behavior configuration",
+        });
+      }
+    }),
+
+  // ========================================
+  // ESCALATION CONFIGURATION
+  // ========================================
+
+  /**
+   * Get the user's escalation configuration.
+   * Falls back to DEFAULT_ESCALATION_CONFIG if no config has been saved yet.
+   */
+  getEscalationConfig: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not initialized" });
+    }
+
+    try {
+      const rows = await db
+        .select()
+        .from(knowledgeEntries)
+        .where(
+          and(
+            eq(knowledgeEntries.userId, ctx.user.id),
+            eq(knowledgeEntries.category, "escalation_config"),
+            eq(knowledgeEntries.isActive, true)
+          )
+        )
+        .limit(1);
+
+      if (rows.length === 0) {
+        return { success: true, escalation: DEFAULT_ESCALATION_CONFIG, isDefault: true };
+      }
+
+      let escalation: typeof DEFAULT_ESCALATION_CONFIG = DEFAULT_ESCALATION_CONFIG;
+      try {
+        escalation = JSON.parse(rows[0].content) as typeof DEFAULT_ESCALATION_CONFIG;
+      } catch {
+        return { success: true, escalation: DEFAULT_ESCALATION_CONFIG, isDefault: true };
+      }
+
+      return { success: true, escalation, isDefault: false };
+    } catch (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: error instanceof Error ? error.message : "Failed to get escalation configuration",
+      });
+    }
+  }),
+
+  /**
+   * Save the user's escalation configuration.
+   * Upserts: deactivates any existing 'escalation_config' row then inserts a fresh one.
+   */
+  updateEscalationConfig: protectedProcedure
+    .input(escalationConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not initialized" });
+      }
+
+      try {
+        // Deactivate existing config rows for this user
+        await db
+          .update(knowledgeEntries)
+          .set({ isActive: false })
+          .where(
+            and(
+              eq(knowledgeEntries.userId, ctx.user.id),
+              eq(knowledgeEntries.category, "escalation_config")
+            )
+          );
+
+        const [created] = await db
+          .insert(knowledgeEntries)
+          .values({
+            userId: ctx.user.id,
+            category: "escalation_config",
+            context: "escalation_configuration",
+            content: JSON.stringify(input),
+            isActive: true,
+          })
+          .returning();
+
+        return { success: true, config: created };
+      } catch (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: error instanceof Error ? error.message : "Failed to update escalation configuration",
         });
       }
     }),

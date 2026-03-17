@@ -4,6 +4,8 @@ import { TRPCError } from "@trpc/server";
 import { getDb } from "../../db";
 import { eq, and, desc, gte, lte, sql, count } from "drizzle-orm";
 import { taskExecutions, agencyTasks } from "../../../drizzle/schema-webhooks";
+import { getExecutionRetryService } from "../../services/executionRetry.service";
+import { classifyError, getErrorMetadata, isErrorRetryable } from "../../lib/errorTypes";
 
 /**
  * Execution History Router

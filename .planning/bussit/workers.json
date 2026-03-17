@@ -27,11 +27,11 @@
       "taskId": "aec8eff4cc13b2db7",
       "sessionId": "session-2026-03-17T10-42-29-024656Z",
       "registeredAt": "2026-03-17T10:43:47.704169Z",
-      "lastHeartbeat": "2026-03-17T11:04:53Z",
-      "status": "running",
+      "lastHeartbeat": "2026-03-17T11:06:30.378447Z",
+      "status": "idle",
       "shutdownRequested": false,
       "focus": "Day 4-5 (Execution + Launch)",
-      "currentTask": "4-03-build"
+      "currentTask": null
     }
   ],
   "maxWorkers": 3,

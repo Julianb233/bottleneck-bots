@@ -138,9 +138,9 @@
       "linearIdentifier": "AI-2872",
       "assignedTo": "worker-2",
       "claimedAt": "2026-03-17T11:01:56.026485Z",
-      "completedAt": "2026-03-17T12:22:00.000Z",
+      "completedAt": "2026-03-17T11:06:24.082072Z",
       "createdAt": "2026-03-16T20:00:00Z",
-      "result": "SOP extraction/classification/priority in RAG service, 3 new router endpoints, enhanced retrieval with SOP prioritization, knowledge base browser UI, agent orchestrator integration. 5 commits.",
+      "result": "Created taskTemplates router with 14 templates (5 GHL, 3 Marketing, 3 Sales, 3 Ops). Includes getAll, getById, runFromTemplate endpoints. Build passes. Commit 914d9a2.",
       "executionTime": 1332,
       "retries": 0,
       "failureHistory": []
@@ -406,7 +406,7 @@
       "phase": "04",
       "plan": "04",
       "priority": 431,
-      "status": "claimed",
+      "status": "completed",
       "dependencies": [
         "01-03-build"
       ],
@@ -415,9 +415,9 @@
       "linearIdentifier": "AI-2888",
       "assignedTo": "worker-3",
       "claimedAt": "2026-03-17T12:05:00.000Z",
-      "completedAt": null,
+      "completedAt": "2026-03-17T12:15:00.000Z",
       "createdAt": "2026-03-16T20:00:00Z",
-      "result": null,
+      "result": "CronExpressionBuilder (361 lines) and ExecutionHistoryPanel (188 lines) already built by parallel workers. Added 4 new tRPC procedures: duplicate (clone schedule), getNextRuns (preview N execution times), bulkToggle (batch enable/disable), getFailureReport (failure analysis with success rate, streaks, top reasons). All wired to existing cronSchedulerService.",
       "executionTime": 0,
       "retries": 0,
       "failureHistory": []
@@ -431,15 +431,15 @@
       "phase": "05",
       "plan": "01",
       "priority": 501,
-      "status": "pending",
+      "status": "claimed",
       "dependencies": [
         "04-01-build"
       ],
       "source": "gsd",
       "linearId": null,
       "linearIdentifier": "AI-2890",
-      "assignedTo": null,
-      "claimedAt": null,
+      "assignedTo": "worker-2",
+      "claimedAt": "2026-03-17T11:06:24.082072Z",
       "completedAt": null,
       "createdAt": "2026-03-16T20:00:00Z",
       "result": null,

@@ -617,6 +617,37 @@ export class GHLService {
     }
   }
 
+  /**
+   * Get all circuit breaker statuses (for UI monitoring)
+   */
+  getCircuitBreakerStatuses(): Array<{
+    locationId: string;
+    state: "closed" | "open" | "half-open";
+    failures: number;
+    lastFailure: number;
+    nextRetry: number;
+  }> {
+    const statuses: Array<{
+      locationId: string;
+      state: "closed" | "open" | "half-open";
+      failures: number;
+      lastFailure: number;
+      nextRetry: number;
+    }> = [];
+    for (const [locationId, cb] of this.circuitBreakers.entries()) {
+      if (cb.state !== "closed" || cb.failures > 0) {
+        statuses.push({
+          locationId,
+          state: cb.state,
+          failures: cb.failures,
+          lastFailure: cb.lastFailure,
+          nextRetry: cb.nextRetry,
+        });
+      }
+    }
+    return statuses;
+  }
+
   // ========================================
   // API CLIENT
   // ========================================
