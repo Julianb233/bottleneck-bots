@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import { useLocation } from 'wouter';
 import { trpc } from '../lib/trpc';
 import { useTourStore } from '@/stores/tourStore';
@@ -30,7 +30,8 @@ import { SubscriptionUsageCard, UpgradeModal, ExecutionPacksModal } from './subs
 import { SwarmView } from './swarm/SwarmView';
 import Training from '../pages/Training';
 import TaskTemplates from './training/TaskTemplates';
-import { Home, Terminal, Mail, Globe, Settings, Bot, Zap, Network, GraduationCap, LayoutTemplate } from 'lucide-react';
+import { Home, Terminal, Mail, Globe, Settings, Bot, Zap, Network, GraduationCap, LayoutTemplate, SlidersHorizontal } from 'lucide-react';
+const AgentCustomization = lazy(() => import('../pages/AgentCustomization'));
 
 // Demo data only loaded when VITE_DEMO_MODE=1 (disabled by default in production)
 
@@ -43,12 +44,12 @@ const DEFAULT_USER: User = {
 };
 
 // ViewMode type definition
-type ViewMode = 'GLOBAL' | 'TERMINAL' | 'EMAIL_AGENT' | 'VOICE_AGENT' | 'SETTINGS' | 'SEO' | 'ADS' | 'MARKETPLACE' | 'AI_BROWSER' | 'AGENT' | 'SWARM' | 'TRAINING' | 'TEMPLATES';
+type ViewMode = 'GLOBAL' | 'TERMINAL' | 'EMAIL_AGENT' | 'VOICE_AGENT' | 'SETTINGS' | 'SEO' | 'ADS' | 'MARKETPLACE' | 'AI_BROWSER' | 'AGENT' | 'SWARM' | 'TRAINING' | 'TEMPLATES' | 'CUSTOMIZE';
 
 // Helper function to parse view from URL hash
 const getViewFromHash = (): ViewMode => {
   const hash = window.location.hash.slice(1); // remove #
-  const validViews: ViewMode[] = ['GLOBAL', 'TERMINAL', 'EMAIL_AGENT', 'VOICE_AGENT', 'SETTINGS', 'SEO', 'ADS', 'MARKETPLACE', 'AI_BROWSER', 'AGENT', 'SWARM', 'TRAINING', 'TEMPLATES'];
+  const validViews: ViewMode[] = ['GLOBAL', 'TERMINAL', 'EMAIL_AGENT', 'VOICE_AGENT', 'SETTINGS', 'SEO', 'ADS', 'MARKETPLACE', 'AI_BROWSER', 'AGENT', 'SWARM', 'TRAINING', 'TEMPLATES', 'CUSTOMIZE'];
   return validViews.includes(hash.toUpperCase() as ViewMode) ? hash.toUpperCase() as ViewMode : 'GLOBAL';
 };
 
@@ -810,6 +811,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ userTier: propTier, credit
             <LayoutTemplate className="w-5 h-5 lg:w-6 lg:h-6" aria-hidden="true" />
           </button>
 
+          <button
+            onClick={() => setViewMode('CUSTOMIZE')}
+            className={`w-11 h-11 lg:w-12 lg:h-12 rounded-xl flex items-center justify-center transition-all min-h-[44px] min-w-[44px] ${viewMode === 'CUSTOMIZE' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30' : 'text-slate-400 hover:bg-gray-100 hover:text-emerald-500'}`}
+            aria-label="Agent Customization"
+            aria-current={viewMode === 'CUSTOMIZE' ? 'page' : undefined}
+            title="Agent Customization - Personality, Instructions, Tools"
+          >
+            <SlidersHorizontal className="w-5 h-5 lg:w-6 lg:h-6" aria-hidden="true" />
+          </button>
+
           <div className="flex-1"></div>
 
           <button
@@ -879,6 +890,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ userTier: propTier, credit
 
           {viewMode === 'TEMPLATES' && (
             <TaskTemplates />
+          )}
+
+          {viewMode === 'CUSTOMIZE' && (
+            <AgentCustomization />
           )}
 
           {viewMode === 'TERMINAL' && (
