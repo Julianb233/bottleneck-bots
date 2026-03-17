@@ -575,6 +575,53 @@ export const ragRouter = router({
     }),
 
   /**
+   * Re-process an existing document with updated SOP processing
+   */
+  reprocessSource: protectedProcedure
+    .input(z.object({ sourceId: z.number() }))
+    .mutation(async ({ input }) => {
+      try {
+        const result = await ragService.reprocessSource(input.sourceId);
+
+        return {
+          success: true,
+          sourceId: result.sourceId,
+          chunkCount: result.chunkCount,
+          totalTokens: result.totalTokens,
+          message: `Reprocessed document: ${result.chunkCount} chunks created`,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Reprocess failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to reprocess document: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
+   * Get knowledge base summary (categorized counts, SOP data, top priority docs)
+   */
+  knowledgeSummary: protectedProcedure
+    .input(z.object({}).optional())
+    .query(async ({ ctx }) => {
+      try {
+        const summary = await ragService.getKnowledgeSummary(ctx.user.id);
+
+        return {
+          success: true,
+          ...summary,
+        };
+      } catch (error) {
+        console.error("[RAG Router] Knowledge summary failed:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to get knowledge summary: ${error instanceof Error ? error.message : "Unknown error"}`,
+        });
+      }
+    }),
+
+  /**
    * Seed platform keywords (admin operation)
    * This should be called once during initial setup
    */

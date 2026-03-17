@@ -1275,22 +1275,65 @@ export class AgentOrchestratorService {
         content: currentPrompt,
       });
 
-      // Fetch RAG context on first iteration
+      // Fetch RAG context on first iteration (enhanced with SOP knowledge)
       let ragContext: RAGContext | undefined;
       if (state.iterations === 0) {
         try {
+          // Retrieve RAG documentation context
           const ragResult = await ragService.buildSystemPrompt(state.taskDescription, {
             maxDocumentationTokens: 3000,
             includeExamples: true,
           });
+
+          // Also retrieve SOP-specific knowledge with priority-weighted results
+          const sopChunks = await ragService.retrieve(state.taskDescription, {
+            topK: 5,
+            categories: ['sop', 'process', 'policy'],
+            minSimilarity: 0.5,
+          });
+
+          // Extract SOP action sequences from chunk metadata
+          const actionSequences: RAGContext['actionSequences'] = [];
+          for (const chunk of sopChunks) {
+            const meta = (chunk.metadata as Record<string, any>) || {};
+            if (meta.knowledgeCategory === 'sop' || meta.knowledgeCategory === 'process') {
+              actionSequences.push({
+                sequenceId: `sop-${chunk.id}`,
+                name: meta.title || 'SOP Document',
+                successRate: (meta.priority || 5) / 10,
+                steps: [chunk.content.substring(0, 200)],
+              });
+            }
+          }
+
+          // Build SOP documents context from high-priority chunks
+          const sopDocuments = sopChunks
+            .filter(chunk => {
+              const meta = (chunk.metadata as Record<string, any>) || {};
+              return meta.priority >= 6;
+            })
+            .map(chunk => {
+              const meta = (chunk.metadata as Record<string, any>) || {};
+              return {
+                title: meta.title || 'Training Document',
+                category: meta.knowledgeCategory || meta.category || 'general',
+                content: chunk.content,
+                priority: meta.priority || 5,
+              };
+            });
+
           ragContext = {
             relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
               elementName: 'document',
               selector: chunk.content.substring(0, 100),
               reliability: chunk.similarity || 0,
             })),
+            actionSequences: actionSequences.length > 0 ? actionSequences : undefined,
+            sopDocuments: sopDocuments.length > 0 ? sopDocuments : undefined,
           };
-          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+
+          const sopCount = sopChunks.length;
+          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} doc chunks, ${sopCount} SOP chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
         } catch (ragError) {
           console.warn('[Agent] Failed to load RAG context:', ragError);
           // Continue without RAG context
