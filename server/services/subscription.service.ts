@@ -485,23 +485,45 @@ class SubscriptionService {
   }
 
   /**
-   * Cancel subscription (schedule cancellation at period end)
+   * Cancel subscription — either immediately or at period end.
+   * Also cancels on Stripe if a Stripe subscription is linked.
    */
-  async cancelSubscription(userId: number, reason?: string): Promise<UserSubscription> {
+  async cancelSubscription(
+    userId: number,
+    reason?: string,
+    cancelImmediately: boolean = false
+  ): Promise<void> {
     const db = await getDb();
     if (!db) throw new Error("Database not initialized");
 
-    const [subscription] = await db
-      .update(userSubscriptions)
-      .set({
-        cancelAtPeriodEnd: true,
-        cancellationReason: reason || "User requested cancellation",
-        updatedAt: new Date(),
-      })
-      .where(eq(userSubscriptions.userId, userId))
-      .returning();
+    if (cancelImmediately) {
+      await db
+        .update(userSubscriptions)
+        .set({
+          status: "cancelled",
+          cancelledAt: new Date(),
+          cancellationReason: reason || "user_requested",
+          updatedAt: new Date(),
+        })
+        .where(eq(userSubscriptions.userId, userId));
+    } else {
+      await db
+        .update(userSubscriptions)
+        .set({
+          cancelAtPeriodEnd: true,
+          cancellationReason: reason || "user_requested",
+          updatedAt: new Date(),
+        })
+        .where(eq(userSubscriptions.userId, userId));
+    }
 
-    // If connected to Stripe, cancel at period end there too
+    // If connected to Stripe, cancel there too
+    const [subscription] = await db
+      .select()
+      .from(userSubscriptions)
+      .where(eq(userSubscriptions.userId, userId))
+      .limit(1);
+
     if (subscription?.stripeSubscriptionId) {
       try {
         const Stripe = (await import("stripe")).default;
@@ -510,18 +532,21 @@ class SubscriptionService {
           const stripe = new Stripe(stripeSecretKey, {
             apiVersion: "2024-12-18.acacia" as any,
           });
-          await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-            cancel_at_period_end: true,
-          });
-          console.log(`[SubscriptionService] Scheduled Stripe cancellation for sub ${subscription.stripeSubscriptionId}`);
+          if (cancelImmediately) {
+            await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+            console.log(`[SubscriptionService] Immediately cancelled Stripe sub ${subscription.stripeSubscriptionId}`);
+          } else {
+            await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+              cancel_at_period_end: true,
+            });
+            console.log(`[SubscriptionService] Scheduled Stripe cancellation for sub ${subscription.stripeSubscriptionId}`);
+          }
         }
       } catch (error) {
         console.error("[SubscriptionService] Failed to cancel on Stripe:", error);
         // Don't throw - local cancellation still succeeded
       }
     }
-
-    return subscription;
   }
 
   /**
