@@ -1,7 +1,7 @@
 {
   "status": "completed",
   "summary": "Built RAG Document Training system for Agency SOPs. Enhanced RAG pipeline with SOP-specific processing (step extraction, category detection, priority ranking). Added Knowledge Base Browser UI tab with document status, chunk preview, re-process, and delete capabilities. Wired SOP knowledge retrieval into agent orchestrator for training data reference during task execution.",
-  "commits": [],
+  "commits": ["c88b527"],
   "errors": [],
   "deliverables": {
     "sopProcessing": "server/services/rag.service.ts - processSOPContent() extracts steps, detects category (sop/process/policy/reference/training), assigns priority 1-10, extracts tags",
