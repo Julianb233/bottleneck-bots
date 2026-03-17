@@ -1275,22 +1275,43 @@ export class AgentOrchestratorService {
         content: currentPrompt,
       });
 
-      // Fetch RAG context on first iteration
+      // Fetch RAG context on first iteration with priority-weighted SOP-aware retrieval
       let ragContext: RAGContext | undefined;
       if (state.iterations === 0) {
         try {
+          // Use priority-weighted retrieval to boost SOP and process documents
+          const priorityChunks = await ragService.retrieveWithPriority(state.taskDescription, {
+            topK: 10,
+            minSimilarity: 0.5,
+            priorityBoost: true,
+          });
+
+          // Also get the system prompt for platform detection
           const ragResult = await ragService.buildSystemPrompt(state.taskDescription, {
             maxDocumentationTokens: 3000,
             includeExamples: true,
           });
+
+          // Build enhanced RAG context combining priority chunks and standard retrieval
+          const sopChunks = priorityChunks.filter(c => {
+            const meta = c.metadata as Record<string, any> || {};
+            return meta.knowledgeCategory === 'sop' || meta.knowledgeCategory === 'process';
+          });
+
           ragContext = {
             relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
               elementName: 'document',
               selector: chunk.content.substring(0, 100),
               reliability: chunk.similarity || 0,
             })),
+            actionSequences: sopChunks.length > 0 ? sopChunks.slice(0, 5).map((chunk, idx) => ({
+              sequenceId: `sop-${chunk.id}`,
+              name: `SOP Reference ${idx + 1}`,
+              successRate: chunk.similarity || 0.8,
+              steps: chunk.content.split(/\n/).filter(line => /^\s*\d+[.)]\s/.test(line)).map(s => s.trim()),
+            })).filter(s => s.steps.length > 0) : undefined,
           };
-          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks (${sopChunks.length} SOP), platforms: ${ragResult.detectedPlatforms.join(', ')}`);
         } catch (ragError) {
           console.warn('[Agent] Failed to load RAG context:', ragError);
           // Continue without RAG context

@@ -18,6 +18,9 @@ import { serviceLoggers } from "../lib/logger";
 
 const logger = serviceLoggers.rag;
 
+/** Knowledge chunk category types for tagging */
+export type KnowledgeCategory = "sop" | "process" | "policy" | "reference" | "training" | "general";
+
 export interface IngestDocumentInput {
   platform: string;
   category: string;
@@ -503,6 +506,347 @@ class RAGService {
       logger.error({ error, prompt }, 'Platform detection failed');
       return [];
     }
+  }
+
+  /**
+   * Detect the knowledge category of a document based on content analysis
+   */
+  detectKnowledgeCategory(content: string, declaredCategory?: string): KnowledgeCategory {
+    const lower = content.toLowerCase();
+
+    // If category is explicitly declared as SOP, trust it
+    if (declaredCategory === "sop") return "sop";
+    if (declaredCategory === "policy") return "policy";
+    if (declaredCategory === "process") return "process";
+
+    // SOP detection: ordered steps, numbered lists, procedure keywords
+    const sopIndicators = [
+      /\bstandard operating procedure\b/i,
+      /\bsop\b/i,
+      /\bstep\s*\d+/i,
+      /\bprocedure\b/i,
+      /\bwork instruction\b/i,
+      /^\s*\d+\.\s+/m,  // numbered steps
+    ];
+    const sopScore = sopIndicators.filter(r => r.test(content)).length;
+    if (sopScore >= 2) return "sop";
+
+    // Process detection
+    const processIndicators = [
+      /\bworkflow\b/i,
+      /\bprocess\b/i,
+      /\bthen\b.*\bnext\b/i,
+      /\bsequence\b/i,
+    ];
+    const processScore = processIndicators.filter(r => r.test(content)).length;
+    if (processScore >= 2) return "process";
+
+    // Policy detection
+    const policyIndicators = [
+      /\bpolicy\b/i,
+      /\bguideline\b/i,
+      /\bcompliance\b/i,
+      /\brequirement\b/i,
+      /\bmust\b/i,
+      /\bshall\b/i,
+    ];
+    const policyScore = policyIndicators.filter(r => r.test(content)).length;
+    if (policyScore >= 3) return "policy";
+
+    // Reference detection
+    if (lower.includes("reference") || lower.includes("documentation") || lower.includes("api")) {
+      return "reference";
+    }
+
+    return "general";
+  }
+
+  /**
+   * Extract step sequences from SOP-like documents
+   * Returns structured steps for better agent retrieval
+   */
+  extractSOPSteps(content: string): { stepNumber: number; instruction: string; details?: string }[] {
+    const steps: { stepNumber: number; instruction: string; details?: string }[] = [];
+
+    // Pattern 1: "Step N: ..." or "Step N. ..."
+    const stepPattern = /(?:step\s*(\d+))[.:]\s*(.+?)(?=(?:step\s*\d+[.:]|\n\n|$))/gis;
+    let match;
+    while ((match = stepPattern.exec(content)) !== null) {
+      steps.push({
+        stepNumber: parseInt(match[1]),
+        instruction: match[2].trim().split("\n")[0].trim(),
+        details: match[2].trim().split("\n").slice(1).join("\n").trim() || undefined,
+      });
+    }
+
+    // Pattern 2: Numbered list "1. ...", "2. ..."
+    if (steps.length === 0) {
+      const numberedPattern = /^(\d+)\.\s+(.+)/gm;
+      while ((match = numberedPattern.exec(content)) !== null) {
+        steps.push({
+          stepNumber: parseInt(match[1]),
+          instruction: match[2].trim(),
+        });
+      }
+    }
+
+    return steps;
+  }
+
+  /**
+   * Calculate priority score for a chunk based on content signals
+   * Higher scores = more important for agent retrieval
+   */
+  calculateChunkPriority(content: string, category: KnowledgeCategory): number {
+    let priority = 50; // Base priority
+
+    // Category-based boosts
+    if (category === "sop") priority += 20;
+    if (category === "process") priority += 15;
+    if (category === "policy") priority += 10;
+
+    // Content signal boosts
+    const lower = content.toLowerCase();
+    if (lower.includes("important") || lower.includes("critical")) priority += 10;
+    if (lower.includes("must") || lower.includes("required")) priority += 5;
+    if (lower.includes("step")) priority += 5;
+    if (lower.includes("warning") || lower.includes("caution")) priority += 5;
+    if (lower.includes("example")) priority += 3;
+
+    return Math.min(priority, 100);
+  }
+
+  /**
+   * Ingest a document with SOP-aware processing
+   * Enhances chunks with category tags, priority scores, and SOP step extraction
+   */
+  async ingestWithSOPProcessing(input: IngestDocumentInput): Promise<IngestResult & { knowledgeCategory: KnowledgeCategory; sopSteps: number }> {
+    const db = await getDb();
+    if (!db) {
+      throw new Error("Database not available");
+    }
+
+    // Detect knowledge category
+    const knowledgeCategory = this.detectKnowledgeCategory(input.content, input.category);
+    logger.info({ knowledgeCategory, title: input.title }, 'Detected knowledge category');
+
+    // Extract SOP steps if applicable
+    const sopSteps = knowledgeCategory === "sop" ? this.extractSOPSteps(input.content) : [];
+    logger.info({ sopStepCount: sopSteps.length, title: input.title }, 'Extracted SOP steps');
+
+    // Generate content hash for dedup
+    const contentHash = generateContentHash(input.content);
+
+    // Check for existing document with same hash
+    const existing = await db
+      .select()
+      .from(documentationSources)
+      .where(
+        and(
+          eq(documentationSources.contentHash, contentHash),
+          eq(documentationSources.platform, input.platform)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      logger.info({ contentHash, sourceId: existing[0].id }, 'Document already exists');
+      return {
+        sourceId: existing[0].id,
+        chunkCount: 0,
+        totalTokens: 0,
+        knowledgeCategory,
+        sopSteps: sopSteps.length,
+      };
+    }
+
+    // Create documentation source with enhanced metadata
+    const [source] = await db
+      .insert(documentationSources)
+      .values({
+        userId: input.userId,
+        platform: input.platform,
+        category: input.category,
+        title: input.title,
+        content: input.content,
+        contentHash,
+        sourceUrl: input.sourceUrl,
+        sourceType: input.sourceType || "markdown",
+        version: input.version,
+        isActive: true,
+        metadata: {
+          knowledgeCategory,
+          sopStepCount: sopSteps.length,
+          sopSteps: sopSteps.length > 0 ? sopSteps : undefined,
+          processedAt: new Date().toISOString(),
+        },
+        tags: [knowledgeCategory, input.category, input.platform].filter(Boolean),
+      })
+      .returning();
+
+    // Chunk the content
+    const chunkSize = input.chunkingOptions?.maxTokens || 1000;
+    const overlap = input.chunkingOptions?.overlapTokens || 200;
+    const chunks = chunkDocument(input.content, chunkSize, overlap);
+
+    // Generate embeddings
+    const embeddings = await generateEmbeddings(chunks);
+
+    // Insert chunks with category tags and priority
+    const chunkValues = chunks.map((chunk, index) => {
+      const chunkCategory = this.detectKnowledgeCategory(chunk, input.category);
+      const priority = this.calculateChunkPriority(chunk, chunkCategory);
+      return {
+        sourceId: source.id,
+        chunkIndex: index,
+        content: chunk,
+        tokenCount: estimateTokens(chunk),
+        metadata: {
+          platform: input.platform,
+          category: input.category,
+          knowledgeCategory: chunkCategory,
+          priority,
+          title: input.title,
+          chunkSize: chunk.length,
+        },
+      };
+    });
+
+    await db.insert(documentationChunks).values(chunkValues);
+
+    // Update embeddings
+    for (let i = 0; i < chunks.length; i++) {
+      const embeddingVector = `[${embeddings[i].join(",")}]`;
+      await db.execute(sql`
+        UPDATE documentation_chunks
+        SET embedding = ${embeddingVector}::vector
+        WHERE source_id = ${source.id} AND chunk_index = ${i}
+      `);
+    }
+
+    const totalTokens = chunkValues.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
+
+    logger.info({
+      sourceId: source.id,
+      chunkCount: chunks.length,
+      totalTokens,
+      knowledgeCategory,
+      sopSteps: sopSteps.length,
+    }, 'SOP-aware document ingestion completed');
+
+    return {
+      sourceId: source.id,
+      chunkCount: chunks.length,
+      totalTokens,
+      knowledgeCategory,
+      sopSteps: sopSteps.length,
+    };
+  }
+
+  /**
+   * Reprocess an existing document (re-chunk, re-embed, re-tag)
+   */
+  async reprocessSource(sourceId: number): Promise<IngestResult & { knowledgeCategory: KnowledgeCategory }> {
+    const db = await getDb();
+    if (!db) {
+      throw new Error("Database not available");
+    }
+
+    const [source] = await db
+      .select()
+      .from(documentationSources)
+      .where(eq(documentationSources.id, sourceId))
+      .limit(1);
+
+    if (!source) {
+      throw new Error(`Source ${sourceId} not found`);
+    }
+
+    // Delete existing chunks
+    await db.delete(documentationChunks).where(eq(documentationChunks.sourceId, sourceId));
+
+    // Detect category
+    const knowledgeCategory = this.detectKnowledgeCategory(source.content, source.category);
+    const sopSteps = knowledgeCategory === "sop" ? this.extractSOPSteps(source.content) : [];
+
+    // Update source metadata
+    await db.update(documentationSources).set({
+      metadata: {
+        ...(source.metadata as Record<string, unknown> || {}),
+        knowledgeCategory,
+        sopStepCount: sopSteps.length,
+        sopSteps: sopSteps.length > 0 ? sopSteps : undefined,
+        reprocessedAt: new Date().toISOString(),
+      },
+      tags: [knowledgeCategory, source.category, source.platform].filter(Boolean),
+      updatedAt: new Date(),
+    }).where(eq(documentationSources.id, sourceId));
+
+    // Re-chunk
+    const chunks = chunkDocument(source.content);
+    const embeddings = await generateEmbeddings(chunks);
+
+    const chunkValues = chunks.map((chunk, index) => {
+      const chunkCat = this.detectKnowledgeCategory(chunk, source.category);
+      return {
+        sourceId,
+        chunkIndex: index,
+        content: chunk,
+        tokenCount: estimateTokens(chunk),
+        metadata: {
+          platform: source.platform,
+          category: source.category,
+          knowledgeCategory: chunkCat,
+          priority: this.calculateChunkPriority(chunk, chunkCat),
+          title: source.title,
+          chunkSize: chunk.length,
+        },
+      };
+    });
+
+    await db.insert(documentationChunks).values(chunkValues);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const embeddingVector = `[${embeddings[i].join(",")}]`;
+      await db.execute(sql`
+        UPDATE documentation_chunks
+        SET embedding = ${embeddingVector}::vector
+        WHERE source_id = ${sourceId} AND chunk_index = ${i}
+      `);
+    }
+
+    const totalTokens = chunkValues.reduce((sum, c) => sum + c.tokenCount, 0);
+
+    logger.info({ sourceId, chunkCount: chunks.length, knowledgeCategory }, 'Source reprocessed');
+
+    return {
+      sourceId,
+      chunkCount: chunks.length,
+      totalTokens,
+      knowledgeCategory,
+    };
+  }
+
+  /**
+   * Retrieve with priority-weighted ranking
+   * SOP and process chunks get boosted when priority-aware retrieval is enabled
+   */
+  async retrieveWithPriority(query: string, options: RetrieveOptions & { priorityBoost?: boolean } = {}): Promise<DocumentChunk[]> {
+    const chunks = await this.retrieve(query, options);
+
+    if (!options.priorityBoost) {
+      return chunks;
+    }
+
+    // Apply priority-weighted re-ranking
+    return chunks.map(chunk => {
+      const meta = chunk.metadata as Record<string, any> || {};
+      const priority = (meta.priority || 50) / 100;
+      const similarity = chunk.similarity || 0;
+      // Blend: 70% similarity + 30% priority
+      const boostedScore = similarity * 0.7 + priority * 0.3;
+      return { ...chunk, similarity: boostedScore };
+    }).sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
   }
 
   /**
