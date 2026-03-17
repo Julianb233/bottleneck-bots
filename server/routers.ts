@@ -44,6 +44,7 @@ import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlRouter } from "./api/routers/ghl";
 import { ghlAutomationRouter } from "./api/routers/ghlAutomation";
+import { taskTemplatesRouter } from "./api/routers/taskTemplates";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -140,6 +141,9 @@ export const appRouter = router({
 
   // Multi-Step Workflow Pipelines
   pipelines: pipelinesRouter,
+
+  // Task Templates (14 pre-built workflow templates)
+  taskTemplates: taskTemplatesRouter,
 
   // GoHighLevel Integration (OAuth, connections, API)
   ghl: ghlRouter,
