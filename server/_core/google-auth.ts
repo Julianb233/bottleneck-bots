@@ -10,13 +10,12 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USER_INFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
 
-// Fallback for development environments
-const DEFAULT_DEV_REDIRECT_URI = "http://localhost:3000/api/oauth/google/callback";
+// Base URL for constructing redirect URIs - uses APP_URL in production
+const BASE_URL = process.env.APP_URL || "http://localhost:3000";
 
 function getRedirectUri(req: Request): string {
-    // Always use environment variable or fallback to development URL
-    // In production, GOOGLE_REDIRECT_URI MUST be set
-    return process.env.GOOGLE_REDIRECT_URI || DEFAULT_DEV_REDIRECT_URI;
+    // Use explicit env var if set, otherwise derive from APP_URL
+    return process.env.GOOGLE_REDIRECT_URI || `${BASE_URL}/api/oauth/google/callback`;
 }
 
 export function registerGoogleAuthRoutes(app: Express) {

@@ -21,6 +21,25 @@ PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 NODE_ENV=production
 ```
 
+### OAuth / Application URL (REQUIRED for OAuth flows)
+
+```bash
+# Application base URL — used to derive OAuth redirect URIs
+# All OAuth callback URLs default to APP_URL + /api/oauth/<provider>/callback
+APP_URL=https://bottleneckbots.com
+
+# Or set each provider's redirect URI explicitly:
+# GOOGLE_REDIRECT_URI=https://bottleneckbots.com/api/oauth/google/callback
+# GMAIL_REDIRECT_URI=https://bottleneckbots.com/api/auth/oauth/gmail/callback
+# OUTLOOK_REDIRECT_URI=https://bottleneckbots.com/api/auth/oauth/outlook/callback
+# FACEBOOK_REDIRECT_URI=https://bottleneckbots.com/api/auth/oauth/facebook/callback
+# INSTAGRAM_REDIRECT_URI=https://bottleneckbots.com/api/auth/oauth/instagram/callback
+# LINKEDIN_REDIRECT_URI=https://bottleneckbots.com/api/auth/oauth/linkedin/callback
+```
+
+> **Important:** Each redirect URI must also be registered in the respective OAuth provider's
+> developer console (Google Cloud Console, Azure Portal, Facebook Developers, etc.).
+
 ### Optional Variables
 
 ```bash
