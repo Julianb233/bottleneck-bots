@@ -223,7 +223,7 @@ router.post("/forgot-password", async (req, res) => {
       // TODO: Send email with reset link
       // For now, we'll return the token in development mode
       // In production, this should only send an email
-      const resetLink = `${process.env.APP_URL || 'http://localhost:5000'}/reset-password?token=${token}`;
+      const resetLink = `${process.env.APP_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
 
       console.log(`[Auth] Password reset requested for: ${email}`);
       console.log(`[Auth] Reset link: ${resetLink}`);
