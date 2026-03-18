@@ -700,3 +700,14 @@ export {
   type PasswordResetConfirm,
   type EmailVerificationRequest,
 } from "./schema-auth";
+
+// GHL Multi-Location Management
+export {
+  ghlLocations,
+  ghlActiveLocation,
+  type GHLLocationConfig,
+  type GHLLocationRow,
+  type InsertGHLLocation,
+  type GHLActiveLocationRow,
+  type InsertGHLActiveLocation,
+} from "./schema-ghl-locations";
