@@ -15,12 +15,15 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import {
   Bot,
   MessageSquare,
   SlidersHorizontal,
   AlertTriangle,
   FileText,
+  Languages,
   Plus,
   X,
   Save,
@@ -29,8 +32,14 @@ import {
 
 // Types
 
-type ResponseStyle = 'professional' | 'casual' | 'technical';
+type ResponseStyle = 'professional' | 'friendly' | 'casual' | 'technical';
 type Verbosity = 'concise' | 'balanced' | 'detailed';
+
+interface LanguagePreferences {
+  primaryLanguage: string;
+  supportedLanguages: string[];
+  autoDetect: boolean;
+}
 
 interface EscalationRule {
   condition: string;
@@ -41,14 +50,35 @@ interface BehaviorConfig {
   personality: string;
   responseStyle: ResponseStyle;
   verbosity: Verbosity;
+  languagePreferences: LanguagePreferences;
   escalationRules: EscalationRule[];
   customInstructions: string;
 }
+
+const LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'fr', label: 'French' },
+  { value: 'de', label: 'German' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'it', label: 'Italian' },
+  { value: 'nl', label: 'Dutch' },
+  { value: 'ja', label: 'Japanese' },
+  { value: 'zh', label: 'Chinese' },
+  { value: 'ko', label: 'Korean' },
+  { value: 'ar', label: 'Arabic' },
+  { value: 'hi', label: 'Hindi' },
+];
 
 const DEFAULT_CONFIG: BehaviorConfig = {
   personality: 'You are a helpful, professional AI assistant for agency operations.',
   responseStyle: 'professional',
   verbosity: 'balanced',
+  languagePreferences: {
+    primaryLanguage: 'en',
+    supportedLanguages: ['en'],
+    autoDetect: true,
+  },
   escalationRules: [],
   customInstructions: '',
 };

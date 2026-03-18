@@ -1,0 +1,45 @@
+{
+  "task": "4-02-build",
+  "title": "Execution History + Replay",
+  "status": "complete",
+  "completedAt": "2026-03-17T00:00:00Z",
+  "deliverables": {
+    "pages": [
+      "client/src/pages/ExecutionHistory.tsx"
+    ],
+    "routeChanges": [
+      "client/src/components/Routes.tsx - added /execution-history route",
+      "client/src/components/DashboardLayout.tsx - added sidebar entry with History icon"
+    ]
+  },
+  "features": {
+    "executionHistoryPage": {
+      "statsCards": "Total, success rate, succeeded, failed, avg duration",
+      "filtering": "By status (all/success/failed/running/timeout/cancelled/needs_input), date range (all/today/week/month), search by task name/description/ID",
+      "table": "ID, task, status badge, steps count, duration, started time, actions",
+      "pagination": "20 items per page with page number navigation"
+    },
+    "executionDetailModal": {
+      "summaryBar": "Task, duration, steps, started, attempt number",
+      "timelineTab": "Step-by-step timeline with dot indicators, tool/action names, reasoning (with Brain icon), results, errors, screenshot links, duration per step",
+      "outputTab": "JSON output display",
+      "replayTab": "BrowserBase session recording viewer integration, debug URL link, BrowserBase session link"
+    },
+    "exportReport": {
+      "format": "Markdown file download",
+      "contents": "Overview, error details, step-by-step breakdown, output JSON"
+    },
+    "browserBaseReplay": {
+      "recordingViewer": "Reuses SessionRecordingViewer component",
+      "debugUrl": "Links to BrowserBase debug view",
+      "sessionLink": "Direct link to BrowserBase session page"
+    }
+  },
+  "backendEndpointsUsed": [
+    "agent.listExecutions - paginated list with status filter",
+    "agent.getExecution - single execution detail with steps/toolHistory",
+    "agent.getStats - aggregated execution statistics"
+  ],
+  "buildStatus": "vite build succeeded (server build has pre-existing errors from missing router files)",
+  "notes": "Backend already had all needed tRPC endpoints (listExecutions, getExecution, getStats). No new backend code was needed. The page follows BrowserSessions.tsx patterns for filters/pagination and agent/ExecutionHistory.tsx patterns for status display."
+}

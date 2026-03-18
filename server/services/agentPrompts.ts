@@ -42,6 +42,7 @@ export {
 
 /**
  * RAG context interface for knowledge retrieval
+ * Enhanced with SOP-specific fields for training document integration
  */
 export interface RAGContext {
   taskKnowledge?: {
@@ -65,6 +66,13 @@ export interface RAGContext {
   errorPatterns?: {
     pattern: string;
     recoveryStrategy: string;
+  }[];
+  /** SOP documents retrieved from training knowledge base */
+  sopDocuments?: {
+    title: string;
+    category: string;
+    content: string;
+    priority: number;
   }[];
 }
 
@@ -140,6 +148,16 @@ function buildRAGContextPrompt(ragContext: RAGContext): string {
     prompt += '**Known Error Patterns**:\n';
     for (const err of ragContext.errorPatterns) {
       prompt += `- "${err.pattern}" → ${err.recoveryStrategy}\n`;
+    }
+    prompt += '\n';
+  }
+
+  if (ragContext.sopDocuments && ragContext.sopDocuments.length > 0) {
+    prompt += '**Training Knowledge (SOPs & Processes)**:\n';
+    prompt += 'Follow these standard operating procedures when applicable:\n\n';
+    for (const doc of ragContext.sopDocuments) {
+      prompt += `--- ${doc.title} [${doc.category}] (Priority: ${doc.priority}/10) ---\n`;
+      prompt += `${doc.content.substring(0, 500)}\n\n`;
     }
   }
 

@@ -155,6 +155,7 @@ const SCHEDULE_TYPES = [
   { value: 'weekly', label: 'Weekly' },
   { value: 'monthly', label: 'Monthly' },
   { value: 'cron', label: 'Custom (Cron)' },
+  { value: 'once', label: 'One-time' },
 ];
 
 const TIMEZONES = [
@@ -180,6 +181,8 @@ export default function ScheduledTasksPage() {
   const [isSaveViewDialogOpen, setIsSaveViewDialogOpen] = useState(false);
   const [newViewName, setNewViewName] = useState('');
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmTaskId, setDeleteConfirmTaskId] = useState<number | null>(null);
+  const [deleteConfirmTaskName, setDeleteConfirmTaskName] = useState<string>('');
 
   // Bulk operations
   const {
@@ -352,6 +355,13 @@ export default function ScheduledTasksPage() {
 
   const handleDeleteTask = async (taskId: number) => {
     await deleteTaskMutation.mutateAsync({ id: taskId });
+    setDeleteConfirmTaskId(null);
+    setDeleteConfirmTaskName('');
+  };
+
+  const openDeleteConfirm = (task: ScheduledBrowserTask) => {
+    setDeleteConfirmTaskId(task.id);
+    setDeleteConfirmTaskName(task.name);
   };
 
   const handleRunNow = async (taskId: number) => {
@@ -944,7 +954,7 @@ export default function ScheduledTasksPage() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => handleDeleteTask(task.id)}
+                              onClick={() => openDeleteConfirm(task)}
                               className="text-red-600"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
@@ -1048,6 +1058,28 @@ export default function ScheduledTasksPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-700">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Individual Delete Confirmation */}
+      <AlertDialog open={deleteConfirmTaskId !== null} onOpenChange={(open) => { if (!open) { setDeleteConfirmTaskId(null); setDeleteConfirmTaskName(''); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleteConfirmTaskName}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will archive the task and stop all future scheduled executions.
+              Execution history will be preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteConfirmTaskId && handleDeleteTask(deleteConfirmTaskId)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete Task
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

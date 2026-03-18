@@ -52,6 +52,24 @@ export interface BrowserSession {
   liveViewUrl?: string;
 }
 
+export interface BrowserActionEntry {
+  id: string;
+  action: string;
+  description: string;
+  selector?: string;
+  value?: string;
+  timestamp: string;
+}
+
+export interface BrowserState {
+  currentUrl?: string;
+  pageTitle?: string;
+  screenshotUrl?: string;
+  screenshotBase64?: string;
+  lastUpdated?: string;
+  actions: BrowserActionEntry[];
+}
+
 export interface ProgressData {
   currentStep: number;
   totalSteps: number;
@@ -83,6 +101,9 @@ interface AgentState {
   // Progress tracking
   progress: ProgressData | null;
 
+  // Live browser state
+  browserState: BrowserState;
+
   // Reasoning steps
   reasoningSteps: ReasoningStep[];
 
@@ -113,6 +134,8 @@ interface AgentState {
   loadExecutionHistory: () => Promise<void>;
   loadStats: () => Promise<void>;
   cancelExecution: () => Promise<void>;
+  pauseExecution: () => Promise<void>;
+  resumeExecution: () => Promise<void>;
   respondToAgent: (response: string) => Promise<void>;
   clearCurrentExecution: () => void;
   setStatus: (status: CurrentExecution['status']) => void;
@@ -143,6 +166,7 @@ const initialState = {
   isExecuting: false,
   activeBrowserSession: null,
   progress: null,
+  browserState: { actions: [] } as BrowserState,
   reasoningSteps: [],
   executionHistory: [],
   isLoadingHistory: false,
@@ -333,6 +357,81 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       });
     } catch (error) {
       console.error('Failed to cancel execution:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Pause the current execution
+   */
+  pauseExecution: async () => {
+    const { currentExecution } = get();
+
+    if (!currentExecution) {
+      throw new Error('No active execution to pause');
+    }
+
+    try {
+      const { trpcClient } = await import('@/lib/trpc');
+
+      await trpcClient.agent.pauseExecution.mutate({
+        executionId: currentExecution.id,
+      });
+
+      set({
+        currentExecution: {
+          ...currentExecution,
+          status: 'paused',
+        },
+      });
+
+      get().addLog({
+        id: `log-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        level: 'warning',
+        message: 'Execution paused',
+        detail: `ID: ${currentExecution.id}`,
+      });
+    } catch (error) {
+      console.error('Failed to pause execution:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Resume a paused execution
+   */
+  resumeExecution: async () => {
+    const { currentExecution } = get();
+
+    if (!currentExecution) {
+      throw new Error('No active execution to resume');
+    }
+
+    try {
+      const { trpcClient } = await import('@/lib/trpc');
+
+      await trpcClient.agent.resumeExecution.mutate({
+        executionId: currentExecution.id,
+      });
+
+      set({
+        isExecuting: true,
+        currentExecution: {
+          ...currentExecution,
+          status: 'running',
+        },
+      });
+
+      get().addLog({
+        id: `log-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: 'Execution resumed',
+        detail: `ID: ${currentExecution.id}`,
+      });
+    } catch (error) {
+      console.error('Failed to resume execution:', error);
       throw error;
     }
   },
@@ -633,23 +732,59 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         });
         break;
 
-      case 'browser:session':
-        const sessionData = data as { sessionId: string; debugUrl?: string };
+      case 'browser:session': {
+        const bsData = data as { sessionId: string; debugUrl?: string };
         set({
           activeBrowserSession: {
-            sessionId: sessionData.sessionId,
-            debugUrl: sessionData.debugUrl,
+            sessionId: bsData.sessionId,
+            debugUrl: bsData.debugUrl,
           },
         });
-
-        get().addLog({
-          id: `log-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          level: 'success',
-          message: 'Browser session created',
-          detail: sessionData.debugUrl ? 'Live view available' : sessionData.sessionId,
-        });
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'success', message: 'Browser session created', detail: bsData.debugUrl ? 'Live view available' : bsData.sessionId });
         break;
+      }
+
+      case 'browser:navigate': {
+        const bnData = data as { url: string; pageTitle?: string; timestamp: string };
+        set((prev) => ({
+          browserState: { ...prev.browserState, currentUrl: bnData.url, pageTitle: bnData.pageTitle, lastUpdated: bnData.timestamp,
+            actions: [...prev.browserState.actions, { id: `a-${Date.now()}`, action: 'navigate', description: `Navigated to ${bnData.url}`, timestamp: bnData.timestamp }].slice(-50),
+          },
+        }));
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'info', message: `Navigated to: ${bnData.pageTitle || bnData.url}`, detail: bnData.url });
+        break;
+      }
+
+      case 'browser:action': {
+        const baData = data as { action: string; selector?: string; value?: string; description: string; timestamp: string };
+        set((prev) => ({
+          browserState: { ...prev.browserState, lastUpdated: baData.timestamp,
+            actions: [...prev.browserState.actions, { id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, action: baData.action, description: baData.description, selector: baData.selector, value: baData.value, timestamp: baData.timestamp }].slice(-50),
+          },
+        }));
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'info', message: baData.description, detail: baData.selector });
+        break;
+      }
+
+      case 'browser:screenshot': {
+        const bssData = data as { screenshotUrl?: string; screenshotBase64?: string; pageTitle?: string; currentUrl?: string; timestamp: string };
+        set((prev) => ({
+          browserState: { ...prev.browserState, screenshotUrl: bssData.screenshotUrl || prev.browserState.screenshotUrl, screenshotBase64: bssData.screenshotBase64 || prev.browserState.screenshotBase64, pageTitle: bssData.pageTitle || prev.browserState.pageTitle, currentUrl: bssData.currentUrl || prev.browserState.currentUrl, lastUpdated: bssData.timestamp },
+        }));
+        break;
+      }
+
+      case 'execution:paused': {
+        if (state.currentExecution) { set({ currentExecution: { ...state.currentExecution, status: 'paused' } }); }
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'warning', message: 'Execution paused' });
+        break;
+      }
+
+      case 'execution:resumed': {
+        if (state.currentExecution) { set({ isExecuting: true, currentExecution: { ...state.currentExecution, status: 'running' } }); }
+        get().addLog({ id: `log-${Date.now()}`, timestamp: new Date().toISOString(), level: 'info', message: 'Execution resumed' });
+        break;
+      }
     }
   },
 }));

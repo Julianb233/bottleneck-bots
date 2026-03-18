@@ -38,7 +38,7 @@ import {
 import { getSelfCorrectionService, type FailureAttempt } from "./browser/selfCorrection.service";
 import { getConfidenceService } from "./agentConfidence.service";
 import { getStrategyService, type ExecutionStrategy } from "./agentStrategy.service";
-import { ErrorType, RecoveryStrategy, classifyError } from "../lib/errorTypes";
+import { ErrorType, RecoveryStrategy, classifyError, getErrorMetadata, isErrorRetryable, ErrorSeverity } from "../lib/errorTypes";
 import {
   AgentProgressTracker,
   createProgressTracker,
@@ -77,6 +77,9 @@ import {
   getCredentialVault,
   getExecutionControl,
 } from "./security";
+
+// Skill Configuration Service
+import { getAgentSkillConfigService } from "./agentSkillConfig.service";
 
 // ========================================
 // TYPES & INTERFACES
@@ -899,6 +902,15 @@ export class AgentOrchestratorService {
         throw error;
       }
 
+      // SKILL CONFIG: Check if the required skill is enabled and has correct permissions
+      const skillConfigService = getAgentSkillConfigService();
+      const skillCheck = await skillConfigService.checkToolAllowed(state.userId, toolName);
+      if (!skillCheck.allowed) {
+        throw new Error(
+          `Skill check failed: ${skillCheck.reason} (Tool: ${toolName}, Skill: ${skillCheck.skillId})`
+        );
+      }
+
       // Special handling for certain tools that need state
       let result: unknown;
       if (toolName === "browser_create_session") {
@@ -1012,6 +1024,9 @@ export class AgentOrchestratorService {
 
       const duration = Date.now() - startTime;
 
+      // Record skill usage for rate limiting
+      skillConfigService.recordToolUsage(state.userId, toolName);
+
       // Emit tool complete event
       if (emitter) {
         emitter.toolComplete({
@@ -1028,19 +1043,53 @@ export class AgentOrchestratorService {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      // Emit tool complete event with error
+      // ========================================
+      // ERROR HANDLING: Classify error and capture debug info
+      // ========================================
+      const errorType = classifyError(errorMessage);
+      const errorMeta = getErrorMetadata(errorType);
+
+      // Capture screenshot on error for browser tools (for debugging)
+      let errorScreenshot: string | undefined;
+      if (toolName.startsWith('browser_') || toolName.startsWith('ghl_')) {
+        try {
+          const sessionId = (parameters.sessionId as string) || (state.context.sessionId as string);
+          if (sessionId) {
+            const { stagehandService } = await import('./stagehand.service');
+            const screenshotResult = await stagehandService.screenshot(sessionId, {
+              fullPage: false,
+              returnBase64: true,
+            });
+            if (screenshotResult.success && screenshotResult.base64) {
+              errorScreenshot = screenshotResult.base64;
+              console.log(`[ErrorCapture] Screenshot captured on error for tool ${toolName}`);
+            }
+          }
+        } catch (screenshotError) {
+          console.warn(`[ErrorCapture] Failed to capture error screenshot:`, screenshotError);
+        }
+      }
+
+      // Emit tool complete event with error classification
       if (emitter) {
         emitter.toolComplete({
           toolName,
-          result: { error: error instanceof Error ? error.message : 'Unknown error' },
+          result: {
+            error: errorMessage,
+            errorType: errorType,
+            severity: errorMeta.severity,
+            retryable: errorMeta.retryable,
+            screenshot: errorScreenshot,
+          },
           duration,
         });
       }
 
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
         duration,
       };
     }
@@ -1275,24 +1324,72 @@ export class AgentOrchestratorService {
         content: currentPrompt,
       });
 
-      // Fetch RAG context on first iteration
+      // Fetch RAG context on first iteration (enhanced with SOP knowledge retrieval)
       let ragContext: RAGContext | undefined;
       if (state.iterations === 0) {
         try {
+          // Use structured retrieval that separates SOP context from reference docs
+          const taskKnowledge = await ragService.retrieveForTask(state.taskDescription, {
+            maxTokens: 4000,
+          });
+
+          // Also get the standard RAG system prompt for platform detection
           const ragResult = await ragService.buildSystemPrompt(state.taskDescription, {
             maxDocumentationTokens: 3000,
             includeExamples: true,
           });
+
+          // Build enriched RAG context with SOP steps as action sequences
+          const actionSequences: RAGContext["actionSequences"] = [];
+          if (taskKnowledge.sopSteps.length > 0) {
+            actionSequences.push({
+              sequenceId: "sop-task-steps",
+              name: "SOP Steps for Task",
+              successRate: 1.0,
+              steps: taskKnowledge.sopSteps.map(
+                (s) => `Step ${s.stepNumber}: ${s.title || s.instruction.substring(0, 100)}`
+              ),
+            });
+          }
+
           ragContext = {
-            relevantSelectors: ragResult.retrievedChunks.map(chunk => ({
-              elementName: 'document',
+            relevantSelectors: ragResult.retrievedChunks.map((chunk) => ({
+              elementName: "document",
               selector: chunk.content.substring(0, 100),
               reliability: chunk.similarity || 0,
             })),
+            actionSequences:
+              actionSequences.length > 0 ? actionSequences : undefined,
           };
-          console.log(`[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} chunks, platforms: ${ragResult.detectedPlatforms.join(', ')}`);
+
+          // Inject SOP and reference context into the task description for richer context
+          if (taskKnowledge.sopContext || taskKnowledge.referenceContext) {
+            const knowledgeSection = [
+              taskKnowledge.sopContext &&
+                `\n<sop_knowledge>\n${taskKnowledge.sopContext}\n</sop_knowledge>`,
+              taskKnowledge.referenceContext &&
+                `\n<reference_knowledge>\n${taskKnowledge.referenceContext}\n</reference_knowledge>`,
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+            // Prepend knowledge to the first user message
+            if (state.conversationHistory.length > 0) {
+              const lastMsg =
+                state.conversationHistory[
+                  state.conversationHistory.length - 1
+                ];
+              if (lastMsg.role === "user" && typeof lastMsg.content === "string") {
+                lastMsg.content = `${knowledgeSection}\n\n${lastMsg.content}`;
+              }
+            }
+          }
+
+          console.log(
+            `[Agent] RAG context loaded: ${ragResult.retrievedChunks.length} doc chunks, ${taskKnowledge.sopSteps.length} SOP steps, platforms: ${ragResult.detectedPlatforms.join(", ")}`
+          );
         } catch (ragError) {
-          console.warn('[Agent] Failed to load RAG context:', ragError);
+          console.warn("[Agent] Failed to load RAG context:", ragError);
           // Continue without RAG context
         }
       }
@@ -1424,12 +1521,39 @@ export class AgentOrchestratorService {
         state.errorCount++;
         state.consecutiveErrors++;
 
-        // Attempt recovery using failure recovery service
-        if (state.consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+        // ========================================
+        // ERROR HANDLING: Classify, recover, adapt strategy
+        // ========================================
+        const toolErrorMessage = toolResult.error || "Unknown tool error";
+        const classifiedErrorType = classifyError(toolErrorMessage);
+        const errorMetadata = getErrorMetadata(classifiedErrorType);
+
+        console.log(
+          `[Agent] Tool ${toolName} failed (attempt ${state.consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}). ` +
+          `Error: ${classifiedErrorType} (${errorMetadata.severity}), Retryable: ${errorMetadata.retryable}`
+        );
+
+        // Emit user-friendly error via SSE
+        if (emitter) {
+          const explained = explainError(toolErrorMessage);
+          emitter.thinking({
+            thought: `Error: ${explained.title}. ${explained.explanation}` +
+              (explained.suggestedActions.length > 0
+                ? ` Suggested: ${explained.suggestedActions[0]}`
+                : ''),
+            iteration: state.iterations,
+          });
+        }
+
+        // Attempt recovery using failure recovery + strategy adaptation
+        if (state.consecutiveErrors < MAX_CONSECUTIVE_ERRORS && errorMetadata.retryable) {
           try {
             const failureRecovery = getFailureRecoveryService();
-            const errorType = failureRecovery.analyzeFailure(
-              toolResult.error || "Unknown tool error",
+            const strategyAdaptation = getStrategyAdaptationService();
+
+            // Classify using failureRecovery's own analyzer
+            const frErrorType = failureRecovery.analyzeFailure(
+              toolErrorMessage,
               {
                 executionId: state.executionId.toString(),
                 sessionId: state.executionId.toString(),
@@ -1452,8 +1576,8 @@ export class AgentOrchestratorService {
               action: toolName,
               selector: toolParams.selector as string | undefined,
               url: toolParams.url as string | undefined,
-              errorMessage: toolResult.error || "Unknown error",
-              errorType,
+              errorMessage: toolErrorMessage,
+              errorType: frErrorType,
               timestamp: new Date(),
               attemptNumber: state.consecutiveErrors,
               previousAttempts,
@@ -1465,24 +1589,40 @@ export class AgentOrchestratorService {
               action: toolName,
               parameters: toolParams,
               strategy: RecoveryStrategy.RETRY_SAME,
-              error: toolResult.error || "Unknown error",
+              error: toolErrorMessage,
               timestamp: new Date(),
             });
             state.recoveryAttempts++;
             state.recoveryStrategiesUsed?.push(recoveryResult.strategyUsed);
 
+            // Record action result for strategy adaptation learning
+            try {
+              const siteUrl = (state.context.currentUrl as string) || (state.context.url as string) || '';
+              const siteDomain = siteUrl ? new URL(siteUrl).hostname : 'unknown';
+              strategyAdaptation.recordActionResult(
+                state.executionId.toString(),
+                toolName,
+                state.adaptedStrategy?.strategyId || 'default',
+                false,
+                toolResult.duration || 0,
+                siteDomain
+              );
+            } catch (adaptErr) {
+              console.warn('[Intelligence] Strategy adaptation recording failed:', adaptErr);
+            }
+
             if (recoveryResult.success || recoveryResult.shouldRetry) {
+              // Calculate backoff: 1s, 4s, 16s (exponential with base 1s, multiplier 4)
+              const backoffDelay = recoveryResult.waitBeforeRetry ||
+                Math.min(1000 * Math.pow(4, state.consecutiveErrors - 1), 16000);
+
               console.log(
                 `[Agent] Recovery strategy "${recoveryResult.strategyUsed}" suggests retry. ` +
-                `Wait: ${recoveryResult.waitBeforeRetry || 0}ms`
+                `Wait: ${backoffDelay}ms. Details: ${recoveryResult.details}`
               );
 
-              // Wait if the strategy suggests it
-              if (recoveryResult.waitBeforeRetry) {
-                await new Promise(resolve =>
-                  setTimeout(resolve, recoveryResult.waitBeforeRetry)
-                );
-              }
+              // Wait with exponential backoff
+              await new Promise(resolve => setTimeout(resolve, backoffDelay));
 
               // Reset consecutive errors on successful recovery
               if (recoveryResult.success) {
@@ -1491,7 +1631,16 @@ export class AgentOrchestratorService {
 
               if (emitter) {
                 emitter.thinking({
-                  thought: `Recovering from error: ${recoveryResult.details}`,
+                  thought: `Recovering from error using "${recoveryResult.strategyUsed}": ${recoveryResult.details}`,
+                  iteration: state.iterations,
+                });
+              }
+            } else if (recoveryResult.fallbackSuggested) {
+              // Strategy suggests fallback (e.g., fall back to API if browser fails)
+              console.log(`[Agent] Recovery suggests fallback: ${recoveryResult.fallbackSuggested}`);
+              if (emitter) {
+                emitter.thinking({
+                  thought: `Recovery exhausted for this approach. Falling back to: ${recoveryResult.fallbackSuggested}`,
                   iteration: state.iterations,
                 });
               }
@@ -1499,12 +1648,42 @@ export class AgentOrchestratorService {
           } catch (recoveryError) {
             console.warn("[Agent] Recovery attempt failed:", recoveryError);
           }
+        } else if (!errorMetadata.retryable) {
+          // Fatal/non-retryable error - skip straight to failure
+          console.log(`[Agent] Non-retryable error (${classifiedErrorType}). Marking as failed.`);
+          if (emitter) {
+            const explained = explainError(toolErrorMessage);
+            emitExplainedError(
+              state.userId,
+              state.executionId.toString(),
+              toolErrorMessage
+            );
+          }
+          state.status = 'failed';
+          return false;
         }
       } else {
         state.consecutiveErrors = 0;
         // Clear failure attempts on success
         if (state.failureAttempts.length > 0) {
           state.failureAttempts = [];
+        }
+
+        // Record successful action for strategy adaptation
+        try {
+          const strategyAdaptation = getStrategyAdaptationService();
+          const siteUrl = (state.context.currentUrl as string) || (state.context.url as string) || '';
+          const siteDomain = siteUrl ? new URL(siteUrl).hostname : 'unknown';
+          strategyAdaptation.recordActionResult(
+            state.executionId.toString(),
+            toolName,
+            state.adaptedStrategy?.strategyId || 'default',
+            true,
+            toolResult.duration || 0,
+            siteDomain
+          );
+        } catch (adaptErr) {
+          // Silently continue - strategy adaptation is non-critical
         }
       }
 
@@ -1967,10 +2146,54 @@ export class AgentOrchestratorService {
       } else if (currentStatus === 'failed') {
         resultStatus = 'failed';
         progressTracker.complete(false);
-        // Emit error event
+
+        // ========================================
+        // ERROR REPORTING: User-friendly error with explanation
+        // ========================================
+        const lastFailedTool = [...state.toolHistory].reverse().find(t => !t.success);
+        const failureErrorMsg = lastFailedTool?.error || 'Execution failed after multiple errors';
+        const explained = explainError(failureErrorMsg);
+
+        // Emit enhanced error event with user-friendly explanation
         emitter.executionError({
-          error: state.errorCount > 0 ? 'Execution failed after multiple errors' : 'Execution failed',
+          error: `${explained.title}: ${explained.explanation}`,
         });
+
+        // Emit detailed explained error via SSE for client-side display
+        emitExplainedError(
+          userId,
+          execution.id.toString(),
+          failureErrorMsg
+        );
+
+        // ========================================
+        // ALERTS: Notify on repeated failures
+        // ========================================
+        try {
+          const { alertingService } = await import('./alerting.service');
+          await alertingService.createNotification({
+            userId,
+            title: `Task Execution Failed: ${explained.title}`,
+            message: `${explained.explanation} (${state.errorCount} errors in ${state.iterations} iterations). ${explained.suggestedActions[0] || 'Please retry or check configuration.'}`,
+            type: 'error',
+            priority: state.errorCount >= 3 ? 9 : 5,
+            metadata: {
+              executionId: execution.id,
+              taskId,
+              errorCount: state.errorCount,
+              consecutiveErrors: state.consecutiveErrors,
+              lastError: failureErrorMsg,
+              errorType: lastFailedTool ? classifyError(failureErrorMsg) : 'UNKNOWN',
+              severity: explained.severity,
+              recoverable: explained.recoverable,
+              suggestedActions: explained.suggestedActions,
+              recoveryStrategiesUsed: state.recoveryStrategiesUsed || [],
+            },
+          });
+          console.log(`[Alerts] Created failure notification for user ${userId}, execution ${execution.id}`);
+        } catch (alertError) {
+          console.warn('[Alerts] Failed to create failure notification:', alertError);
+        }
 
         // ========================================
         // MEMORY & LEARNING: Record failure feedback
@@ -2032,10 +2255,34 @@ export class AgentOrchestratorService {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       emitExplainedError(userId, execution.id.toString(), errorMessage);
 
+      // ========================================
+      // ALERTS: Notify on fatal execution error
+      // ========================================
+      try {
+        const { alertingService } = await import('./alerting.service');
+        const explained = explainError(errorMessage);
+        await alertingService.createNotification({
+          userId,
+          title: `Fatal Execution Error: ${explained.title}`,
+          message: `${explained.explanation}. ${explained.suggestedActions[0] || 'Please check logs and retry.'}`,
+          type: 'error',
+          priority: 10,
+          metadata: {
+            executionId: execution.id,
+            taskId,
+            errorType: classifyError(errorMessage),
+            severity: 'critical',
+            fatal: true,
+          },
+        });
+      } catch (alertError) {
+        console.warn('[Alerts] Failed to create fatal error notification:', alertError);
+      }
+
       await db.update(taskExecutions)
         .set({
           status: "failed",
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: errorMessage,
           completedAt: new Date(),
         })
         .where(eq(taskExecutions.id, execution.id));

@@ -190,6 +190,66 @@ const ERROR_PATTERNS = [
       recoverable: true,
     }),
   },
+  {
+    pattern: /captcha|recaptcha|robot.*verification/i,
+    explain: (error: string): ExplainedError => ({
+      title: 'CAPTCHA Challenge Detected',
+      explanation: 'The website is showing a CAPTCHA that requires human verification.',
+      likelyCauses: [
+        'Website detected automated browsing',
+        'Too many requests from this IP',
+        'Security measure triggered by unusual activity',
+      ],
+      suggestedActions: [
+        'Complete the CAPTCHA manually in the browser session',
+        'Wait a while before retrying',
+        'Consider using API access instead of browser automation',
+      ],
+      technicalDetails: error,
+      severity: 'high',
+      recoverable: false,
+    }),
+  },
+  {
+    pattern: /session.*expired|invalid.*token|session.*invalid/i,
+    explain: (error: string): ExplainedError => ({
+      title: 'Session Expired',
+      explanation: 'Your login session has expired and needs to be refreshed.',
+      likelyCauses: [
+        'Session timed out after inactivity',
+        'Server-side session was invalidated',
+        'Authentication token has expired',
+      ],
+      suggestedActions: [
+        'Re-run the task to create a fresh session',
+        'Update your saved credentials if they changed',
+        'Check if the target service has session time limits',
+      ],
+      technicalDetails: error,
+      severity: 'medium',
+      recoverable: true,
+    }),
+  },
+  {
+    pattern: /page.*crash|target.*closed|disconnected/i,
+    explain: (error: string): ExplainedError => ({
+      title: 'Browser Page Crashed',
+      explanation: 'The browser tab or page became unresponsive and was closed.',
+      likelyCauses: [
+        'Page consumed too much memory',
+        'JavaScript error on the page',
+        'Browser session was terminated externally',
+      ],
+      suggestedActions: [
+        'Retry the task - a new browser session will be created',
+        'Try with a simpler task if the page is complex',
+        'Check if the target website is functioning normally',
+      ],
+      technicalDetails: error,
+      severity: 'high',
+      recoverable: true,
+    }),
+  },
 ];
 
 /**

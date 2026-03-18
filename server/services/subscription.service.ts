@@ -464,6 +464,269 @@ class SubscriptionService {
   }
 
   /**
+   * Update Stripe customer/subscription IDs on existing subscription
+   */
+  async updateSubscriptionStripeIds(
+    userId: number,
+    stripeCustomerId: string,
+    stripeSubscriptionId: string
+  ): Promise<void> {
+    const db = await getDb();
+    if (!db) throw new Error("Database not initialized");
+
+    await db
+      .update(userSubscriptions)
+      .set({
+        stripeCustomerId,
+        stripeSubscriptionId,
+        updatedAt: new Date(),
+      })
+      .where(eq(userSubscriptions.userId, userId));
+  }
+
+  /**
+   * Cancel subscription — either immediately or at period end.
+   * Also cancels on Stripe if a Stripe subscription is linked.
+   */
+  async cancelSubscription(
+    userId: number,
+    reason?: string,
+    cancelImmediately: boolean = false
+  ): Promise<void> {
+    const db = await getDb();
+    if (!db) throw new Error("Database not initialized");
+
+    if (cancelImmediately) {
+      await db
+        .update(userSubscriptions)
+        .set({
+          status: "cancelled",
+          cancelledAt: new Date(),
+          cancellationReason: reason || "user_requested",
+          updatedAt: new Date(),
+        })
+        .where(eq(userSubscriptions.userId, userId));
+    } else {
+      await db
+        .update(userSubscriptions)
+        .set({
+          cancelAtPeriodEnd: true,
+          cancellationReason: reason || "user_requested",
+          updatedAt: new Date(),
+        })
+        .where(eq(userSubscriptions.userId, userId));
+    }
+
+    // If connected to Stripe, cancel there too
+    const [subscription] = await db
+      .select()
+      .from(userSubscriptions)
+      .where(eq(userSubscriptions.userId, userId))
+      .limit(1);
+
+    if (subscription?.stripeSubscriptionId) {
+      try {
+        const Stripe = (await import("stripe")).default;
+        const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+        if (stripeSecretKey) {
+          const stripe = new Stripe(stripeSecretKey, {
+            apiVersion: "2024-12-18.acacia" as any,
+          });
+          if (cancelImmediately) {
+            await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+            console.log(`[SubscriptionService] Immediately cancelled Stripe sub ${subscription.stripeSubscriptionId}`);
+          } else {
+            await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+              cancel_at_period_end: true,
+            });
+            console.log(`[SubscriptionService] Scheduled Stripe cancellation for sub ${subscription.stripeSubscriptionId}`);
+          }
+        }
+      } catch (error) {
+        console.error("[SubscriptionService] Failed to cancel on Stripe:", error);
+        // Don't throw - local cancellation still succeeded
+      }
+    }
+  }
+
+  /**
+   * Resume a cancelled subscription (undo cancel_at_period_end)
+   */
+  async resumeSubscription(userId: number): Promise<UserSubscription> {
+    const db = await getDb();
+    if (!db) throw new Error("Database not initialized");
+
+    const [subscription] = await db
+      .update(userSubscriptions)
+      .set({
+        cancelAtPeriodEnd: false,
+        cancellationReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(userSubscriptions.userId, userId))
+      .returning();
+
+    // Resume on Stripe too
+    if (subscription?.stripeSubscriptionId) {
+      try {
+        const Stripe = (await import("stripe")).default;
+        const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+        if (stripeSecretKey) {
+          const stripe = new Stripe(stripeSecretKey, {
+            apiVersion: "2024-12-18.acacia" as any,
+          });
+          await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+            cancel_at_period_end: false,
+          });
+        }
+      } catch (error) {
+        console.error("[SubscriptionService] Failed to resume on Stripe:", error);
+      }
+    }
+
+    return subscription;
+  }
+
+  /**
+   * Create a Stripe Checkout Session for a subscription
+   * Returns the checkout URL for client-side redirect
+   */
+  async createSubscriptionCheckout(
+    userId: number,
+    tierSlug: string,
+    paymentFrequency: "weekly" | "monthly" | "six_month" | "annual" = "monthly",
+    successUrl?: string,
+    cancelUrl?: string
+  ): Promise<{ checkoutUrl: string; sessionId: string }> {
+    const Stripe = (await import("stripe")).default;
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("Stripe is not configured");
+    }
+
+    const tier = await this.getTierBySlug(tierSlug);
+    if (!tier) {
+      throw new Error(`Tier not found: ${tierSlug}`);
+    }
+
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: "2024-12-18.acacia" as any,
+    });
+
+    // Calculate price based on payment frequency
+    let unitAmount = tier.monthlyPriceCents;
+    let intervalCount = 1;
+    let interval: "week" | "month" | "year" = "month";
+
+    switch (paymentFrequency) {
+      case "weekly":
+        // Weekly = monthly price * (1 + premium%) / 4 per week
+        unitAmount = Math.round(tier.monthlyPriceCents * (1 + tier.weeklyPremiumPercent / 100) / 4);
+        interval = "week";
+        intervalCount = 1;
+        break;
+      case "six_month":
+        // 6-month = monthly price * (1 - discount%) * 6
+        unitAmount = Math.round(tier.monthlyPriceCents * (1 - tier.sixMonthDiscountPercent / 100));
+        interval = "month";
+        intervalCount = 1; // Bill monthly at discounted rate
+        break;
+      case "annual":
+        // Annual = monthly price * (1 - discount%)
+        unitAmount = Math.round(tier.monthlyPriceCents * (1 - tier.annualDiscountPercent / 100));
+        interval = "month";
+        intervalCount = 1; // Bill monthly at discounted rate
+        break;
+      default:
+        // Monthly (no change)
+        interval = "month";
+        intervalCount = 1;
+    }
+
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "subscription",
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: `${tier.name} Plan`,
+              description: tier.description || `${tier.maxAgents} agents, ${tier.monthlyExecutionLimit} executions/month`,
+            },
+            unit_amount: unitAmount,
+            recurring: {
+              interval,
+              interval_count: intervalCount,
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      subscription_data: {
+        metadata: {
+          userId: String(userId),
+          tierSlug,
+          paymentFrequency,
+        },
+      },
+      metadata: {
+        userId: String(userId),
+        tierSlug,
+        paymentFrequency,
+        type: "subscription",
+      },
+      success_url: successUrl || `${baseUrl}/dashboard?subscription=success`,
+      cancel_url: cancelUrl || `${baseUrl}/dashboard?subscription=cancelled`,
+      allow_promotion_codes: true,
+    });
+
+    return {
+      checkoutUrl: session.url!,
+      sessionId: session.id,
+    };
+  }
+
+  /**
+   * Create a Stripe Billing Portal session for subscription management
+   */
+  async createBillingPortalSession(userId: number, returnUrl?: string): Promise<string> {
+    const db = await getDb();
+    if (!db) throw new Error("Database not initialized");
+
+    const [subscription] = await db
+      .select()
+      .from(userSubscriptions)
+      .where(eq(userSubscriptions.userId, userId))
+      .limit(1);
+
+    if (!subscription?.stripeCustomerId) {
+      throw new Error("No Stripe customer found for this user");
+    }
+
+    const Stripe = (await import("stripe")).default;
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("Stripe is not configured");
+    }
+
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: "2024-12-18.acacia" as any,
+    });
+
+    const baseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: subscription.stripeCustomerId,
+      return_url: returnUrl || `${baseUrl}/dashboard`,
+    });
+
+    return portalSession.url;
+  }
+
+  /**
    * Update subscription tier
    */
   async updateTier(userId: number, newTierSlug: string): Promise<UserSubscription> {

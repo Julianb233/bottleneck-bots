@@ -23,6 +23,14 @@ async function getPdfParser() {
   }
 }
 
+export type DocumentCategory = 'sop' | 'process' | 'policy' | 'reference' | 'general';
+
+export interface SOPStep {
+  stepNumber: number;
+  title: string;
+  description: string;
+}
+
 export interface ParsedDocument {
   text: string;
   metadata: {
@@ -33,6 +41,9 @@ export interface ParsedDocument {
     author?: string;
     creationDate?: string;
     format: string;
+    detectedCategory?: DocumentCategory;
+    sopSteps?: SOPStep[];
+    isSOP?: boolean;
   };
 }
 
@@ -172,32 +183,140 @@ class DocumentParserService {
     // Determine format from mime type or filename
     const format = this.detectFormat(mimeType, filename, content);
 
+    let doc: ParsedDocument;
+
     switch (format) {
       case 'pdf':
         if (typeof content === 'string') {
           throw new Error('PDF content must be a Buffer');
         }
-        return this.parsePdf(content);
+        doc = await this.parsePdf(content);
+        break;
 
       case 'html':
         if (Buffer.isBuffer(content)) {
-          return this.parseHtml(content.toString('utf-8'));
+          doc = this.parseHtml(content.toString('utf-8'));
+        } else {
+          doc = this.parseHtml(content);
         }
-        return this.parseHtml(content);
+        break;
 
       case 'markdown':
         if (Buffer.isBuffer(content)) {
-          return this.parseMarkdown(content.toString('utf-8'));
+          doc = this.parseMarkdown(content.toString('utf-8'));
+        } else {
+          doc = this.parseMarkdown(content);
         }
-        return this.parseMarkdown(content);
+        break;
 
       case 'text':
       default:
         if (Buffer.isBuffer(content)) {
-          return this.parseText(content.toString('utf-8'));
+          doc = this.parseText(content.toString('utf-8'));
+        } else {
+          doc = this.parseText(content);
         }
-        return this.parseText(content);
+        break;
     }
+
+    // Automatically enrich with SOP detection
+    return this.enrichWithSOPDetection(doc);
+  }
+
+  /**
+   * Detect if a document is an SOP and extract step sequences
+   */
+  detectSOPContent(text: string): { isSOP: boolean; category: DocumentCategory; steps: SOPStep[] } {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+    // Patterns that indicate SOP/procedure content
+    const sopIndicators = [
+      /\bstandard operating procedure\b/i,
+      /\bSOP\b/,
+      /\bprocedure\b/i,
+      /\bstep[- ]by[- ]step\b/i,
+      /\bwork instruction\b/i,
+      /\bhow to\b/i,
+      /\bprocess document\b/i,
+    ];
+
+    const policyIndicators = [
+      /\bpolicy\b/i,
+      /\bguideline\b/i,
+      /\bcompliance\b/i,
+      /\bregulation\b/i,
+    ];
+
+    const processIndicators = [
+      /\bworkflow\b/i,
+      /\bprocess flow\b/i,
+      /\bpipeline\b/i,
+      /\bautomation\b/i,
+    ];
+
+    // Count numbered steps (e.g., "1.", "Step 1:", "1)", etc.)
+    const numberedStepPattern = /^(?:step\s+)?(\d+)[.):\-]\s*(.+)/i;
+    const steps: SOPStep[] = [];
+    let consecutiveSteps = 0;
+    let maxConsecutive = 0;
+
+    for (const line of lines) {
+      const match = line.match(numberedStepPattern);
+      if (match) {
+        const stepNum = parseInt(match[1]);
+        steps.push({
+          stepNumber: stepNum,
+          title: match[2].substring(0, 120),
+          description: match[2],
+        });
+        consecutiveSteps++;
+        maxConsecutive = Math.max(maxConsecutive, consecutiveSteps);
+      } else {
+        // If we have a current step and this is continuation text, append to description
+        if (steps.length > 0 && line.length > 0 && !line.match(/^[#*\-]/)) {
+          steps[steps.length - 1].description += ' ' + line;
+        }
+        consecutiveSteps = 0;
+      }
+    }
+
+    // Determine category based on content analysis
+    const fullText = text.toLowerCase();
+    const sopScore = sopIndicators.filter(p => p.test(fullText)).length;
+    const policyScore = policyIndicators.filter(p => p.test(fullText)).length;
+    const processScore = processIndicators.filter(p => p.test(fullText)).length;
+
+    // If we found 3+ sequential numbered steps or strong SOP indicators, it's an SOP
+    const isSOP = maxConsecutive >= 3 || sopScore >= 2 || (steps.length >= 3 && sopScore >= 1);
+
+    let category: DocumentCategory = 'general';
+    if (isSOP || sopScore > 0) {
+      category = 'sop';
+    } else if (policyScore > processScore) {
+      category = 'policy';
+    } else if (processScore > 0) {
+      category = 'process';
+    } else if (steps.length >= 2) {
+      category = 'reference';
+    }
+
+    return { isSOP, category, steps: isSOP ? steps : [] };
+  }
+
+  /**
+   * Enhance a parsed document with SOP detection
+   */
+  enrichWithSOPDetection(doc: ParsedDocument): ParsedDocument {
+    const sopInfo = this.detectSOPContent(doc.text);
+    return {
+      ...doc,
+      metadata: {
+        ...doc.metadata,
+        detectedCategory: sopInfo.category,
+        sopSteps: sopInfo.steps,
+        isSOP: sopInfo.isSOP,
+      },
+    };
   }
 
   /**

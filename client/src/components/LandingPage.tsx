@@ -241,9 +241,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigateToF
             <div className="relative rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl border border-gray-200 bg-white">
               <OptimizedImage
                 src="/assets/demo/global_ops_view_1763563925931.png"
-                alt="Live AI Agent Dashboard - Real-time operations view"
+                alt="Live AI Agent Dashboard - Real-time operations view showing automated GHL tasks, lead follow-up, and campaign management"
                 className="w-full"
                 priority
+                width={1920}
+                height={1080}
               />
             </div>
           </div>
@@ -640,6 +642,87 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onNavigateToF
               </div>
             </div>
 
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works Section */}
+      <section id="how-it-works" className="py-12 sm:py-24 bg-white">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-12 sm:mb-16">
+            <div className="inline-block bg-emerald-50 border border-emerald-200 rounded-full px-4 sm:px-6 py-1.5 sm:py-2 mb-4 sm:mb-6 shadow-sm">
+              <span className="text-xs sm:text-sm font-bold text-emerald-700 uppercase tracking-wide">Simple 3-Step Setup</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-gray-900 mb-4">
+              Up and Running in <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600">Under 5 Minutes</span>
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 sm:gap-12 max-w-5xl mx-auto">
+            {[
+              { step: '01', title: 'Connect Your GHL Account', description: 'One-click OAuth connect. Select your locations. Done in 2 minutes.', icon: <Globe className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-600" /> },
+              { step: '02', title: 'Train Your Agent', description: 'Upload SOPs, define workflows, set permissions. Your agent learns YOUR processes.', icon: <Brain className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-600" /> },
+              { step: '03', title: 'Agents Execute 24/7', description: 'Contacts, pipelines, campaigns, follow-ups. All handled automatically while you sleep.', icon: <Rocket className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-600" /> },
+            ].map((item, index) => (
+              <div key={index} className="relative text-center group">
+                {index < 2 && <div className="hidden md:block absolute top-12 -right-6 w-12 h-0.5 bg-gradient-to-r from-emerald-300 to-emerald-100" />}
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-200 rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-6 group-hover:shadow-lg group-hover:border-emerald-400 transition-all duration-300">
+                  {item.icon}
+                </div>
+                <div className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-2">Step {item.step}</div>
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">{item.title}</h3>
+                <p className="text-sm sm:text-base text-gray-600 leading-relaxed">{item.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Feature Comparison Table */}
+      <section id="comparison" className="py-12 sm:py-24 bg-gradient-to-br from-slate-50 to-white">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-12 sm:mb-16">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-gray-900 mb-4">
+              Why Agencies Switch to <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600">Bottleneck Bots</span>
+            </h2>
+            <p className="text-base sm:text-xl text-gray-600 max-w-3xl mx-auto">See how we compare to manual work, VAs, and traditional automation tools.</p>
+          </div>
+          <div className="max-w-4xl mx-auto overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left p-3 sm:p-4 font-semibold text-gray-700 border-b-2 border-gray-200">Feature</th>
+                  <th className="text-center p-3 sm:p-4 font-semibold text-gray-500 border-b-2 border-gray-200">Manual / VA</th>
+                  <th className="text-center p-3 sm:p-4 font-semibold text-gray-500 border-b-2 border-gray-200">Zapier</th>
+                  <th className="text-center p-3 sm:p-4 font-bold text-emerald-700 border-b-2 border-emerald-400 bg-emerald-50/50">Bottleneck Bots</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { feature: 'GHL Contact CRUD', manual: 'Slow', zapier: 'Yes', bots: 'Instant' },
+                  { feature: 'GHL Pipeline Automation', manual: 'Manual', zapier: 'Limited', bots: 'Full' },
+                  { feature: 'Browser-Based Tasks', manual: 'Yes', zapier: 'No', bots: 'AI-Powered' },
+                  { feature: 'SOP Training', manual: 'No', zapier: 'No', bots: 'Yes' },
+                  { feature: 'Live Task Monitoring', manual: 'No', zapier: 'No', bots: 'Yes' },
+                  { feature: 'Scheduled Automation', manual: 'No', zapier: 'Yes', bots: 'Yes' },
+                  { feature: 'Multi-Location Support', manual: 'Tedious', zapier: 'Limited', bots: 'Native' },
+                  { feature: 'Monthly Cost', manual: '$3,000+', zapier: '$49+', bots: 'From $29' },
+                ].map((row, i) => (
+                  <tr key={i} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                    <td className="p-3 sm:p-4 font-medium text-gray-900">{row.feature}</td>
+                    <td className="p-3 sm:p-4 text-center text-gray-500">{row.manual}</td>
+                    <td className="p-3 sm:p-4 text-center text-gray-500">{row.zapier}</td>
+                    <td className="p-3 sm:p-4 text-center font-semibold text-emerald-700 bg-emerald-50/30">
+                      <span className="inline-flex items-center gap-1"><CheckCircle2 className="w-4 h-4 text-emerald-500 inline" />{row.bots}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-center mt-8 sm:mt-12">
+            <Button size="lg" className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold px-8 py-3 rounded-xl shadow-lg shadow-emerald-500/25 text-base" onClick={() => handleCTAClick('comparison')}>
+              Start Free Trial <ArrowRight className="ml-2 w-5 h-5" />
+            </Button>
           </div>
         </div>
       </section>

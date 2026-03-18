@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
-import { Activity, Calendar, Settings, Users, Plus, Zap, FileText, ArrowUpRight, TrendingUp } from 'lucide-react';
+import { Activity, Calendar, Settings, Users, Plus, Zap, FileText, ArrowUpRight, TrendingUp, Link2, GraduationCap, Rocket, BookOpen } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SubscriptionUsageCard, UpgradeModal, ExecutionPacksModal } from '@/components/subscription';
 
@@ -165,29 +165,70 @@ export default function DashboardHome() {
         </CardContent>
       </Card>
 
-      <Card data-tour="quick-start-guide">
+      <Card data-tour="quick-start-guide" className="border-emerald-200 bg-gradient-to-br from-white to-emerald-50/30">
         <CardHeader>
-          <CardTitle>Quick Start Guide</CardTitle>
-          <CardDescription>Get started with your AI-powered agency automation</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Rocket className="w-5 h-5 text-emerald-600" />
+            Get Started in 3 Steps
+          </CardTitle>
+          <CardDescription>Complete these steps to unlock the full power of your AI agent</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <h3 className="font-semibold">1. Configure API Keys</h3>
-            <p className="text-sm text-muted-foreground">
-              Head to Settings to add your OpenAI and Browserbase API keys
-            </p>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3">
+            <button
+              onClick={() => setLocation('/settings')}
+              className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50/50 transition-all text-left bg-white"
+            >
+              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                <Link2 className="w-4 h-4 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-400">Step 1</p>
+                <p className="text-sm font-semibold text-gray-900">Connect GoHighLevel</p>
+                <p className="text-xs text-gray-500 mt-1">Link your GHL account for CRM automation</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setLocation('/training')}
+              className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50/50 transition-all text-left bg-white"
+            >
+              <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
+                <GraduationCap className="w-4 h-4 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-400">Step 2</p>
+                <p className="text-sm font-semibold text-gray-900">Upload Training Docs</p>
+                <p className="text-xs text-gray-500 mt-1">Add SOPs so your agent understands your workflows</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setLocation('/agent')}
+              className="flex items-start gap-3 p-4 rounded-xl border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50/50 transition-all text-left bg-white"
+            >
+              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                <Zap className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-400">Step 3</p>
+                <p className="text-sm font-semibold text-gray-900">Run Your First Task</p>
+                <p className="text-xs text-gray-500 mt-1">Give your agent a task and watch it work</p>
+              </div>
+            </button>
           </div>
-          <div className="space-y-2">
-            <h3 className="font-semibold">2. Create Lead Lists</h3>
-            <p className="text-sm text-muted-foreground">
-              Import or manually add leads to organize your outreach
-            </p>
-          </div>
-          <div className="space-y-2">
-            <h3 className="font-semibold">3. Launch AI Campaigns</h3>
-            <p className="text-sm text-muted-foreground">
-              Create and manage AI calling campaigns to automate outreach
-            </p>
+
+          <div className="mt-4 pt-4 border-t flex items-center justify-between">
+            <p className="text-sm text-gray-500">Need help? Check the full guide.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setLocation('/support')}
+            >
+              <BookOpen className="w-4 h-4" />
+              Help Center
+            </Button>
           </div>
         </CardContent>
       </Card>

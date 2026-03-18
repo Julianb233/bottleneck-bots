@@ -334,6 +334,35 @@ export function emitExecutionError(
 }
 
 // ========================================
+// BROWSER ACTION & CONTROL EVENTS  
+// ========================================
+
+export function emitBrowserNavigate(userId: number, executionId: string, data: { url: string; pageTitle?: string }) {
+  const event: AgentSSEEvent = { type: 'browser:navigate', executionId, data: { ...data, timestamp: new Date().toISOString() } };
+  sendAgentEvent(userId, executionId, event);
+}
+
+export function emitBrowserAction(userId: number, executionId: string, data: { action: string; selector?: string; value?: string; description: string }) {
+  const event: AgentSSEEvent = { type: 'browser:action', executionId, data: { ...data, timestamp: new Date().toISOString() } };
+  sendAgentEvent(userId, executionId, event);
+}
+
+export function emitBrowserScreenshot(userId: number, executionId: string, data: { screenshotUrl?: string; screenshotBase64?: string; pageTitle?: string; currentUrl?: string }) {
+  const event: AgentSSEEvent = { type: 'browser:screenshot', executionId, data: { ...data, timestamp: new Date().toISOString() } };
+  sendAgentEvent(userId, executionId, event);
+}
+
+export function emitExecutionPaused(userId: number, executionId: string, data: { reason?: string }) {
+  const event: AgentSSEEvent = { type: 'execution:paused', executionId, data: { ...data, timestamp: new Date().toISOString() } };
+  sendAgentEvent(userId, executionId, event);
+}
+
+export function emitExecutionResumed(userId: number, executionId: string, data: { resumedAt?: string }) {
+  const event: AgentSSEEvent = { type: 'execution:resumed', executionId, data: { resumedAt: data.resumedAt || new Date().toISOString(), timestamp: new Date().toISOString() } };
+  sendAgentEvent(userId, executionId, event);
+}
+
+// ========================================
 // CONVENIENCE WRAPPER CLASS
 // ========================================
 
@@ -405,5 +434,25 @@ export class AgentSSEEmitter {
 
   executionError(data: Parameters<typeof emitExecutionError>[2]) {
     emitExecutionError(this.userId, this.executionId, data);
+  }
+
+  browserNavigate(data: Parameters<typeof emitBrowserNavigate>[2]) {
+    emitBrowserNavigate(this.userId, this.executionId, data);
+  }
+
+  browserAction(data: Parameters<typeof emitBrowserAction>[2]) {
+    emitBrowserAction(this.userId, this.executionId, data);
+  }
+
+  browserScreenshot(data: Parameters<typeof emitBrowserScreenshot>[2]) {
+    emitBrowserScreenshot(this.userId, this.executionId, data);
+  }
+
+  executionPaused(data: Parameters<typeof emitExecutionPaused>[2]) {
+    emitExecutionPaused(this.userId, this.executionId, data);
+  }
+
+  executionResumed(data: Parameters<typeof emitExecutionResumed>[2]) {
+    emitExecutionResumed(this.userId, this.executionId, data);
   }
 }

@@ -278,7 +278,12 @@ export function useAgentSSE(options: UseAgentSSEOptions = {}) {
       case 'progress':
       case 'reasoning':
       case 'browser:session':
+      case 'browser:navigate':
+      case 'browser:action':
+      case 'browser:screenshot':
       case 'execution:started':
+      case 'execution:paused':
+      case 'execution:resumed':
       case 'plan:created':
       case 'phase:start':
       case 'phase:complete':

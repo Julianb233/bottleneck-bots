@@ -1,0 +1,16 @@
+{
+  "currentSession": "session-2026-03-17T10-42-29-024656Z",
+  "sessions": [
+    {
+      "id": "session-2026-03-17T10-42-29-024656Z",
+      "startedAt": "2026-03-17T10:42:29.024656Z",
+      "endedAt": null,
+      "workerCount": 3,
+      "taskCount": 42,
+      "tasksCompleted": 1,
+      "tasksFailed": 0,
+      "status": "running",
+      "source": "roadmap"
+    }
+  ]
+}

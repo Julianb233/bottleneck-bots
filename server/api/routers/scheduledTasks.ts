@@ -880,4 +880,228 @@ export const scheduledTasksRouter = router({
         ...stats,
       };
     }),
+
+  /**
+   * Duplicate an existing scheduled task
+   */
+  duplicate: protectedProcedure
+    .input(z.object({
+      taskId: z.number().int(),
+      newName: z.string().min(1).max(200).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+      // Get original task
+      const [original] = await db
+        .select()
+        .from(scheduledBrowserTasks)
+        .where(and(
+          eq(scheduledBrowserTasks.id, input.taskId),
+          eq(scheduledBrowserTasks.userId, ctx.user.id)
+        ))
+        .limit(1);
+
+      if (!original) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
+      }
+
+      const nextRun = calculateNextRun(original.cronExpression, original.timezone);
+
+      const [duplicate] = await db
+        .insert(scheduledBrowserTasks)
+        .values({
+          userId: ctx.user.id,
+          name: input.newName || `${original.name} (copy)`,
+          description: original.description,
+          cronExpression: original.cronExpression,
+          timezone: original.timezone,
+          scheduleType: original.scheduleType,
+          automationConfig: original.automationConfig,
+          isActive: false, // Start inactive so user can review before enabling
+          status: "paused",
+          nextRun,
+          retryOnFailure: original.retryOnFailure,
+          maxRetries: original.maxRetries,
+          retryDelay: original.retryDelay,
+          timeout: original.timeout,
+          tags: original.tags,
+          priority: original.priority,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      return duplicate;
+    }),
+
+  /**
+   * Get next N run times for a scheduled task
+   */
+  getNextRuns: protectedProcedure
+    .input(z.object({
+      taskId: z.number().int(),
+      count: z.number().int().min(1).max(20).default(5),
+    }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+      const [task] = await db
+        .select()
+        .from(scheduledBrowserTasks)
+        .where(and(
+          eq(scheduledBrowserTasks.id, input.taskId),
+          eq(scheduledBrowserTasks.userId, ctx.user.id)
+        ))
+        .limit(1);
+
+      if (!task) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
+      }
+
+      const runs = cronSchedulerService.getNextNRunTimes(
+        task.cronExpression,
+        input.count,
+        task.timezone
+      );
+
+      return {
+        taskId: task.id,
+        cronExpression: task.cronExpression,
+        timezone: task.timezone,
+        description: cronSchedulerService.describeCronExpression(task.cronExpression),
+        nextRuns: runs.map(r => r.toISOString()),
+      };
+    }),
+
+  /**
+   * Bulk toggle (enable/disable) multiple scheduled tasks
+   */
+  bulkToggle: protectedProcedure
+    .input(z.object({
+      taskIds: z.array(z.number().int()).min(1).max(50),
+      isActive: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+      let updated = 0;
+      for (const taskId of input.taskIds) {
+        const [task] = await db
+          .select()
+          .from(scheduledBrowserTasks)
+          .where(and(
+            eq(scheduledBrowserTasks.id, taskId),
+            eq(scheduledBrowserTasks.userId, ctx.user.id)
+          ))
+          .limit(1);
+
+        if (!task) continue;
+
+        const nextRun = input.isActive
+          ? calculateNextRun(task.cronExpression, task.timezone)
+          : null;
+
+        await db
+          .update(scheduledBrowserTasks)
+          .set({
+            isActive: input.isActive,
+            status: input.isActive ? "active" : "paused",
+            nextRun,
+            updatedAt: new Date(),
+          })
+          .where(eq(scheduledBrowserTasks.id, taskId));
+
+        updated++;
+      }
+
+      return {
+        success: true,
+        updated,
+        message: `${updated} task(s) ${input.isActive ? 'enabled' : 'disabled'}`,
+      };
+    }),
+
+  /**
+   * Get failure report for a scheduled task
+   * Analyzes recent failures and provides summary
+   */
+  getFailureReport: protectedProcedure
+    .input(z.object({
+      taskId: z.number().int(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+      // Verify ownership
+      const [task] = await db
+        .select()
+        .from(scheduledBrowserTasks)
+        .where(and(
+          eq(scheduledBrowserTasks.id, input.taskId),
+          eq(scheduledBrowserTasks.userId, ctx.user.id)
+        ))
+        .limit(1);
+
+      if (!task) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Task not found" });
+      }
+
+      // Get recent executions (last 30)
+      const executions = await db
+        .select()
+        .from(scheduledTaskExecutions)
+        .where(eq(scheduledTaskExecutions.taskId, input.taskId))
+        .orderBy(desc(scheduledTaskExecutions.startedAt))
+        .limit(30);
+
+      const totalRuns = executions.length;
+      const failures = executions.filter(e => e.status === "failed");
+      const successes = executions.filter(e => e.status === "completed");
+
+      // Collect failure reasons
+      const failureReasons: Record<string, number> = {};
+      for (const failure of failures) {
+        const reason = (failure.error as string) || "Unknown error";
+        // Truncate to first 100 chars for grouping
+        const key = reason.substring(0, 100);
+        failureReasons[key] = (failureReasons[key] || 0) + 1;
+      }
+
+      // Calculate average duration for successful runs
+      const durations = successes
+        .filter(e => e.startedAt && e.completedAt)
+        .map(e => new Date(e.completedAt!).getTime() - new Date(e.startedAt).getTime());
+      const avgDuration = durations.length > 0
+        ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length / 1000)
+        : 0;
+
+      // Recent failure streak
+      let failureStreak = 0;
+      for (const exec of executions) {
+        if (exec.status === "failed") failureStreak++;
+        else break;
+      }
+
+      return {
+        taskId: input.taskId,
+        taskName: task.name,
+        totalRuns,
+        totalFailures: failures.length,
+        totalSuccesses: successes.length,
+        successRate: totalRuns > 0 ? Math.round((successes.length / totalRuns) * 100) : 0,
+        averageDurationSeconds: avgDuration,
+        currentFailureStreak: failureStreak,
+        topFailureReasons: Object.entries(failureReasons)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5)
+          .map(([reason, count]) => ({ reason, count })),
+        lastSuccess: successes[0]?.completedAt || null,
+        lastFailure: failures[0]?.startedAt || null,
+      };
+    }),
 });

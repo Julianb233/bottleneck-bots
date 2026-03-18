@@ -99,19 +99,32 @@ export default function TaskTemplates() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   // Fetch templates from backend
-  const { data: templates = [], isLoading } = trpc.taskTemplates.getAll.useQuery(undefined, {
+  const { data: rawTemplates = [], isLoading } = trpc.templates.getAll.useQuery(undefined, {
     refetchOnWindowFocus: false,
   });
 
-  const runMutation = trpc.taskTemplates.runFromTemplate.useMutation({
-    onSuccess: (data) => {
-      toast.success(data.message, {
-        description: `Estimated: ~${data.estimatedMinutes} min | ${data.creditCost} credits`,
-      });
+  // Normalize templates to expected shape (backend may return flat DB rows)
+  const templates = useMemo(() => rawTemplates.map((t: any) => ({
+    id: String(t.id),
+    name: t.name ?? '',
+    description: t.description ?? '',
+    category: t.category ?? 'operations',
+    platform: t.category ?? 'general',
+    estimatedMinutes: 5,
+    creditCost: 1,
+    steps: Array.isArray(t.steps) ? t.steps : (typeof t.steps === 'string' ? JSON.parse(t.steps) : []),
+    tags: Array.isArray(t.tags) ? t.tags : [],
+    inputs: Array.isArray(t.inputs) ? t.inputs : [],
+    platformRequirements: Array.isArray(t.platformRequirements) ? t.platformRequirements : [],
+  })), [rawTemplates]);
+
+  const runMutation = trpc.templates.execute.useMutation({
+    onSuccess: (data: any) => {
+      toast.success(data.message ?? 'Template executed');
       setSelectedTemplateId(null);
       setInputValues({});
     },
-    onError: (err) => {
+    onError: (err: any) => {
       toast.error(err.message);
     },
   });
@@ -143,8 +156,7 @@ export default function TaskTemplates() {
   const handleRunTemplate = () => {
     if (!selectedTemplate) return;
     runMutation.mutate({
-      templateId: selectedTemplate.id,
-      inputs: inputValues,
+      id: Number(selectedTemplate.id),
     });
   };
 

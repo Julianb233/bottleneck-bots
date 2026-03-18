@@ -14,8 +14,9 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../../db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { knowledgeEntries } from "../../../drizzle/schema-agent";
+import { taskExecutions } from "../../../drizzle/schema-webhooks";
 
 // ========================================
 // CONSTANTS — DEFAULT CONFIGURATIONS
@@ -38,6 +39,11 @@ const DEFAULT_BEHAVIOR = {
   personality: "You are a helpful, professional AI assistant for agency operations.",
   responseStyle: "professional" as const,
   verbosity: "balanced" as const,
+  languagePreferences: {
+    primaryLanguage: "en",
+    supportedLanguages: ["en"],
+    autoDetect: true,
+  },
   escalationRules: [
     {
       condition: "Payment or billing related actions",
@@ -79,13 +85,54 @@ const skillSchema = z.object({
   name: z.string().min(1),
   enabled: z.boolean(),
   permission: z.enum(["read", "read-write"]),
-  rateLimit: z.number().int().positive().optional(),
+  rateLimit: z.number().int().min(1).max(10000).optional(),
 });
 
 const escalationRuleSchema = z.object({
   condition: z.string().min(1),
   action: z.string().min(1),
 });
+
+const escalationConfigSchema = z.object({
+  confidenceThreshold: z.number().min(0).max(100).default(70),
+  actionsRequiringApproval: z.array(z.string()).default([]),
+  timeBasedEscalation: z.object({
+    enabled: z.boolean().default(false),
+    thresholdMinutes: z.number().min(1).max(1440).default(30),
+    notifyMethod: z.enum(["email", "sms", "in_app", "all"]).default("in_app"),
+  }).default({ enabled: false, thresholdMinutes: 30, notifyMethod: "in_app" }),
+  errorThreshold: z.object({
+    enabled: z.boolean().default(true),
+    maxErrors: z.number().min(1).max(100).default(3),
+    action: z.enum(["pause", "notify", "escalate"]).default("pause"),
+  }).default({ enabled: true, maxErrors: 3, action: "pause" }),
+  customRules: z.array(escalationRuleSchema).default([]),
+});
+
+const DEFAULT_ESCALATION_CONFIG = {
+  confidenceThreshold: 70,
+  actionsRequiringApproval: ["bulk_delete", "send_mass_email", "payment_action", "account_deletion"],
+  timeBasedEscalation: {
+    enabled: false,
+    thresholdMinutes: 30,
+    notifyMethod: "in_app" as const,
+  },
+  errorThreshold: {
+    enabled: true,
+    maxErrors: 3,
+    action: "pause" as const,
+  },
+  customRules: [
+    {
+      condition: "Payment or billing related actions",
+      action: "Ask for human approval before proceeding",
+    },
+    {
+      condition: "Deleting more than 10 records",
+      action: "Confirm with user before bulk deletion",
+    },
+  ],
+};
 
 // ========================================
 // ROUTER DEFINITION
@@ -382,6 +429,148 @@ export const agentTrainingRouter = router({
     }),
 
   // ========================================
+  // SKILL USAGE ANALYTICS
+  // ========================================
+
+  /**
+   * Get skill usage analytics for the authenticated user.
+   * Aggregates tool calls from task executions, mapping tools to skill categories.
+   */
+  getSkillUsage: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not initialized" });
+    }
+
+    try {
+      // Map of tool names to skill IDs
+      const TOOL_TO_SKILL: Record<string, string> = {
+        browser_navigate: "browser",
+        browser_click: "browser",
+        browser_type: "browser",
+        browser_extract: "browser",
+        browser_screenshot: "browser",
+        browser_scroll: "browser",
+        browser_select: "browser",
+        browser_wait: "browser",
+        browser_close: "browser",
+        browser_create_session: "browser",
+        http_request: "ghl_api",
+        ghl_create_contact: "ghl_api",
+        ghl_update_contact: "ghl_api",
+        ghl_search_contacts: "ghl_api",
+        ghl_create_opportunity: "ghl_api",
+        ghl_send_email: "email",
+        send_email: "email",
+        send_sms: "sms",
+        ghl_send_sms: "sms",
+        voice_call: "voice",
+        make_call: "voice",
+        file_write: "file_creation",
+        file_edit: "file_creation",
+        file_read: "file_creation",
+        file_list: "file_creation",
+        file_search: "web_scraping",
+        retrieve_data: "web_scraping",
+        retrieve_documentation: "web_scraping",
+        calendar_create: "calendar",
+        calendar_update: "calendar",
+        calendar_list: "calendar",
+        store_data: "crm",
+        update_plan: "reporting",
+        advance_phase: "reporting",
+      };
+
+      // Fetch recent executions for this user
+      const executions = await db
+        .select({
+          stepResults: taskExecutions.stepResults,
+          status: taskExecutions.status,
+          completedAt: taskExecutions.completedAt,
+          duration: taskExecutions.duration,
+        })
+        .from(taskExecutions)
+        .where(eq(taskExecutions.triggeredByUserId, ctx.user.id))
+        .orderBy(desc(taskExecutions.startedAt))
+        .limit(100);
+
+      // Aggregate usage per skill
+      const skillStats: Record<string, {
+        totalCalls: number;
+        successCount: number;
+        failureCount: number;
+        lastUsed: string | null;
+        totalDurationMs: number;
+      }> = {};
+
+      // Initialize all skills
+      for (const skill of DEFAULT_SKILLS) {
+        skillStats[skill.id] = {
+          totalCalls: 0,
+          successCount: 0,
+          failureCount: 0,
+          lastUsed: null,
+          totalDurationMs: 0,
+        };
+      }
+
+      for (const execution of executions) {
+        const steps = execution.stepResults as Array<{
+          tool?: string;
+          toolName?: string;
+          success?: boolean;
+          duration?: number;
+          timestamp?: string;
+        }> | null;
+
+        if (!Array.isArray(steps)) continue;
+
+        for (const step of steps) {
+          const toolName = step.tool || step.toolName;
+          if (!toolName) continue;
+
+          const skillId = TOOL_TO_SKILL[toolName];
+          if (!skillId || !skillStats[skillId]) continue;
+
+          const stat = skillStats[skillId];
+          stat.totalCalls++;
+          if (step.success !== false) {
+            stat.successCount++;
+          } else {
+            stat.failureCount++;
+          }
+          if (step.duration) {
+            stat.totalDurationMs += step.duration;
+          }
+          // Track most recent usage
+          const ts = step.timestamp || (execution.completedAt ? new Date(execution.completedAt).toISOString() : null);
+          if (ts && (!stat.lastUsed || ts > stat.lastUsed)) {
+            stat.lastUsed = ts;
+          }
+        }
+      }
+
+      // Build response
+      const usage = Object.entries(skillStats).map(([skillId, stat]) => ({
+        skillId,
+        totalCalls: stat.totalCalls,
+        successCount: stat.successCount,
+        failureCount: stat.failureCount,
+        successRate: stat.totalCalls > 0 ? (stat.successCount / stat.totalCalls) * 100 : 0,
+        lastUsed: stat.lastUsed,
+        avgDurationMs: stat.totalCalls > 0 ? Math.round(stat.totalDurationMs / stat.totalCalls) : 0,
+      }));
+
+      return { success: true, usage };
+    } catch (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: error instanceof Error ? error.message : "Failed to get skill usage analytics",
+      });
+    }
+  }),
+
+  // ========================================
   // BEHAVIOR CONFIGURATION
   // ========================================
 
@@ -437,8 +626,13 @@ export const agentTrainingRouter = router({
     .input(
       z.object({
         personality: z.string().min(1),
-        responseStyle: z.enum(["professional", "casual", "technical"]),
+        responseStyle: z.enum(["professional", "friendly", "casual", "technical"]),
         verbosity: z.enum(["concise", "detailed", "balanced"]),
+        languagePreferences: z.object({
+          primaryLanguage: z.string().default("en"),
+          supportedLanguages: z.array(z.string()).default(["en"]),
+          autoDetect: z.boolean().default(true),
+        }).optional(),
         escalationRules: z.array(escalationRuleSchema),
         customInstructions: z.string().optional(),
       })
@@ -477,6 +671,97 @@ export const agentTrainingRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: error instanceof Error ? error.message : "Failed to update behavior configuration",
+        });
+      }
+    }),
+
+  // ========================================
+  // ESCALATION CONFIGURATION
+  // ========================================
+
+  /**
+   * Get the user's escalation configuration.
+   * Falls back to DEFAULT_ESCALATION_CONFIG if no config has been saved yet.
+   */
+  getEscalationConfig: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not initialized" });
+    }
+
+    try {
+      const rows = await db
+        .select()
+        .from(knowledgeEntries)
+        .where(
+          and(
+            eq(knowledgeEntries.userId, ctx.user.id),
+            eq(knowledgeEntries.category, "escalation_config"),
+            eq(knowledgeEntries.isActive, true)
+          )
+        )
+        .limit(1);
+
+      if (rows.length === 0) {
+        return { success: true, escalation: DEFAULT_ESCALATION_CONFIG, isDefault: true };
+      }
+
+      let escalation: typeof DEFAULT_ESCALATION_CONFIG = DEFAULT_ESCALATION_CONFIG;
+      try {
+        escalation = JSON.parse(rows[0].content) as typeof DEFAULT_ESCALATION_CONFIG;
+      } catch {
+        return { success: true, escalation: DEFAULT_ESCALATION_CONFIG, isDefault: true };
+      }
+
+      return { success: true, escalation, isDefault: false };
+    } catch (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: error instanceof Error ? error.message : "Failed to get escalation configuration",
+      });
+    }
+  }),
+
+  /**
+   * Save the user's escalation configuration.
+   * Upserts: deactivates any existing 'escalation_config' row then inserts a fresh one.
+   */
+  updateEscalationConfig: protectedProcedure
+    .input(escalationConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not initialized" });
+      }
+
+      try {
+        // Deactivate existing config rows for this user
+        await db
+          .update(knowledgeEntries)
+          .set({ isActive: false })
+          .where(
+            and(
+              eq(knowledgeEntries.userId, ctx.user.id),
+              eq(knowledgeEntries.category, "escalation_config")
+            )
+          );
+
+        const [created] = await db
+          .insert(knowledgeEntries)
+          .values({
+            userId: ctx.user.id,
+            category: "escalation_config",
+            context: "escalation_configuration",
+            content: JSON.stringify(input),
+            isActive: true,
+          })
+          .returning();
+
+        return { success: true, config: created };
+      } catch (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: error instanceof Error ? error.message : "Failed to update escalation configuration",
         });
       }
     }),

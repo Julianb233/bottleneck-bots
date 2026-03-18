@@ -1,0 +1,46 @@
+{
+  "task": "3-02-build",
+  "title": "Contact Management Functions (FR-007 to FR-014)",
+  "status": "complete",
+  "completedAt": "2026-03-17T00:00:00Z",
+  "worker": "bussit-9",
+  "filesModified": [
+    "server/services/ghlContacts.service.ts",
+    "server/api/routers/ghlContacts.ts",
+    "server/routers.ts"
+  ],
+  "functionsImplemented": [
+    "contacts.create(data) — Create contact via POST /contacts/",
+    "contacts.get(contactId) — Get by ID via GET /contacts/{id}",
+    "contacts.update(contactId, data) — Update via PUT /contacts/{id}",
+    "contacts.delete(contactId) — Delete via DELETE /contacts/{id}",
+    "contacts.search(filters) — Search via GET /contacts/search",
+    "contacts.bulkImport(contacts[]) — Bulk import via POST /contacts/bulk/import (up to 50K)",
+    "contacts.bulkExport(filters) — Export via POST /contacts/bulk/export",
+    "contacts.addTag(contactId, tag) — Add tag via POST /contacts/{id}/tags",
+    "contacts.removeTag(contactId, tag) — Remove tag via DELETE /contacts/{id}/tags",
+    "contacts.listTags() — List all tags via GET /locations/tags",
+    "contacts.getCustomFields() — List custom fields via GET /locations/customFields",
+    "contacts.updateCustomField(contactId, fieldId, value) — Update custom field via PUT /contacts/{id}",
+    "contacts.getActivity(contactId) — Activity timeline via GET /contacts/{id}/tasks",
+    "contacts.merge(primaryId, duplicateIds[]) — Merge duplicates via POST /contacts/{id}/merge"
+  ],
+  "trpcProcedures": [
+    "ghlContacts.create (mutation)",
+    "ghlContacts.get (query)",
+    "ghlContacts.update (mutation)",
+    "ghlContacts.delete (mutation)",
+    "ghlContacts.search (query)",
+    "ghlContacts.bulkImport (mutation)",
+    "ghlContacts.bulkExport (mutation)",
+    "ghlContacts.addTag (mutation)",
+    "ghlContacts.removeTag (mutation)",
+    "ghlContacts.listTags (query)",
+    "ghlContacts.getCustomFields (query)",
+    "ghlContacts.updateCustomField (mutation)",
+    "ghlContacts.getActivity (query)",
+    "ghlContacts.merge (mutation)"
+  ],
+  "buildStatus": "pass",
+  "notes": "All 14 contact management functions implemented with full tRPC procedures. Service takes (GHLService, locationId) constructor and returns GHLApiResponse<T> from all methods. Router registered at ghlContacts namespace in appRouter. Build passes."
+}

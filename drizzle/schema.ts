@@ -181,8 +181,18 @@ export const automationTemplates = pgTable("automation_templates", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
-  steps: text("steps").notNull(), // JSON string of Stagehand steps
+  steps: jsonb("steps").notNull(), // Array of { action, description } step objects
   category: varchar("category", { length: 50 }).default("General"),
+  platform: varchar("platform", { length: 100 }).default("General"), // e.g. "GoHighLevel", "General"
+  estimatedMinutes: integer("estimatedMinutes").default(5),
+  estimatedCredits: integer("estimatedCredits").default(1),
+  requiredSkills: jsonb("requiredSkills").default([]), // Array of skill strings
+  inputs: jsonb("inputs").default([]), // Array of { label, placeholder, required } objects
+  isSeedTemplate: boolean("isSeedTemplate").default(false),
+  isActive: boolean("isActive").default(true),
+  isPublic: boolean("isPublic").default(false),
+  authorId: integer("authorId").references(() => users.id),
+  usageCount: integer("usageCount").default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
