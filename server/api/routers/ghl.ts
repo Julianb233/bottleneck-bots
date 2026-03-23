@@ -10,13 +10,13 @@
  *
  * - Messaging (send SMS, send email, delivery status, templates)
  *
- * Linear: AI-2877, AI-2881, AI-3461, AI-5149
+ * Linear: AI-2877, AI-2881, AI-3461, AI-5148, AI-5149
  */
 
 import { z } from "zod";
 import { router, protectedProcedure } from "../../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { GHLService, GHLError } from "../../services/ghl.service";
+import { GHLService, GHLError, type GHLContact } from "../../services/ghl.service";
 import { getDb } from "../../db";
 import { ghlLocations, ghlActiveLocation } from "../../../drizzle/schema-ghl-locations";
 import { eq, and } from "drizzle-orm";
@@ -492,6 +492,158 @@ export const ghlRouter = router({
     }),
 
   // ----------------------------------------
+  // Bulk Contact Ops / Custom Fields / Tags (AI-5148)
+  // ----------------------------------------
+
+  bulkImport: protectedProcedure
+    .input(
+      z.object({
+        locationId: z.string().optional(),
+        contacts: z
+          .array(
+            z.object({
+              firstName: z.string().optional(),
+              lastName: z.string().optional(),
+              email: z.string().email().optional(),
+              phone: z.string().optional(),
+              tags: z.array(z.string()).optional(),
+              source: z.string().optional(),
+              customFields: z.array(z.object({ id: z.string(), value: z.string() })).optional(),
+            })
+          )
+          .min(1)
+          .max(50000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        return await service.bulkImport(input.contacts);
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  bulkExport: protectedProcedure
+    .input(
+      z.object({
+        locationId: z.string().optional(),
+        query: z.string().optional(),
+        filters: z.record(z.string(), z.string()).optional(),
+        maxRecords: z.number().int().min(1).max(50000).default(10000),
+        format: z.enum(["json", "csv"]).default("json"),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        const result = await service.bulkExport({
+          query: input.query,
+          filters: input.filters,
+          maxRecords: input.maxRecords,
+        });
+
+        if (input.format === "csv") {
+          return {
+            csv: contactsToCsv(result.contacts),
+            total: result.total,
+          };
+        }
+
+        return result;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  mergeContacts: protectedProcedure
+    .input(
+      z.object({
+        locationId: z.string().optional(),
+        primaryId: z.string().min(1),
+        duplicateIds: z.array(z.string().min(1)).min(1).max(50),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        return await service.mergeContacts(input.primaryId, input.duplicateIds);
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  getContactActivity: protectedProcedure
+    .input(
+      z.object({
+        contactId: z.string().min(1),
+        locationId: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        return await service.getContactActivity(input.contactId);
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  getCustomFields: protectedProcedure
+    .input(z.object({ locationId: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input?.locationId);
+        const result = await service.getCustomFields();
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  updateContactCustomField: protectedProcedure
+    .input(
+      z.object({
+        contactId: z.string().min(1),
+        fieldId: z.string().min(1),
+        value: z.string(),
+        locationId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        const result = await service.updateContactCustomField(
+          input.contactId,
+          input.fieldId,
+          input.value
+        );
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  listTags: protectedProcedure
+    .input(z.object({ locationId: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input?.locationId);
+        const result = await service.listTags();
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  // ----------------------------------------
   // Pipeline / Opportunity Management (AI-3461)
   // ----------------------------------------
 
@@ -753,3 +905,34 @@ export const ghlRouter = router({
       }
     }),
 });
+
+// ========================================
+// HELPERS
+// ========================================
+
+function escapeCsvField(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function contactsToCsv(contacts: GHLContact[]): string {
+  const headers = ["id", "firstName", "lastName", "name", "email", "phone", "tags", "source", "dateAdded"];
+  const rows = contacts.map((c) =>
+    [
+      c.id || "",
+      c.firstName || "",
+      c.lastName || "",
+      c.name || "",
+      c.email || "",
+      c.phone || "",
+      (c.tags || []).join(";"),
+      c.source || "",
+      c.dateAdded || "",
+    ]
+      .map(escapeCsvField)
+      .join(",")
+  );
+  return [headers.join(","), ...rows].join("\n");
+}

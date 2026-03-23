@@ -218,6 +218,55 @@ export interface GHLTemplate {
   dateAdded?: string;
 }
 
+export interface GHLCustomField {
+  id: string;
+  name: string;
+  fieldKey: string;
+  dataType: string;
+  position: number;
+  placeholder?: string;
+  isAllowedCustomOption?: boolean;
+  options?: string[];
+}
+
+export interface GHLTag {
+  id: string;
+  name: string;
+  locationId: string;
+}
+
+export interface GHLNote {
+  id: string;
+  body: string;
+  contactId: string;
+  dateAdded: string;
+  userId?: string;
+}
+
+export interface GHLTask {
+  id: string;
+  title: string;
+  body?: string;
+  contactId: string;
+  dueDate?: string;
+  completed: boolean;
+  dateAdded: string;
+  assignedTo?: string;
+}
+
+export interface GHLActivityEvent {
+  type: "note" | "task" | "appointment" | "conversation";
+  id: string;
+  timestamp: string;
+  data: GHLNote | GHLTask | Record<string, unknown>;
+}
+
+export interface GHLBulkImportResult {
+  imported: number;
+  failed: number;
+  errors: Array<{ index: number; error: string }>;
+}
+
 // ========================================
 // TOKEN BUCKET RATE LIMITER
 // ========================================
@@ -908,6 +957,256 @@ export class GHLService {
       method: "DELETE",
       endpoint: `/contacts/${contactId}/tags`,
       data: { tags },
+    });
+  }
+
+  // ----------------------------------------
+  // Bulk Contact Operations (AI-5148)
+  // ----------------------------------------
+
+  /**
+   * Bulk import contacts in batches of 100. Returns summary of imported/failed.
+   */
+  async bulkImport(
+    contacts: Array<{
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string;
+      tags?: string[];
+      customFields?: Array<{ id: string; value: string }>;
+      source?: string;
+    }>
+  ): Promise<GHLBulkImportResult> {
+    const BATCH_SIZE = 100;
+    const result: GHLBulkImportResult = { imported: 0, failed: 0, errors: [] };
+
+    for (let i = 0; i < contacts.length; i += BATCH_SIZE) {
+      const batch = contacts.slice(i, i + BATCH_SIZE);
+      const settled = await Promise.allSettled(
+        batch.map((contact, batchIdx) =>
+          this.createContact(contact).then(
+            () => ({ index: i + batchIdx, ok: true as const }),
+            (err: unknown) => ({
+              index: i + batchIdx,
+              ok: false as const,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          )
+        )
+      );
+
+      for (const item of settled) {
+        if (item.status === "fulfilled") {
+          if (item.value.ok) {
+            result.imported++;
+          } else {
+            result.failed++;
+            result.errors.push({ index: item.value.index, error: item.value.error });
+          }
+        } else {
+          result.failed++;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Export contacts matching filters as an array of flat objects (CSV-ready).
+   * Paginates through all results up to the given limit.
+   */
+  async bulkExport(params: {
+    query?: string;
+    filters?: Record<string, string>;
+    maxRecords?: number;
+  }): Promise<{ contacts: GHLContact[]; total: number }> {
+    const maxRecords = params.maxRecords || 10000;
+    const pageSize = 100;
+    const allContacts: GHLContact[] = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore && allContacts.length < maxRecords) {
+      const result = await this.searchContacts({
+        query: params.query,
+        limit: pageSize,
+        offset,
+        filters: params.filters,
+      });
+      const contacts = result.data.contacts || [];
+      allContacts.push(...contacts);
+
+      if (contacts.length < pageSize || allContacts.length >= maxRecords) {
+        hasMore = false;
+      }
+      offset += pageSize;
+    }
+
+    return {
+      contacts: allContacts.slice(0, maxRecords),
+      total: allContacts.length,
+    };
+  }
+
+  /**
+   * Merge duplicate contacts into a primary contact.
+   * Copies non-empty fields from duplicates to primary (primary fields take precedence),
+   * merges tags, then deletes duplicates.
+   */
+  async mergeContacts(
+    primaryId: string,
+    duplicateIds: string[]
+  ): Promise<{
+    primaryContact: GHLContact;
+    mergedCount: number;
+    deletedIds: string[];
+  }> {
+    // 1. Fetch primary contact
+    const primaryResult = await this.getContact(primaryId);
+    const primary = primaryResult.data.contact;
+
+    // 2. Fetch all duplicates
+    const duplicateResults = await Promise.all(
+      duplicateIds.map((id) => this.getContact(id))
+    );
+    const duplicates = duplicateResults.map((r) => r.data.contact);
+
+    // 3. Build merged field values (primary wins, fill in blanks from duplicates)
+    const mergedTags = new Set<string>(primary.tags || []);
+    const mergedCustomFields = new Map<string, string>();
+    (primary.customFields || []).forEach((f) => mergedCustomFields.set(f.id, f.value));
+
+    const updateData: Record<string, string | undefined> = {};
+
+    for (const dup of duplicates) {
+      if (!primary.firstName && dup.firstName) updateData.firstName = dup.firstName;
+      if (!primary.lastName && dup.lastName) updateData.lastName = dup.lastName;
+      if (!primary.email && dup.email) updateData.email = dup.email;
+      if (!primary.phone && dup.phone) updateData.phone = dup.phone;
+      (dup.tags || []).forEach((t) => mergedTags.add(t));
+      (dup.customFields || []).forEach((f) => {
+        if (!mergedCustomFields.has(f.id)) mergedCustomFields.set(f.id, f.value);
+      });
+    }
+
+    // 4. Update primary with merged data
+    const finalCustomFields = Array.from(mergedCustomFields.entries()).map(([id, value]) => ({
+      id,
+      value,
+    }));
+    await this.updateContact(primaryId, {
+      ...updateData,
+      tags: Array.from(mergedTags),
+      customFields: finalCustomFields,
+    });
+
+    // 5. Delete duplicates
+    const deletedIds: string[] = [];
+    for (const dupId of duplicateIds) {
+      try {
+        await this.deleteContact(dupId);
+        deletedIds.push(dupId);
+      } catch {
+        // Log but continue — partial merge is still useful
+        console.warn(`[GHL] Failed to delete duplicate contact ${dupId}`);
+      }
+    }
+
+    // 6. Fetch updated primary
+    const updatedResult = await this.getContact(primaryId);
+
+    return {
+      primaryContact: updatedResult.data.contact,
+      mergedCount: duplicates.length,
+      deletedIds,
+    };
+  }
+
+  /**
+   * Delete a contact by ID.
+   */
+  async deleteContact(contactId: string): Promise<GHLApiResponse<unknown>> {
+    return this.request({
+      method: "DELETE",
+      endpoint: `/contacts/${contactId}`,
+    });
+  }
+
+  /**
+   * Get activity timeline for a contact (notes, tasks, appointments).
+   */
+  async getContactActivity(
+    contactId: string
+  ): Promise<GHLActivityEvent[]> {
+    const [notesResult, tasksResult] = await Promise.all([
+      this.request<{ notes: GHLNote[] }>({
+        method: "GET",
+        endpoint: `/contacts/${contactId}/notes`,
+      }).catch(() => ({ data: { notes: [] }, status: 200, rateLimit: { remaining: null, reset: null, limit: null } })),
+      this.request<{ tasks: GHLTask[] }>({
+        method: "GET",
+        endpoint: `/contacts/${contactId}/tasks`,
+      }).catch(() => ({ data: { tasks: [] }, status: 200, rateLimit: { remaining: null, reset: null, limit: null } })),
+    ]);
+
+    const events: GHLActivityEvent[] = [];
+
+    for (const note of notesResult.data.notes || []) {
+      events.push({
+        type: "note",
+        id: note.id,
+        timestamp: note.dateAdded,
+        data: note,
+      });
+    }
+
+    for (const task of tasksResult.data.tasks || []) {
+      events.push({
+        type: "task",
+        id: task.id,
+        timestamp: task.dateAdded,
+        data: task,
+      });
+    }
+
+    // Sort by timestamp descending (most recent first)
+    events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return events;
+  }
+
+  /**
+   * List custom fields for this location.
+   */
+  async getCustomFields(): Promise<GHLApiResponse<{ customFields: GHLCustomField[] }>> {
+    return this.request({
+      method: "GET",
+      endpoint: `/locations/${this.locationId}/customFields`,
+    });
+  }
+
+  /**
+   * Update a single custom field value on a contact.
+   */
+  async updateContactCustomField(
+    contactId: string,
+    fieldId: string,
+    value: string
+  ): Promise<GHLApiResponse<{ contact: GHLContact }>> {
+    return this.updateContact(contactId, {
+      customFields: [{ id: fieldId, value }],
+    });
+  }
+
+  /**
+   * List all tags for this location.
+   */
+  async listTags(): Promise<GHLApiResponse<{ tags: GHLTag[] }>> {
+    return this.request({
+      method: "GET",
+      endpoint: `/locations/${this.locationId}/tags`,
     });
   }
 
