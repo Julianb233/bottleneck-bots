@@ -46,6 +46,7 @@ import { ghlRouter } from "./api/routers/ghl";
 import { orgoRouter } from "./api/routers/orgo";
 import { orgoAuthRouter } from "./api/routers/orgoAuth";
 import { orgoComputersRouter } from "./api/routers/orgoComputers";
+import { orgoActionsRouter } from "./api/routers/orgoActions";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -154,6 +155,9 @@ export const appRouter = router({
 
   // Orgo Computers (provisioning, lifecycle, state machine) — AI-5248
   orgoComputers: orgoComputersRouter,
+
+  // Orgo Desktop Actions (keyboard, mouse, clipboard, exec) — AI-5252
+  orgoActions: orgoActionsRouter,
 });
 
 export type AppRouter = typeof appRouter;
