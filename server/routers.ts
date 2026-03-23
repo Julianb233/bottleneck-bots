@@ -45,6 +45,7 @@ import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlRouter } from "./api/routers/ghl";
 import { orgoRouter } from "./api/routers/orgo";
 import { orgoAuthRouter } from "./api/routers/orgoAuth";
+import { orgoComputersRouter } from "./api/routers/orgoComputers";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -150,6 +151,9 @@ export const appRouter = router({
 
   // Orgo Auth (registration, login, JWT tokens) — AI-5246
   orgoAuth: orgoAuthRouter,
+
+  // Orgo Computers (provisioning, lifecycle, state machine) — AI-5248
+  orgoComputers: orgoComputersRouter,
 });
 
 export type AppRouter = typeof appRouter;
