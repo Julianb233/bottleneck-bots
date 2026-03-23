@@ -134,6 +134,59 @@ export interface GHLLocation {
   email?: string;
 }
 
+export interface GHLContact {
+  id: string;
+  locationId: string;
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  tags?: string[];
+  source?: string;
+  dateAdded?: string;
+  customFields?: Array<{ id: string; value: string }>;
+}
+
+export interface GHLPipeline {
+  id: string;
+  name: string;
+  locationId: string;
+  stages: Array<{
+    id: string;
+    name: string;
+    position: number;
+  }>;
+}
+
+export interface GHLOpportunity {
+  id: string;
+  name: string;
+  pipelineId: string;
+  pipelineStageId: string;
+  status: "open" | "won" | "lost" | "abandoned";
+  monetaryValue?: number;
+  contactId: string;
+  locationId: string;
+  createdAt?: string;
+  updatedAt?: string;
+  customFields?: Array<{ id: string; value: string }>;
+}
+
+export interface GHLCampaign {
+  id: string;
+  name: string;
+  status: string;
+  locationId: string;
+}
+
+export interface GHLWorkflow {
+  id: string;
+  name: string;
+  status: string;
+  locationId: string;
+}
+
 // ========================================
 // TOKEN BUCKET RATE LIMITER
 // ========================================
@@ -716,6 +769,256 @@ export class GHLService {
     console.log(
       `[GHL] Disconnected location ${this.locationId} for user ${this.userId}`
     );
+  }
+
+  // ----------------------------------------
+  // Contact / Lead Management
+  // ----------------------------------------
+
+  /**
+   * Search contacts with optional filters.
+   */
+  async searchContacts(params: {
+    query?: string;
+    limit?: number;
+    offset?: number;
+    filters?: Record<string, string>;
+  }): Promise<GHLApiResponse<{ contacts: GHLContact[]; total: number }>> {
+    const searchParams: Record<string, string> = {
+      locationId: this.locationId,
+      ...(params.query ? { query: params.query } : {}),
+      ...(params.limit ? { limit: String(params.limit) } : {}),
+      ...(params.offset ? { startAfter: String(params.offset) } : {}),
+      ...(params.filters || {}),
+    };
+
+    return this.request({
+      method: "GET",
+      endpoint: "/contacts/",
+      params: searchParams,
+    });
+  }
+
+  /**
+   * Get a single contact by ID.
+   */
+  async getContact(contactId: string): Promise<GHLApiResponse<{ contact: GHLContact }>> {
+    return this.request({
+      method: "GET",
+      endpoint: `/contacts/${contactId}`,
+    });
+  }
+
+  /**
+   * Create a new contact in GHL.
+   */
+  async createContact(data: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    tags?: string[];
+    customFields?: Array<{ id: string; value: string }>;
+    source?: string;
+  }): Promise<GHLApiResponse<{ contact: GHLContact }>> {
+    return this.request({
+      method: "POST",
+      endpoint: "/contacts/",
+      data: {
+        ...data,
+        locationId: this.locationId,
+      },
+    });
+  }
+
+  /**
+   * Update an existing contact.
+   */
+  async updateContact(
+    contactId: string,
+    data: {
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string;
+      tags?: string[];
+      customFields?: Array<{ id: string; value: string }>;
+    }
+  ): Promise<GHLApiResponse<{ contact: GHLContact }>> {
+    return this.request({
+      method: "PUT",
+      endpoint: `/contacts/${contactId}`,
+      data,
+    });
+  }
+
+  /**
+   * Add tags to a contact (used for lead routing).
+   */
+  async addContactTags(
+    contactId: string,
+    tags: string[]
+  ): Promise<GHLApiResponse<{ tags: string[] }>> {
+    return this.request({
+      method: "POST",
+      endpoint: `/contacts/${contactId}/tags`,
+      data: { tags },
+    });
+  }
+
+  /**
+   * Remove tags from a contact.
+   */
+  async removeContactTags(
+    contactId: string,
+    tags: string[]
+  ): Promise<GHLApiResponse<unknown>> {
+    return this.request({
+      method: "DELETE",
+      endpoint: `/contacts/${contactId}/tags`,
+      data: { tags },
+    });
+  }
+
+  // ----------------------------------------
+  // Pipeline / Opportunity Management
+  // ----------------------------------------
+
+  /**
+   * List all pipelines for this location.
+   */
+  async listPipelines(): Promise<GHLApiResponse<{ pipelines: GHLPipeline[] }>> {
+    return this.request({
+      method: "GET",
+      endpoint: "/opportunities/pipelines",
+      params: { locationId: this.locationId },
+    });
+  }
+
+  /**
+   * Search opportunities (deals) with filters.
+   */
+  async searchOpportunities(params: {
+    pipelineId?: string;
+    stageId?: string;
+    status?: "open" | "won" | "lost" | "abandoned" | "all";
+    query?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<GHLApiResponse<{ opportunities: GHLOpportunity[]; meta: { total: number } }>> {
+    const searchParams: Record<string, string> = {
+      location_id: this.locationId,
+      ...(params.pipelineId ? { pipeline_id: params.pipelineId } : {}),
+      ...(params.stageId ? { stage_id: params.stageId } : {}),
+      ...(params.status && params.status !== "all" ? { status: params.status } : {}),
+      ...(params.query ? { q: params.query } : {}),
+      ...(params.limit ? { limit: String(params.limit) } : {}),
+      ...(params.offset ? { startAfter: String(params.offset) } : {}),
+    };
+
+    return this.request({
+      method: "GET",
+      endpoint: "/opportunities/search",
+      params: searchParams,
+    });
+  }
+
+  /**
+   * Create a new opportunity (deal/showing request).
+   */
+  async createOpportunity(data: {
+    pipelineId: string;
+    stageId: string;
+    contactId: string;
+    name: string;
+    monetaryValue?: number;
+    status?: "open" | "won" | "lost" | "abandoned";
+    customFields?: Array<{ id: string; value: string }>;
+  }): Promise<GHLApiResponse<{ opportunity: GHLOpportunity }>> {
+    return this.request({
+      method: "POST",
+      endpoint: "/opportunities/",
+      data: {
+        ...data,
+        locationId: this.locationId,
+      },
+    });
+  }
+
+  /**
+   * Update an opportunity (move stage, change status, etc.).
+   */
+  async updateOpportunity(
+    opportunityId: string,
+    data: {
+      stageId?: string;
+      status?: "open" | "won" | "lost" | "abandoned";
+      monetaryValue?: number;
+      name?: string;
+      customFields?: Array<{ id: string; value: string }>;
+    }
+  ): Promise<GHLApiResponse<{ opportunity: GHLOpportunity }>> {
+    return this.request({
+      method: "PUT",
+      endpoint: `/opportunities/${opportunityId}`,
+      data,
+    });
+  }
+
+  // ----------------------------------------
+  // Campaign / Drip Management
+  // ----------------------------------------
+
+  /**
+   * List all campaigns for this location.
+   */
+  async listCampaigns(): Promise<GHLApiResponse<{ campaigns: GHLCampaign[] }>> {
+    return this.request({
+      method: "GET",
+      endpoint: "/campaigns/",
+      params: { locationId: this.locationId },
+    });
+  }
+
+  /**
+   * Add a contact to a campaign (drip sequence).
+   */
+  async addContactToCampaign(
+    campaignId: string,
+    contactId: string
+  ): Promise<GHLApiResponse<unknown>> {
+    return this.request({
+      method: "POST",
+      endpoint: `/campaigns/${campaignId}/contacts/${contactId}`,
+    });
+  }
+
+  /**
+   * Remove a contact from a campaign.
+   */
+  async removeContactFromCampaign(
+    campaignId: string,
+    contactId: string
+  ): Promise<GHLApiResponse<unknown>> {
+    return this.request({
+      method: "DELETE",
+      endpoint: `/campaigns/${campaignId}/contacts/${contactId}`,
+    });
+  }
+
+  // ----------------------------------------
+  // Workflow Triggers
+  // ----------------------------------------
+
+  /**
+   * List available workflows for this location.
+   */
+  async listWorkflows(): Promise<GHLApiResponse<{ workflows: GHLWorkflow[] }>> {
+    return this.request({
+      method: "GET",
+      endpoint: "/workflows/",
+      params: { locationId: this.locationId },
+    });
   }
 
   // ----------------------------------------

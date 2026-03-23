@@ -2,17 +2,13 @@
  * GHL tRPC Router
  *
  * Provides typed RPC endpoints for GHL integration management:
- * - ghl.status — connection health check per location
- * - ghl.listLocations — list all authorized GHL locations
- * - ghl.disconnect — revoke and clean up
- * - ghl.configStatus — check OAuth configuration
- * - ghl.getActiveLocation — get user's currently selected location
- * - ghl.setActiveLocation — switch active location
- * - ghl.getLocationConfig — get per-location config
- * - ghl.updateLocationConfig — update per-location config
- * - ghl.updateLocationDetails — update location name/metadata
+ * - Connection management (status, list, disconnect, config)
+ * - Contact/lead management (search, create, update, tag)
+ * - Pipeline/opportunity management (list, search, create, update)
+ * - Campaign/drip management (list, add/remove contacts)
+ * - Workflow listing
  *
- * Linear: AI-2877, AI-2881
+ * Linear: AI-2877, AI-2881, AI-3461
  */
 
 import { z } from "zod";
@@ -22,6 +18,57 @@ import { GHLService, GHLError } from "../../services/ghl.service";
 import { getDb } from "../../db";
 import { ghlLocations, ghlActiveLocation } from "../../../drizzle/schema-ghl-locations";
 import { eq, and } from "drizzle-orm";
+
+// ========================================
+// HELPERS
+// ========================================
+
+function ghlErrorToTRPC(err: unknown): never {
+  if (err instanceof GHLError) {
+    throw new TRPCError({
+      code:
+        err.category === "auth"
+          ? "UNAUTHORIZED"
+          : err.category === "rate_limit"
+            ? "TOO_MANY_REQUESTS"
+            : "INTERNAL_SERVER_ERROR",
+      message: err.message,
+    });
+  }
+  throw new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: err instanceof Error ? err.message : "GHL operation failed",
+  });
+}
+
+/** Get a GHL service for the user's active location, or a specified one. */
+async function getServiceForUser(
+  userId: number,
+  locationId?: string
+): Promise<GHLService> {
+  if (locationId) {
+    return new GHLService(locationId, userId);
+  }
+
+  // Fall back to active location
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+  const [active] = await db
+    .select()
+    .from(ghlActiveLocation)
+    .where(eq(ghlActiveLocation.userId, userId))
+    .limit(1);
+
+  if (!active) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "No active GHL location. Connect and select a location first.",
+    });
+  }
+
+  return new GHLService(active.locationId, userId);
+}
 
 const locationConfigSchema = z.object({
   automationsEnabled: z.boolean().optional(),
@@ -36,51 +83,29 @@ const locationConfigSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
+// ========================================
+// ROUTER
+// ========================================
+
 export const ghlRouter = router({
-  /**
-   * Get connection status for a specific GHL location.
-   */
+  // ----------------------------------------
+  // Connection Management (existing)
+  // ----------------------------------------
+
   status: protectedProcedure
-    .input(
-      z.object({
-        locationId: z.string().min(1, "locationId is required"),
-      })
-    )
+    .input(z.object({ locationId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       try {
         const service = new GHLService(input.locationId, ctx.user.id);
-        const status = await service.getConnectionStatus();
-        return status;
+        return await service.getConnectionStatus();
       } catch (err) {
-        if (err instanceof GHLError) {
-          throw new TRPCError({
-            code:
-              err.category === "auth"
-                ? "UNAUTHORIZED"
-                : err.category === "rate_limit"
-                  ? "TOO_MANY_REQUESTS"
-                  : "INTERNAL_SERVER_ERROR",
-            message: err.message,
-          });
-        }
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message:
-            err instanceof Error ? err.message : "Failed to check GHL status",
-        });
+        ghlErrorToTRPC(err);
       }
     }),
 
-  /**
-   * List all authorized GHL locations for the current user.
-   * Merges data from integrations table + ghl_locations table.
-   */
   listLocations: protectedProcedure.query(async ({ ctx }) => {
     try {
-      // Get OAuth-connected locations from integrations table
       const oauthLocations = await GHLService.listLocations(ctx.user.id);
-
-      // Get enriched location data from ghl_locations table
       const db = await getDb();
       if (!db) return oauthLocations;
 
@@ -94,12 +119,10 @@ export const ghlRouter = router({
           )
         );
 
-      // Build lookup map of enriched data
       const enrichedMap = new Map(
         locationRows.map((row) => [row.locationId, row])
       );
 
-      // Merge: OAuth data + enriched metadata
       return oauthLocations.map((loc) => {
         const enriched = enrichedMap.get(loc.locationId);
         return {
@@ -118,31 +141,17 @@ export const ghlRouter = router({
         };
       });
     } catch (err) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message:
-          err instanceof Error
-            ? err.message
-            : "Failed to list GHL locations",
-      });
+      ghlErrorToTRPC(err);
     }
   }),
 
-  /**
-   * Disconnect a GHL location (revoke tokens and mark inactive).
-   */
   disconnect: protectedProcedure
-    .input(
-      z.object({
-        locationId: z.string().min(1, "locationId is required"),
-      })
-    )
+    .input(z.object({ locationId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       try {
         const service = new GHLService(input.locationId, ctx.user.id);
         await service.disconnect();
 
-        // Also deactivate in ghl_locations table
         const db = await getDb();
         if (db) {
           await db
@@ -155,7 +164,6 @@ export const ghlRouter = router({
               )
             );
 
-          // If this was the active location, clear it
           const [active] = await db
             .select()
             .from(ghlActiveLocation)
@@ -169,33 +177,12 @@ export const ghlRouter = router({
           }
         }
 
-        return {
-          success: true,
-          message: `Disconnected GHL location ${input.locationId}`,
-        };
+        return { success: true, message: `Disconnected GHL location ${input.locationId}` };
       } catch (err) {
-        if (err instanceof GHLError) {
-          throw new TRPCError({
-            code:
-              err.category === "auth"
-                ? "UNAUTHORIZED"
-                : "INTERNAL_SERVER_ERROR",
-            message: err.message,
-          });
-        }
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message:
-            err instanceof Error
-              ? err.message
-              : "Failed to disconnect GHL location",
-        });
+        ghlErrorToTRPC(err);
       }
     }),
 
-  /**
-   * Get the GHL OAuth configuration status (whether client ID/secret are set).
-   */
   configStatus: protectedProcedure.query(async () => {
     return {
       configured: !!process.env.GHL_CLIENT_ID && !!process.env.GHL_CLIENT_SECRET,
@@ -204,9 +191,6 @@ export const ghlRouter = router({
     };
   }),
 
-  /**
-   * Get the user's currently active/selected GHL location.
-   */
   getActiveLocation: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) return null;
@@ -219,7 +203,6 @@ export const ghlRouter = router({
 
     if (!active) return null;
 
-    // Fetch enriched details
     const [location] = await db
       .select()
       .from(ghlLocations)
@@ -240,22 +223,12 @@ export const ghlRouter = router({
     };
   }),
 
-  /**
-   * Set the active/selected GHL location for the current user.
-   */
   setActiveLocation: protectedProcedure
-    .input(
-      z.object({
-        locationId: z.string().min(1, "locationId is required"),
-      })
-    )
+    .input(z.object({ locationId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
-      if (!db) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      }
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
-      // Verify this location exists and belongs to user
       const [location] = await db
         .select()
         .from(ghlLocations)
@@ -269,13 +242,9 @@ export const ghlRouter = router({
         .limit(1);
 
       if (!location) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: `GHL location ${input.locationId} not found or not connected`,
-        });
+        throw new TRPCError({ code: "NOT_FOUND", message: `GHL location ${input.locationId} not found` });
       }
 
-      // Upsert active location
       const [existing] = await db
         .select()
         .from(ghlActiveLocation)
@@ -295,22 +264,11 @@ export const ghlRouter = router({
         });
       }
 
-      return {
-        success: true,
-        locationId: input.locationId,
-        name: location.name,
-      };
+      return { success: true, locationId: input.locationId, name: location.name };
     }),
 
-  /**
-   * Get per-location configuration.
-   */
   getLocationConfig: protectedProcedure
-    .input(
-      z.object({
-        locationId: z.string().min(1),
-      })
-    )
+    .input(z.object({ locationId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) return null;
@@ -334,23 +292,12 @@ export const ghlRouter = router({
       };
     }),
 
-  /**
-   * Update per-location configuration.
-   */
   updateLocationConfig: protectedProcedure
-    .input(
-      z.object({
-        locationId: z.string().min(1),
-        config: locationConfigSchema,
-      })
-    )
+    .input(z.object({ locationId: z.string().min(1), config: locationConfigSchema }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
-      if (!db) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      }
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
-      // Get current config and merge
       const [location] = await db
         .select()
         .from(ghlLocations)
@@ -362,12 +309,7 @@ export const ghlRouter = router({
         )
         .limit(1);
 
-      if (!location) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: `GHL location ${input.locationId} not found`,
-        });
-      }
+      if (!location) throw new TRPCError({ code: "NOT_FOUND", message: `Location not found` });
 
       const mergedConfig = { ...(location.config || {}), ...input.config };
 
@@ -384,9 +326,6 @@ export const ghlRouter = router({
       return { success: true, config: mergedConfig };
     }),
 
-  /**
-   * Update location display name and metadata.
-   */
   updateLocationDetails: protectedProcedure
     .input(
       z.object({
@@ -400,18 +339,12 @@ export const ghlRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
-      if (!db) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      }
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
       const { locationId, ...updates } = input;
-
-      // Filter out undefined values
       const setValues: Record<string, unknown> = { updatedAt: new Date() };
       for (const [key, value] of Object.entries(updates)) {
-        if (value !== undefined) {
-          setValues[key] = value || null;
-        }
+        if (value !== undefined) setValues[key] = value || null;
       }
 
       await db
@@ -425,5 +358,296 @@ export const ghlRouter = router({
         );
 
       return { success: true };
+    }),
+
+  // ----------------------------------------
+  // Contact / Lead Management (AI-3461)
+  // ----------------------------------------
+
+  searchContacts: protectedProcedure
+    .input(
+      z.object({
+        locationId: z.string().optional(),
+        query: z.string().optional(),
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        const result = await service.searchContacts({
+          query: input.query,
+          limit: input.limit,
+          offset: input.offset,
+        });
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  getContact: protectedProcedure
+    .input(z.object({ contactId: z.string().min(1), locationId: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        const result = await service.getContact(input.contactId);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  createContact: protectedProcedure
+    .input(
+      z.object({
+        locationId: z.string().optional(),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        email: z.string().email().optional(),
+        phone: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        source: z.string().optional(),
+        customFields: z.array(z.object({ id: z.string(), value: z.string() })).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { locationId, ...contactData } = input;
+        const service = await getServiceForUser(ctx.user.id, locationId);
+        const result = await service.createContact(contactData);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  updateContact: protectedProcedure
+    .input(
+      z.object({
+        contactId: z.string().min(1),
+        locationId: z.string().optional(),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        email: z.string().email().optional(),
+        phone: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        customFields: z.array(z.object({ id: z.string(), value: z.string() })).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { contactId, locationId, ...updateData } = input;
+        const service = await getServiceForUser(ctx.user.id, locationId);
+        const result = await service.updateContact(contactId, updateData);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  addContactTags: protectedProcedure
+    .input(
+      z.object({
+        contactId: z.string().min(1),
+        tags: z.array(z.string().min(1)).min(1),
+        locationId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        const result = await service.addContactTags(input.contactId, input.tags);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  removeContactTags: protectedProcedure
+    .input(
+      z.object({
+        contactId: z.string().min(1),
+        tags: z.array(z.string().min(1)).min(1),
+        locationId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        await service.removeContactTags(input.contactId, input.tags);
+        return { success: true };
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  // ----------------------------------------
+  // Pipeline / Opportunity Management (AI-3461)
+  // ----------------------------------------
+
+  listPipelines: protectedProcedure
+    .input(z.object({ locationId: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input?.locationId);
+        const result = await service.listPipelines();
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  searchOpportunities: protectedProcedure
+    .input(
+      z.object({
+        locationId: z.string().optional(),
+        pipelineId: z.string().optional(),
+        stageId: z.string().optional(),
+        status: z.enum(["open", "won", "lost", "abandoned", "all"]).default("open"),
+        query: z.string().optional(),
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        const { locationId, ...params } = input;
+        const service = await getServiceForUser(ctx.user.id, locationId);
+        const result = await service.searchOpportunities(params);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  createOpportunity: protectedProcedure
+    .input(
+      z.object({
+        locationId: z.string().optional(),
+        pipelineId: z.string().min(1),
+        stageId: z.string().min(1),
+        contactId: z.string().min(1),
+        name: z.string().min(1),
+        monetaryValue: z.number().optional(),
+        status: z.enum(["open", "won", "lost", "abandoned"]).default("open"),
+        customFields: z.array(z.object({ id: z.string(), value: z.string() })).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { locationId, ...data } = input;
+        const service = await getServiceForUser(ctx.user.id, locationId);
+        const result = await service.createOpportunity(data);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  updateOpportunity: protectedProcedure
+    .input(
+      z.object({
+        opportunityId: z.string().min(1),
+        locationId: z.string().optional(),
+        stageId: z.string().optional(),
+        status: z.enum(["open", "won", "lost", "abandoned"]).optional(),
+        monetaryValue: z.number().optional(),
+        name: z.string().optional(),
+        customFields: z.array(z.object({ id: z.string(), value: z.string() })).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { opportunityId, locationId, ...data } = input;
+        const service = await getServiceForUser(ctx.user.id, locationId);
+        const result = await service.updateOpportunity(opportunityId, data);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  // ----------------------------------------
+  // Campaign / Drip Management (AI-3461)
+  // ----------------------------------------
+
+  listCampaigns: protectedProcedure
+    .input(z.object({ locationId: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input?.locationId);
+        const result = await service.listCampaigns();
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  addContactToCampaign: protectedProcedure
+    .input(
+      z.object({
+        campaignId: z.string().min(1),
+        contactId: z.string().min(1),
+        locationId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        await service.addContactToCampaign(input.campaignId, input.contactId);
+        return { success: true };
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  removeContactFromCampaign: protectedProcedure
+    .input(
+      z.object({
+        campaignId: z.string().min(1),
+        contactId: z.string().min(1),
+        locationId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        await service.removeContactFromCampaign(input.campaignId, input.contactId);
+        return { success: true };
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  // ----------------------------------------
+  // Workflows (AI-3461)
+  // ----------------------------------------
+
+  listWorkflows: protectedProcedure
+    .input(z.object({ locationId: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input?.locationId);
+        const result = await service.listWorkflows();
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
     }),
 });
