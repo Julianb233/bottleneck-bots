@@ -8,8 +8,10 @@
  * - Base HTTP client with retry (3 attempts, exponential backoff)
  * - Error categorization (auth errors vs rate limits vs server errors)
  * - Multi-location support
+ * - Full CRM API coverage: contacts, pipelines, campaigns, workflows,
+ *   communications, and appointments
  *
- * Linear: AI-2877
+ * Linear: AI-2877, AI-3461
  */
 
 import { getCredentialVault } from "./credentialVault.service";
@@ -265,6 +267,114 @@ export interface GHLBulkImportResult {
   imported: number;
   failed: number;
   errors: Array<{ index: number; error: string }>;
+}
+
+// ========================================
+// CRM TYPES
+// ========================================
+
+export interface GHLContact {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  tags?: string[];
+  locationId?: string;
+  companyName?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLContactsResponse {
+  contacts: GHLContact[];
+  total?: number;
+  count?: number;
+  meta?: Record<string, unknown>;
+}
+
+export interface GHLOpportunity {
+  id: string;
+  name: string;
+  status: string;
+  pipelineId: string;
+  pipelineStageId?: string;
+  contactId?: string;
+  monetaryValue?: number;
+  assignedTo?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLPipeline {
+  id: string;
+  name: string;
+  stages?: Array<{ id: string; name: string }>;
+  [key: string]: unknown;
+}
+
+export interface GHLCampaign {
+  id: string;
+  name: string;
+  status?: string;
+  type?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLWorkflow {
+  id: string;
+  name: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLCustomField {
+  id: string;
+  name: string;
+  fieldKey?: string;
+  dataType?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLTag {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+export interface GHLMessage {
+  id: string;
+  type: string;
+  status?: string;
+  contactId?: string;
+  conversationId?: string;
+  body?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLTemplate {
+  id: string;
+  name: string;
+  type?: string;
+  body?: string;
+  subject?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLAppointment {
+  id: string;
+  calendarId: string;
+  contactId?: string;
+  startTime: string;
+  endTime: string;
+  title?: string;
+  notes?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLAvailabilitySlot {
+  startTime: string;
+  endTime: string;
+  [key: string]: unknown;
 }
 
 // ========================================
@@ -1473,6 +1583,509 @@ export class GHLService {
           scopes: metadata.scope ? metadata.scope.split(" ") : [],
         };
       });
+  }
+
+  // ----------------------------------------
+  // Contact CRUD
+  // ----------------------------------------
+
+  /**
+   * Search contacts by query string.
+   */
+  async searchContacts(
+    query: string,
+    limit = 20
+  ): Promise<GHLContactsResponse> {
+    const res = await this.request<GHLContactsResponse>({
+      method: "GET",
+      endpoint: "/contacts/",
+      params: {
+        locationId: this.locationId,
+        query,
+        limit: String(limit),
+      },
+    });
+    return res.data;
+  }
+
+  /**
+   * Get a single contact by ID.
+   */
+  async getContact(contactId: string): Promise<GHLContact> {
+    const res = await this.request<{ contact: GHLContact }>({
+      method: "GET",
+      endpoint: `/contacts/${contactId}`,
+    });
+    return res.data.contact;
+  }
+
+  /**
+   * Create a new contact in this location.
+   */
+  async createContact(data: Partial<GHLContact>): Promise<GHLContact> {
+    const res = await this.request<{ contact: GHLContact }>({
+      method: "POST",
+      endpoint: "/contacts/",
+      data: { ...data, locationId: this.locationId },
+    });
+    return res.data.contact;
+  }
+
+  /**
+   * Update an existing contact.
+   */
+  async updateContact(
+    contactId: string,
+    data: Partial<GHLContact>
+  ): Promise<GHLContact> {
+    const res = await this.request<{ contact: GHLContact }>({
+      method: "PUT",
+      endpoint: `/contacts/${contactId}`,
+      data,
+    });
+    return res.data.contact;
+  }
+
+  /**
+   * Add tags to a contact.
+   */
+  async addTags(contactId: string, tags: string[]): Promise<GHLContact> {
+    const res = await this.request<{ contact: GHLContact }>({
+      method: "POST",
+      endpoint: `/contacts/${contactId}/tags`,
+      data: { tags },
+    });
+    return res.data.contact;
+  }
+
+  /**
+   * Remove tags from a contact.
+   */
+  async removeTags(contactId: string, tags: string[]): Promise<GHLContact> {
+    const res = await this.request<{ contact: GHLContact }>({
+      method: "DELETE",
+      endpoint: `/contacts/${contactId}/tags`,
+      data: { tags },
+    });
+    return res.data.contact;
+  }
+
+  // ----------------------------------------
+  // Contact bulk operations
+  // ----------------------------------------
+
+  /**
+   * Bulk import contacts into this location.
+   */
+  async bulkImportContacts(
+    contacts: Array<{
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string;
+      tags?: string[];
+    }>
+  ): Promise<{ succeeded: number; failed: number; contacts?: GHLContact[] }> {
+    const res = await this.request<{
+      succeeded: number;
+      failed: number;
+      contacts?: GHLContact[];
+    }>({
+      method: "POST",
+      endpoint: "/contacts/bulk",
+      data: { locationId: this.locationId, contacts },
+    });
+    return res.data;
+  }
+
+  /**
+   * Export contacts with optional filters.
+   */
+  async bulkExportContacts(
+    filters?: Record<string, string>
+  ): Promise<GHLContact[]> {
+    const res = await this.request<{ contacts: GHLContact[] }>({
+      method: "GET",
+      endpoint: "/contacts/export",
+      params: { locationId: this.locationId, ...(filters ?? {}) },
+    });
+    return res.data.contacts ?? [];
+  }
+
+  /**
+   * Merge duplicate contacts into a primary contact.
+   */
+  async mergeContacts(
+    primaryId: string,
+    duplicateIds: string[]
+  ): Promise<GHLContact> {
+    const res = await this.request<{ contact: GHLContact }>({
+      method: "POST",
+      endpoint: `/contacts/${primaryId}/merge`,
+      data: { duplicateIds },
+    });
+    return res.data.contact;
+  }
+
+  /**
+   * Get activity/tasks for a contact.
+   */
+  async getContactActivity(
+    contactId: string
+  ): Promise<{ tasks: unknown[] }> {
+    const res = await this.request<{ tasks: unknown[] }>({
+      method: "GET",
+      endpoint: `/contacts/${contactId}/tasks`,
+    });
+    return res.data;
+  }
+
+  /**
+   * List all custom fields for this location.
+   */
+  async getCustomFields(): Promise<{ customFields: GHLCustomField[] }> {
+    const res = await this.request<{ customFields: GHLCustomField[] }>({
+      method: "GET",
+      endpoint: `/locations/${this.locationId}/customFields`,
+    });
+    return res.data;
+  }
+
+  /**
+   * List all contact tags for this location.
+   */
+  async listContactTags(): Promise<{ tags: GHLTag[] }> {
+    const res = await this.request<{ tags: GHLTag[] }>({
+      method: "GET",
+      endpoint: `/locations/${this.locationId}/tags`,
+    });
+    return res.data;
+  }
+
+  // ----------------------------------------
+  // Pipeline / Opportunity
+  // ----------------------------------------
+
+  /**
+   * List all pipelines for this location.
+   */
+  async listPipelines(): Promise<{ pipelines: GHLPipeline[] }> {
+    const res = await this.request<{ pipelines: GHLPipeline[] }>({
+      method: "GET",
+      endpoint: "/opportunities/pipelines",
+      params: { locationId: this.locationId },
+    });
+    return res.data;
+  }
+
+  /**
+   * Search opportunities by query, optionally filtered by pipeline.
+   */
+  async searchOpportunities(
+    query: string,
+    pipelineId?: string
+  ): Promise<{ opportunities: GHLOpportunity[] }> {
+    const params: Record<string, string> = {
+      locationId: this.locationId,
+      query,
+    };
+    if (pipelineId) params.pipelineId = pipelineId;
+
+    const res = await this.request<{ opportunities: GHLOpportunity[] }>({
+      method: "GET",
+      endpoint: "/opportunities/search",
+      params,
+    });
+    return res.data;
+  }
+
+  /**
+   * Create a new opportunity in a pipeline.
+   */
+  async createOpportunity(
+    data: Partial<GHLOpportunity>
+  ): Promise<GHLOpportunity> {
+    const res = await this.request<{ opportunity: GHLOpportunity }>({
+      method: "POST",
+      endpoint: "/opportunities/",
+      data: { ...data, locationId: this.locationId },
+    });
+    return res.data.opportunity;
+  }
+
+  /**
+   * Update an existing opportunity.
+   */
+  async updateOpportunity(
+    opportunityId: string,
+    data: Partial<GHLOpportunity>
+  ): Promise<GHLOpportunity> {
+    const res = await this.request<{ opportunity: GHLOpportunity }>({
+      method: "PUT",
+      endpoint: `/opportunities/${opportunityId}`,
+      data,
+    });
+    return res.data.opportunity;
+  }
+
+  // ----------------------------------------
+  // Campaigns
+  // ----------------------------------------
+
+  /**
+   * List all campaigns for this location.
+   */
+  async listCampaigns(): Promise<{ campaigns: GHLCampaign[] }> {
+    const res = await this.request<{ campaigns: GHLCampaign[] }>({
+      method: "GET",
+      endpoint: "/campaigns/",
+      params: { locationId: this.locationId },
+    });
+    return res.data;
+  }
+
+  /**
+   * Add a contact to a campaign.
+   */
+  async addContactToCampaign(
+    campaignId: string,
+    contactId: string
+  ): Promise<unknown> {
+    const res = await this.request<unknown>({
+      method: "POST",
+      endpoint: `/campaigns/${campaignId}/contacts/${contactId}`,
+    });
+    return res.data;
+  }
+
+  /**
+   * Remove a contact from a campaign.
+   */
+  async removeContactFromCampaign(
+    campaignId: string,
+    contactId: string
+  ): Promise<unknown> {
+    const res = await this.request<unknown>({
+      method: "DELETE",
+      endpoint: `/campaigns/${campaignId}/contacts/${contactId}`,
+    });
+    return res.data;
+  }
+
+  /**
+   * Get stats for a specific campaign.
+   */
+  async getCampaignStats(campaignId: string): Promise<unknown> {
+    const res = await this.request<unknown>({
+      method: "GET",
+      endpoint: `/campaigns/${campaignId}/stats`,
+    });
+    return res.data;
+  }
+
+  /**
+   * Create a new campaign.
+   */
+  async createCampaign(data: {
+    name: string;
+    type?: string;
+    [key: string]: unknown;
+  }): Promise<GHLCampaign> {
+    const res = await this.request<{ campaign: GHLCampaign }>({
+      method: "POST",
+      endpoint: "/campaigns/",
+      data: { ...data, locationId: this.locationId },
+    });
+    return res.data.campaign;
+  }
+
+  // ----------------------------------------
+  // Workflows
+  // ----------------------------------------
+
+  /**
+   * List all workflows for this location.
+   */
+  async listWorkflows(): Promise<{ workflows: GHLWorkflow[] }> {
+    const res = await this.request<{ workflows: GHLWorkflow[] }>({
+      method: "GET",
+      endpoint: "/workflows/",
+      params: { locationId: this.locationId },
+    });
+    return res.data;
+  }
+
+  /**
+   * Trigger a workflow for a specific contact, with optional custom data.
+   */
+  async triggerWorkflow(
+    workflowId: string,
+    data: { contactId: string; [key: string]: unknown }
+  ): Promise<unknown> {
+    const res = await this.request<unknown>({
+      method: "POST",
+      endpoint: `/workflows/${workflowId}/trigger`,
+      data,
+    });
+    return res.data;
+  }
+
+  // ----------------------------------------
+  // Communications
+  // ----------------------------------------
+
+  /**
+   * Send an SMS message to a contact.
+   */
+  async sendSMS(contactId: string, message: string): Promise<GHLMessage> {
+    const res = await this.request<{ message: GHLMessage }>({
+      method: "POST",
+      endpoint: "/conversations/messages",
+      data: {
+        type: "SMS",
+        contactId,
+        message,
+        locationId: this.locationId,
+      },
+    });
+    return res.data.message;
+  }
+
+  /**
+   * Send an email to a contact, optionally using a template.
+   */
+  async sendEmail(
+    contactId: string,
+    subject: string,
+    body: string,
+    templateId?: string
+  ): Promise<GHLMessage> {
+    const payload: Record<string, unknown> = {
+      type: "Email",
+      contactId,
+      subject,
+      body,
+      locationId: this.locationId,
+    };
+    if (templateId) payload.templateId = templateId;
+
+    const res = await this.request<{ message: GHLMessage }>({
+      method: "POST",
+      endpoint: "/conversations/messages",
+      data: payload,
+    });
+    return res.data.message;
+  }
+
+  /**
+   * Get the delivery status of a message.
+   */
+  async getMessageStatus(messageId: string): Promise<GHLMessage> {
+    const res = await this.request<{ message: GHLMessage }>({
+      method: "GET",
+      endpoint: `/conversations/messages/${messageId}`,
+    });
+    return res.data.message;
+  }
+
+  /**
+   * List message templates for this location, optionally filtered by type.
+   */
+  async listTemplates(
+    type?: "sms" | "email"
+  ): Promise<{ templates: GHLTemplate[] }> {
+    const params: Record<string, string> = {};
+    if (type) params.type = type;
+
+    const res = await this.request<{ templates: GHLTemplate[] }>({
+      method: "GET",
+      endpoint: `/locations/${this.locationId}/templates`,
+      params,
+    });
+    return res.data;
+  }
+
+  // ----------------------------------------
+  // Appointments
+  // ----------------------------------------
+
+  /**
+   * Create a new appointment/calendar event.
+   */
+  async createAppointment(data: {
+    calendarId: string;
+    contactId: string;
+    startTime: string;
+    endTime: string;
+    title?: string;
+    notes?: string;
+  }): Promise<GHLAppointment> {
+    const res = await this.request<{ event: GHLAppointment }>({
+      method: "POST",
+      endpoint: "/calendars/events",
+      data: { ...data, locationId: this.locationId },
+    });
+    return res.data.event;
+  }
+
+  /**
+   * Get a calendar event by ID.
+   */
+  async getAppointment(eventId: string): Promise<GHLAppointment> {
+    const res = await this.request<{ event: GHLAppointment }>({
+      method: "GET",
+      endpoint: `/calendars/events/${eventId}`,
+    });
+    return res.data.event;
+  }
+
+  /**
+   * Update a calendar event.
+   */
+  async updateAppointment(
+    eventId: string,
+    data: Partial<{
+      calendarId: string;
+      contactId: string;
+      startTime: string;
+      endTime: string;
+      title: string;
+      notes: string;
+    }>
+  ): Promise<GHLAppointment> {
+    const res = await this.request<{ event: GHLAppointment }>({
+      method: "PUT",
+      endpoint: `/calendars/events/${eventId}`,
+      data,
+    });
+    return res.data.event;
+  }
+
+  /**
+   * Delete a calendar event.
+   */
+  async deleteAppointment(eventId: string): Promise<{ success: boolean }> {
+    await this.request<unknown>({
+      method: "DELETE",
+      endpoint: `/calendars/events/${eventId}`,
+    });
+    return { success: true };
+  }
+
+  /**
+   * Get available time slots for a calendar in a date range.
+   */
+  async getAvailability(
+    calendarId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<{ slots: GHLAvailabilitySlot[] }> {
+    const res = await this.request<{ slots: GHLAvailabilitySlot[] }>({
+      method: "GET",
+      endpoint: `/calendars/${calendarId}/free-slots`,
+      params: { startDate, endDate, locationId: this.locationId },
+    });
+    return res.data;
   }
 }
 
