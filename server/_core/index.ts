@@ -138,6 +138,7 @@ export async function createApp() {
   app.use("/api/webhooks/stripe", stripeWebhookRouter);
   // GHL OAuth routes (AI-2877)
   app.use("/api/ghl/oauth", ghlOAuthRouter);
+  // GHL Webhook receiver (AI-3461)
   app.use("/api/ghl/webhooks", ghlWebhookRouter);
 
   // Mount REST API v1 routes (includes /api/v1/health, /api/v1/tasks, etc.)

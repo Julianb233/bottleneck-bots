@@ -711,3 +711,19 @@ export {
   type GHLActiveLocationRow,
   type InsertGHLActiveLocation,
 } from "./schema-ghl-locations";
+
+// GHL Webhook Event Processing (contacts, opportunities, dedup, DLQ)
+export {
+  ghlContacts,
+  ghlOpportunities,
+  ghlWebhookEvents,
+  ghlWebhookDeadLetters,
+  type GHLContactRow,
+  type InsertGHLContact,
+  type GHLOpportunityRow,
+  type InsertGHLOpportunity,
+  type GHLWebhookEventRow,
+  type InsertGHLWebhookEvent,
+  type GHLWebhookDeadLetterRow,
+  type InsertGHLWebhookDeadLetter,
+} from "./schema-ghl-webhook-events";

@@ -1,5 +1,5 @@
 /**
- * GHL Webhook Receiver -- Production-Grade
+ * GHL Webhook Receiver — Production-Grade
  *
  * Express routes for receiving inbound webhooks from GoHighLevel.
  * Handles contact events, opportunity events, and campaign events
@@ -7,12 +7,12 @@
  * structured logging, and workflow engine integration.
  *
  * Routes:
- *   POST /api/ghl/webhooks/inbound  -- receive GHL webhook events
- *   GET  /api/ghl/webhooks/health   -- health check
- *   GET  /api/ghl/webhooks/dlq      -- view dead letter queue
- *   POST /api/ghl/webhooks/dlq/:id/retry -- retry a dead letter
+ *   POST /api/ghl/webhooks/inbound  — receive GHL webhook events
+ *   GET  /api/ghl/webhooks/health   — health check
+ *   GET  /api/ghl/webhooks/dlq      — view dead letter queue
+ *   POST /api/ghl/webhooks/dlq/:id/retry — retry a dead letter entry
  *
- * Linear: AI-5147
+ * Linear: AI-3461
  */
 
 import express, { Request, Response } from "express";
@@ -25,7 +25,7 @@ import {
   ghlOpportunities,
   ghlWebhookEvents,
   ghlWebhookDeadLetters,
-} from "../../../drizzle/schema-ghl-webhooks";
+} from "../../../drizzle/schema-ghl-webhook-events";
 import { addWorkflowExecutionJob, REDIS_AVAILABLE } from "../../_core/queue";
 import { logger } from "../../lib/logger";
 
@@ -110,7 +110,7 @@ function deriveEventId(event: GHLWebhookEvent): string {
 }
 
 /**
- * Check if this event has already been processed (dedup).
+ * Check if this event has already been processed (deduplication).
  */
 async function isDuplicateEvent(eventId: string): Promise<boolean> {
   const db = await getDb();
@@ -126,18 +126,26 @@ async function isDuplicateEvent(eventId: string): Promise<boolean> {
 }
 
 /**
- * Record a processed event for future dedup.
+ * Record a processed event for future deduplication.
  */
-async function recordEvent(eventId: string, eventType: string, locationId: string | undefined, success: boolean): Promise<void> {
+async function recordEvent(
+  eventId: string,
+  eventType: string,
+  locationId: string | undefined,
+  success: boolean
+): Promise<void> {
   const db = await getDb();
   if (!db) return;
 
-  await db.insert(ghlWebhookEvents).values({
-    eventId,
-    eventType,
-    locationId: locationId || null,
-    success,
-  }).onConflictDoNothing();
+  await db
+    .insert(ghlWebhookEvents)
+    .values({
+      eventId,
+      eventType,
+      locationId: locationId || null,
+      success,
+    })
+    .onConflictDoNothing();
 }
 
 /**
@@ -203,23 +211,12 @@ const eventHandlers: Record<string, WebhookHandler> = {
     if (!db) throw new Error("Database not available");
 
     const now = new Date();
-    await db.insert(ghlContacts).values({
-      userId,
-      ghlContactId: c.id,
-      locationId: event.locationId || "",
-      firstName: c.firstName || null,
-      lastName: c.lastName || null,
-      email: c.email || null,
-      phone: c.phone || null,
-      tags: c.tags || null,
-      source: c.source || null,
-      customFields: c.customFields || null,
-      lastWebhookAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: [ghlContacts.ghlContactId, ghlContacts.locationId],
-      set: {
+    await db
+      .insert(ghlContacts)
+      .values({
+        userId,
+        ghlContactId: c.id,
+        locationId: event.locationId || "",
         firstName: c.firstName || null,
         lastName: c.lastName || null,
         email: c.email || null,
@@ -228,15 +225,32 @@ const eventHandlers: Record<string, WebhookHandler> = {
         source: c.source || null,
         customFields: c.customFields || null,
         lastWebhookAt: now,
+        createdAt: now,
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [ghlContacts.ghlContactId, ghlContacts.locationId],
+        set: {
+          firstName: c.firstName || null,
+          lastName: c.lastName || null,
+          email: c.email || null,
+          phone: c.phone || null,
+          tags: c.tags || null,
+          source: c.source || null,
+          customFields: c.customFields || null,
+          lastWebhookAt: now,
+          updatedAt: now,
+        },
+      });
 
-    log.info({
-      contactId: c.id,
-      email: c.email,
-      locationId: event.locationId,
-    }, "Contact created/upserted");
+    log.info(
+      {
+        contactId: c.id,
+        email: c.email,
+        locationId: event.locationId,
+      },
+      "Contact created/upserted"
+    );
   },
 
   ContactUpdate: async (event, userId) => {
@@ -247,23 +261,12 @@ const eventHandlers: Record<string, WebhookHandler> = {
     if (!db) throw new Error("Database not available");
 
     const now = new Date();
-    await db.insert(ghlContacts).values({
-      userId,
-      ghlContactId: c.id,
-      locationId: event.locationId || "",
-      firstName: c.firstName || null,
-      lastName: c.lastName || null,
-      email: c.email || null,
-      phone: c.phone || null,
-      tags: c.tags || null,
-      source: c.source || null,
-      customFields: c.customFields || null,
-      lastWebhookAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: [ghlContacts.ghlContactId, ghlContacts.locationId],
-      set: {
+    await db
+      .insert(ghlContacts)
+      .values({
+        userId,
+        ghlContactId: c.id,
+        locationId: event.locationId || "",
         firstName: c.firstName || null,
         lastName: c.lastName || null,
         email: c.email || null,
@@ -272,9 +275,23 @@ const eventHandlers: Record<string, WebhookHandler> = {
         source: c.source || null,
         customFields: c.customFields || null,
         lastWebhookAt: now,
+        createdAt: now,
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [ghlContacts.ghlContactId, ghlContacts.locationId],
+        set: {
+          firstName: c.firstName || null,
+          lastName: c.lastName || null,
+          email: c.email || null,
+          phone: c.phone || null,
+          tags: c.tags || null,
+          source: c.source || null,
+          customFields: c.customFields || null,
+          lastWebhookAt: now,
+          updatedAt: now,
+        },
+      });
 
     log.info({ contactId: c.id, locationId: event.locationId }, "Contact updated");
   },
@@ -287,24 +304,30 @@ const eventHandlers: Record<string, WebhookHandler> = {
     if (!db) throw new Error("Database not available");
 
     const now = new Date();
-    await db.insert(ghlContacts).values({
-      userId,
-      ghlContactId: c.id,
-      locationId: event.locationId || "",
-      tags: c.tags || null,
-      lastWebhookAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: [ghlContacts.ghlContactId, ghlContacts.locationId],
-      set: {
+    await db
+      .insert(ghlContacts)
+      .values({
+        userId,
+        ghlContactId: c.id,
+        locationId: event.locationId || "",
         tags: c.tags || null,
         lastWebhookAt: now,
+        createdAt: now,
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [ghlContacts.ghlContactId, ghlContacts.locationId],
+        set: {
+          tags: c.tags || null,
+          lastWebhookAt: now,
+          updatedAt: now,
+        },
+      });
 
-    log.info({ contactId: c.id, tags: c.tags, locationId: event.locationId }, "Contact tags updated");
+    log.info(
+      { contactId: c.id, tags: c.tags, locationId: event.locationId },
+      "Contact tags updated"
+    );
   },
 
   OpportunityCreate: async (event, userId) => {
@@ -315,22 +338,12 @@ const eventHandlers: Record<string, WebhookHandler> = {
     if (!db) throw new Error("Database not available");
 
     const now = new Date();
-    await db.insert(ghlOpportunities).values({
-      userId,
-      ghlOpportunityId: o.id,
-      locationId: event.locationId || "",
-      name: o.name || null,
-      pipelineId: o.pipelineId || null,
-      pipelineStageId: o.pipelineStageId || null,
-      status: o.status || null,
-      monetaryValue: o.monetaryValue != null ? String(o.monetaryValue) : null,
-      ghlContactId: o.contactId || null,
-      lastWebhookAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: [ghlOpportunities.ghlOpportunityId, ghlOpportunities.locationId],
-      set: {
+    await db
+      .insert(ghlOpportunities)
+      .values({
+        userId,
+        ghlOpportunityId: o.id,
+        locationId: event.locationId || "",
         name: o.name || null,
         pipelineId: o.pipelineId || null,
         pipelineStageId: o.pipelineStageId || null,
@@ -338,17 +351,33 @@ const eventHandlers: Record<string, WebhookHandler> = {
         monetaryValue: o.monetaryValue != null ? String(o.monetaryValue) : null,
         ghlContactId: o.contactId || null,
         lastWebhookAt: now,
+        createdAt: now,
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [ghlOpportunities.ghlOpportunityId, ghlOpportunities.locationId],
+        set: {
+          name: o.name || null,
+          pipelineId: o.pipelineId || null,
+          pipelineStageId: o.pipelineStageId || null,
+          status: o.status || null,
+          monetaryValue: o.monetaryValue != null ? String(o.monetaryValue) : null,
+          ghlContactId: o.contactId || null,
+          lastWebhookAt: now,
+          updatedAt: now,
+        },
+      });
 
-    log.info({
-      opportunityId: o.id,
-      pipeline: o.pipelineId,
-      stage: o.pipelineStageId,
-      value: o.monetaryValue,
-      locationId: event.locationId,
-    }, "Opportunity created/upserted");
+    log.info(
+      {
+        opportunityId: o.id,
+        pipeline: o.pipelineId,
+        stage: o.pipelineStageId,
+        value: o.monetaryValue,
+        locationId: event.locationId,
+      },
+      "Opportunity created/upserted"
+    );
   },
 
   OpportunityStageUpdate: async (event, userId) => {
@@ -359,35 +388,41 @@ const eventHandlers: Record<string, WebhookHandler> = {
     if (!db) throw new Error("Database not available");
 
     const now = new Date();
-    await db.insert(ghlOpportunities).values({
-      userId,
-      ghlOpportunityId: o.id,
-      locationId: event.locationId || "",
-      name: o.name || null,
-      pipelineId: o.pipelineId || null,
-      pipelineStageId: o.pipelineStageId || null,
-      status: o.status || null,
-      monetaryValue: o.monetaryValue != null ? String(o.monetaryValue) : null,
-      ghlContactId: o.contactId || null,
-      lastWebhookAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: [ghlOpportunities.ghlOpportunityId, ghlOpportunities.locationId],
-      set: {
+    await db
+      .insert(ghlOpportunities)
+      .values({
+        userId,
+        ghlOpportunityId: o.id,
+        locationId: event.locationId || "",
+        name: o.name || null,
+        pipelineId: o.pipelineId || null,
         pipelineStageId: o.pipelineStageId || null,
         status: o.status || null,
+        monetaryValue: o.monetaryValue != null ? String(o.monetaryValue) : null,
+        ghlContactId: o.contactId || null,
         lastWebhookAt: now,
+        createdAt: now,
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [ghlOpportunities.ghlOpportunityId, ghlOpportunities.locationId],
+        set: {
+          pipelineStageId: o.pipelineStageId || null,
+          status: o.status || null,
+          lastWebhookAt: now,
+          updatedAt: now,
+        },
+      });
 
-    log.info({
-      opportunityId: o.id,
-      newStage: o.pipelineStageId,
-      status: o.status,
-      locationId: event.locationId,
-    }, "Opportunity stage updated");
+    log.info(
+      {
+        opportunityId: o.id,
+        newStage: o.pipelineStageId,
+        status: o.status,
+        locationId: event.locationId,
+      },
+      "Opportunity stage updated"
+    );
   },
 
   OpportunityStatusUpdate: async (event, userId) => {
@@ -398,44 +433,53 @@ const eventHandlers: Record<string, WebhookHandler> = {
     if (!db) throw new Error("Database not available");
 
     const now = new Date();
-    await db.insert(ghlOpportunities).values({
-      userId,
-      ghlOpportunityId: o.id,
-      locationId: event.locationId || "",
-      name: o.name || null,
-      pipelineId: o.pipelineId || null,
-      pipelineStageId: o.pipelineStageId || null,
-      status: o.status || null,
-      monetaryValue: o.monetaryValue != null ? String(o.monetaryValue) : null,
-      ghlContactId: o.contactId || null,
-      lastWebhookAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: [ghlOpportunities.ghlOpportunityId, ghlOpportunities.locationId],
-      set: {
+    await db
+      .insert(ghlOpportunities)
+      .values({
+        userId,
+        ghlOpportunityId: o.id,
+        locationId: event.locationId || "",
+        name: o.name || null,
+        pipelineId: o.pipelineId || null,
+        pipelineStageId: o.pipelineStageId || null,
         status: o.status || null,
+        monetaryValue: o.monetaryValue != null ? String(o.monetaryValue) : null,
+        ghlContactId: o.contactId || null,
         lastWebhookAt: now,
+        createdAt: now,
         updatedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: [ghlOpportunities.ghlOpportunityId, ghlOpportunities.locationId],
+        set: {
+          status: o.status || null,
+          lastWebhookAt: now,
+          updatedAt: now,
+        },
+      });
 
-    log.info({
-      opportunityId: o.id,
-      status: o.status,
-      locationId: event.locationId,
-    }, "Opportunity status updated");
+    log.info(
+      {
+        opportunityId: o.id,
+        status: o.status,
+        locationId: event.locationId,
+      },
+      "Opportunity status updated"
+    );
   },
 
   CampaignStatusUpdate: async (event, _userId) => {
     // Campaign events are logged and forwarded to workflow engine.
-    // No dedicated table -- these trigger internal automations.
-    log.info({
-      campaignId: event.campaign?.id,
-      campaignName: event.campaign?.name,
-      contactId: event.contactId,
-      locationId: event.locationId,
-    }, "Campaign status update received");
+    // No dedicated table — these trigger internal automations.
+    log.info(
+      {
+        campaignId: event.campaign?.id,
+        campaignName: event.campaign?.name,
+        contactId: event.contactId,
+        locationId: event.locationId,
+      },
+      "Campaign status update received"
+    );
   },
 };
 
@@ -449,105 +493,130 @@ function verifyWebhookSignature(
   secret: string
 ): boolean {
   if (!signature || !secret) return !secret; // Skip if no secret configured
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(body)
-    .digest("hex");
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expected)
-  );
+  const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 
 // ========================================
 // POST /api/ghl/webhooks/inbound
 // ========================================
 
-webhookRouter.post("/inbound", express.text({ type: "*/*" }), async (req: Request, res: Response) => {
-  const webhookSecret = process.env.GHL_WEBHOOK_SECRET;
-  const signature = req.headers["x-ghl-signature"] as string | undefined;
-  const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+webhookRouter.post(
+  "/inbound",
+  express.text({ type: "*/*" }),
+  async (req: Request, res: Response) => {
+    const startMs = Date.now();
+    const webhookSecret = process.env.GHL_WEBHOOK_SECRET;
+    const signature = req.headers["x-ghl-signature"] as string | undefined;
+    const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
 
-  // Verify signature if secret is configured
-  if (webhookSecret && !verifyWebhookSignature(rawBody, signature, webhookSecret)) {
-    log.warn({ ip: req.ip }, "Invalid webhook signature, rejecting");
-    res.status(401).json({ error: "Invalid webhook signature" });
-    return;
-  }
-
-  let event: GHLWebhookEvent;
-  try {
-    event = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-  } catch {
-    log.error("Failed to parse webhook body");
-    res.status(400).json({ error: "Invalid JSON body" });
-    return;
-  }
-
-  const eventType = event.type;
-  if (!eventType) {
-    log.warn("Missing event type in webhook payload");
-    res.status(400).json({ error: "Missing event type" });
-    return;
-  }
-
-  const eventId = deriveEventId(event);
-
-  log.info({
-    eventId,
-    eventType,
-    locationId: event.locationId,
-    timestamp: event.timestamp || new Date().toISOString(),
-  }, "Webhook received");
-
-  // Respond immediately (GHL expects quick 200)
-  res.status(200).json({ received: true, type: eventType, eventId });
-
-  // ---- Async processing below ----
-
-  // 1. Dedup check
-  try {
-    if (await isDuplicateEvent(eventId)) {
-      log.info({ eventId, eventType }, "Duplicate event, skipping");
+    // Verify signature if secret is configured
+    if (webhookSecret && !verifyWebhookSignature(rawBody, signature, webhookSecret)) {
+      log.warn({ ip: req.ip }, "Invalid webhook signature, rejecting");
+      res.status(401).json({ error: "Invalid webhook signature" });
       return;
     }
-  } catch (err) {
-    log.warn({ err, eventId }, "Dedup check failed, processing anyway");
-  }
 
-  // 2. Resolve user from locationId
-  let userId: number | null = null;
-  if (event.locationId) {
-    userId = await resolveUserForLocation(event.locationId);
-  }
-
-  if (!userId) {
-    log.warn({ locationId: event.locationId, eventType }, "No user found for location, using DLQ");
-    await pushToDeadLetterQueue(event, eventId, `No user found for locationId: ${event.locationId || "missing"}`);
-    await recordEvent(eventId, eventType, event.locationId, false);
-    return;
-  }
-
-  // 3. Process event
-  const handler = eventHandlers[eventType];
-  if (handler) {
+    let event: GHLWebhookEvent;
     try {
-      await handler(event, userId);
-      await recordEvent(eventId, eventType, event.locationId, true);
-
-      // 4. Trigger workflow engine
-      await triggerWorkflow(userId, event);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      log.error({ err, eventId, eventType, locationId: event.locationId }, "Handler failed");
-      await pushToDeadLetterQueue(event, eventId, errorMsg);
-      await recordEvent(eventId, eventType, event.locationId, false);
+      event = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    } catch {
+      log.error("Failed to parse webhook body");
+      res.status(400).json({ error: "Invalid JSON body" });
+      return;
     }
-  } else {
-    log.info({ eventType }, "No handler registered for event type");
-    await recordEvent(eventId, eventType, event.locationId, true);
+
+    const eventType = event.type;
+    if (!eventType) {
+      log.warn("Missing event type in webhook payload");
+      res.status(400).json({ error: "Missing event type" });
+      return;
+    }
+
+    const eventId = deriveEventId(event);
+
+    log.info(
+      {
+        eventId,
+        eventType,
+        locationId: event.locationId,
+        timestamp: event.timestamp || new Date().toISOString(),
+      },
+      "Webhook received"
+    );
+
+    // Respond immediately (GHL expects quick 200)
+    res.status(200).json({ received: true, type: eventType, eventId });
+
+    // ---- Async processing below ----
+
+    // 1. Dedup check
+    try {
+      if (await isDuplicateEvent(eventId)) {
+        log.info({ eventId, eventType }, "Duplicate event, skipping");
+        return;
+      }
+    } catch (err) {
+      log.warn({ err, eventId }, "Dedup check failed, processing anyway");
+    }
+
+    // 2. Resolve user from locationId
+    let userId: number | null = null;
+    if (event.locationId) {
+      userId = await resolveUserForLocation(event.locationId);
+    }
+
+    if (!userId) {
+      log.warn(
+        { locationId: event.locationId, eventType },
+        "No user found for location, routing to DLQ"
+      );
+      await pushToDeadLetterQueue(
+        event,
+        eventId,
+        `No user found for locationId: ${event.locationId || "missing"}`
+      );
+      await recordEvent(eventId, eventType, event.locationId, false);
+      return;
+    }
+
+    // 3. Process event
+    const handler = eventHandlers[eventType];
+    if (handler) {
+      try {
+        await handler(event, userId);
+
+        const processingTimeMs = Date.now() - startMs;
+        log.info(
+          {
+            eventType,
+            locationId: event.locationId,
+            entityId: event.contact?.id || event.opportunity?.id || event.contactId,
+            processingTimeMs,
+          },
+          "Event processed successfully"
+        );
+
+        await recordEvent(eventId, eventType, event.locationId, true);
+
+        // 4. Trigger workflow engine
+        await triggerWorkflow(userId, event);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const processingTimeMs = Date.now() - startMs;
+        log.error(
+          { err, eventId, eventType, locationId: event.locationId, processingTimeMs },
+          "Handler failed"
+        );
+        await pushToDeadLetterQueue(event, eventId, errorMsg);
+        await recordEvent(eventId, eventType, event.locationId, false);
+      }
+    } else {
+      log.info({ eventType }, "No handler registered for event type");
+      await recordEvent(eventId, eventType, event.locationId, true);
+    }
   }
-});
+);
 
 // ========================================
 // HEALTH CHECK
@@ -565,7 +634,7 @@ webhookRouter.get("/health", async (_req: Request, res: Response) => {
         .where(eq(ghlWebhookDeadLetters.resolved, false));
       dlqCount = rows.length;
     } catch {
-      // DB may not have the table yet
+      // DB may not have tables yet during initial deployment
     }
   }
 
@@ -652,12 +721,15 @@ webhookRouter.post("/dlq/:id/retry", async (req: Request, res: Response) => {
     }
 
     if (!userId) {
-      await db.update(ghlWebhookDeadLetters).set({
-        retryCount: entry.retryCount + 1,
-        lastRetriedAt: new Date(),
-        error: `Retry failed: No user found for locationId: ${event.locationId || "missing"}`,
-        updatedAt: new Date(),
-      }).where(eq(ghlWebhookDeadLetters.id, dlqId));
+      await db
+        .update(ghlWebhookDeadLetters)
+        .set({
+          retryCount: entry.retryCount + 1,
+          lastRetriedAt: new Date(),
+          error: `Retry failed: No user found for locationId: ${event.locationId || "missing"}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(ghlWebhookDeadLetters.id, dlqId));
 
       res.status(422).json({ error: "No user found for location on retry" });
       return;
@@ -674,23 +746,29 @@ webhookRouter.post("/dlq/:id/retry", async (req: Request, res: Response) => {
       await triggerWorkflow(userId, event);
 
       // Mark resolved
-      await db.update(ghlWebhookDeadLetters).set({
-        resolved: true,
-        retryCount: entry.retryCount + 1,
-        lastRetriedAt: new Date(),
-        updatedAt: new Date(),
-      }).where(eq(ghlWebhookDeadLetters.id, dlqId));
+      await db
+        .update(ghlWebhookDeadLetters)
+        .set({
+          resolved: true,
+          retryCount: entry.retryCount + 1,
+          lastRetriedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(ghlWebhookDeadLetters.id, dlqId));
 
       log.info({ dlqId, eventType }, "DLQ entry retried successfully");
       res.json({ success: true, message: "Event reprocessed successfully" });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      await db.update(ghlWebhookDeadLetters).set({
-        retryCount: entry.retryCount + 1,
-        lastRetriedAt: new Date(),
-        error: `Retry failed: ${errorMsg}`,
-        updatedAt: new Date(),
-      }).where(eq(ghlWebhookDeadLetters.id, dlqId));
+      await db
+        .update(ghlWebhookDeadLetters)
+        .set({
+          retryCount: entry.retryCount + 1,
+          lastRetriedAt: new Date(),
+          error: `Retry failed: ${errorMsg}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(ghlWebhookDeadLetters.id, dlqId));
 
       log.error({ err, dlqId, eventType }, "DLQ retry failed");
       res.status(500).json({ error: "Retry failed", detail: errorMsg });
