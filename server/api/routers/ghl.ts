@@ -8,7 +8,9 @@
  * - Campaign/drip management (list, add/remove contacts)
  * - Workflow listing
  *
- * Linear: AI-2877, AI-2881, AI-3461
+ * - Messaging (send SMS, send email, delivery status, templates)
+ *
+ * Linear: AI-2877, AI-2881, AI-3461, AI-5149
  */
 
 import { z } from "zod";
@@ -644,6 +646,106 @@ export const ghlRouter = router({
       try {
         const service = await getServiceForUser(ctx.user.id, input?.locationId);
         const result = await service.listWorkflows();
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  // ----------------------------------------
+  // Messaging / Communication (AI-5149)
+  // ----------------------------------------
+
+  sendSMS: protectedProcedure
+    .input(
+      z.object({
+        contactId: z.string().min(1),
+        message: z.string().min(1).max(1600),
+        locationId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        const result = await service.sendSMS(input.contactId, input.message);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  sendEmail: protectedProcedure
+    .input(
+      z.object({
+        contactId: z.string().min(1),
+        subject: z.string().min(1).max(998),
+        html: z.string().min(1),
+        emailFrom: z.string().email().optional(),
+        emailTo: z.string().email().optional(),
+        emailReplyTo: z.string().email().optional(),
+        templateId: z.string().optional(),
+        attachments: z
+          .array(
+            z.object({
+              url: z.string().url(),
+              name: z.string().optional(),
+            })
+          )
+          .optional(),
+        locationId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const { contactId, locationId, ...emailData } = input;
+        const service = await getServiceForUser(ctx.user.id, locationId);
+        const result = await service.sendEmail(contactId, emailData);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  getMessageStatus: protectedProcedure
+    .input(
+      z.object({
+        messageId: z.string().min(1),
+        locationId: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input.locationId);
+        const result = await service.getMessageStatus(input.messageId);
+        return result.data;
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        ghlErrorToTRPC(err);
+      }
+    }),
+
+  listTemplates: protectedProcedure
+    .input(
+      z
+        .object({
+          locationId: z.string().optional(),
+          type: z.enum(["sms", "email", "whatsapp"]).optional(),
+          limit: z.number().int().min(1).max(100).default(20),
+          offset: z.number().int().min(0).default(0),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      try {
+        const service = await getServiceForUser(ctx.user.id, input?.locationId);
+        const result = await service.listTemplates({
+          type: input?.type,
+          limit: input?.limit,
+          offset: input?.offset,
+        });
         return result.data;
       } catch (err) {
         if (err instanceof TRPCError) throw err;

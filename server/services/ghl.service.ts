@@ -187,6 +187,37 @@ export interface GHLWorkflow {
   locationId: string;
 }
 
+export interface GHLMessage {
+  id: string;
+  conversationId: string;
+  contactId: string;
+  locationId: string;
+  body?: string;
+  type: "SMS" | "Email" | "TYPE_CALL" | "TYPE_LIVE_CHAT" | "TYPE_ACTIVITY_CONTACT";
+  direction: "inbound" | "outbound";
+  status: "pending" | "sent" | "delivered" | "read" | "failed" | "undelivered";
+  dateAdded?: string;
+  messageType?: string;
+  source?: string;
+  contentType?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface GHLEmailAttachment {
+  url: string;
+  name?: string;
+}
+
+export interface GHLTemplate {
+  id: string;
+  name: string;
+  type: "sms" | "email" | "whatsapp";
+  body?: string;
+  subject?: string;
+  locationId: string;
+  dateAdded?: string;
+}
+
 // ========================================
 // TOKEN BUCKET RATE LIMITER
 // ========================================
@@ -1018,6 +1049,88 @@ export class GHLService {
       method: "GET",
       endpoint: "/workflows/",
       params: { locationId: this.locationId },
+    });
+  }
+
+  // ----------------------------------------
+  // Messaging / Communication (AI-5149)
+  // ----------------------------------------
+
+  /**
+   * Send an SMS message to a contact via GHL Conversations API.
+   */
+  async sendSMS(
+    contactId: string,
+    message: string
+  ): Promise<GHLApiResponse<{ messageId: string; message: GHLMessage }>> {
+    return this.request({
+      method: "POST",
+      endpoint: "/conversations/messages",
+      data: {
+        type: "SMS",
+        contactId,
+        message,
+      },
+    });
+  }
+
+  /**
+   * Send an email to a contact via GHL Conversations API.
+   */
+  async sendEmail(
+    contactId: string,
+    data: {
+      subject: string;
+      html: string;
+      emailFrom?: string;
+      emailTo?: string;
+      emailReplyTo?: string;
+      templateId?: string;
+      attachments?: GHLEmailAttachment[];
+    }
+  ): Promise<GHLApiResponse<{ messageId: string; message: GHLMessage }>> {
+    return this.request({
+      method: "POST",
+      endpoint: "/conversations/messages",
+      data: {
+        type: "Email",
+        contactId,
+        ...data,
+      },
+    });
+  }
+
+  /**
+   * Get message delivery status by message ID.
+   */
+  async getMessageStatus(
+    messageId: string
+  ): Promise<GHLApiResponse<{ message: GHLMessage }>> {
+    return this.request({
+      method: "GET",
+      endpoint: `/conversations/messages/${messageId}`,
+    });
+  }
+
+  /**
+   * List email/SMS templates for this location.
+   */
+  async listTemplates(params?: {
+    type?: "sms" | "email" | "whatsapp";
+    limit?: number;
+    offset?: number;
+  }): Promise<GHLApiResponse<{ templates: GHLTemplate[]; total: number }>> {
+    const searchParams: Record<string, string> = {
+      locationId: this.locationId,
+      ...(params?.type ? { type: params.type } : {}),
+      ...(params?.limit ? { limit: String(params.limit) } : {}),
+      ...(params?.offset ? { offset: String(params.offset) } : {}),
+    };
+
+    return this.request({
+      method: "GET",
+      endpoint: "/conversations/templates",
+      params: searchParams,
     });
   }
 
