@@ -17,6 +17,10 @@ import AICampaigns from '@/pages/AICampaigns';
 import CampaignDetails from '@/pages/CampaignDetails';
 import CreditPurchase from '@/pages/CreditPurchase';
 import Training from '@/pages/Training';
+import GHLContacts from '@/pages/GHLContacts';
+import GHLPipeline from '@/pages/GHLPipeline';
+import GHLCampaigns from '@/pages/GHLCampaigns';
+import GHLWebhookLog from '@/pages/GHLWebhookLog';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { UserManagement } from '@/pages/admin/UserManagement';
 import { SystemHealth } from '@/pages/admin/SystemHealth';
@@ -51,6 +55,11 @@ export function Routes() {
           <Route path="/dashboard/ai-campaigns/:id" component={CampaignDetails} />
           <Route path="/dashboard/credits" component={CreditPurchase} />
           <Route path="/dashboard/training" component={Training} />
+          {/* GHL CRM routes */}
+          <Route path="/dashboard/ghl/contacts" component={GHLContacts} />
+          <Route path="/dashboard/ghl/pipeline" component={GHLPipeline} />
+          <Route path="/dashboard/ghl/campaigns" component={GHLCampaigns} />
+          <Route path="/dashboard/ghl/webhooks" component={GHLWebhookLog} />
           {/* Admin routes */}
           <Route path="/dashboard/admin" component={AdminDashboard} />
           <Route path="/dashboard/admin/users" component={UserManagement} />

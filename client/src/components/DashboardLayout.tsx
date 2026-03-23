@@ -35,7 +35,10 @@ import {
   LifeBuoy,
   Shield,
   Bot,
-  GraduationCap
+  GraduationCap,
+  Contact,
+  Kanban,
+  Webhook,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -53,6 +56,10 @@ const menuItems = [
   { icon: Users, label: "Lead Lists", path: "/dashboard/lead-lists" },
   { icon: Megaphone, label: "AI Campaigns", path: "/dashboard/ai-campaigns" },
   { icon: CreditCard, label: "Credits", path: "/dashboard/credits" },
+  { icon: Contact, label: "GHL Contacts", path: "/dashboard/ghl/contacts" },
+  { icon: Kanban, label: "GHL Pipeline", path: "/dashboard/ghl/pipeline" },
+  { icon: Megaphone, label: "GHL Campaigns", path: "/dashboard/ghl/campaigns" },
+  { icon: Webhook, label: "Webhook Log", path: "/dashboard/ghl/webhooks" },
   { icon: Settings, label: "Settings", path: "/dashboard/settings" },
 ];
 
