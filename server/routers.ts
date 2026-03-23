@@ -44,6 +44,7 @@ import { costsRouter } from "./api/routers/costs";
 import { pipelinesRouter } from "./api/routers/pipelines";
 import { ghlRouter } from "./api/routers/ghl";
 import { orgoRouter } from "./api/routers/orgo";
+import { orgoAuthRouter } from "./api/routers/orgoAuth";
 import { publicProcedure, router } from "./_core/trpc";
 
 export const appRouter = router({
@@ -146,6 +147,9 @@ export const appRouter = router({
 
   // Orgo Compute Provider (desktop VM infrastructure)
   orgo: orgoRouter,
+
+  // Orgo Auth (registration, login, JWT tokens) — AI-5246
+  orgoAuth: orgoAuthRouter,
 });
 
 export type AppRouter = typeof appRouter;
