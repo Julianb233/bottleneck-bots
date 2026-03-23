@@ -1356,3 +1356,349 @@ export function registerBrowserTools(toolRegistry: Map<string, Function>): void 
 export function getBrowserToolDefinitions(): Anthropic.Tool[] {
   return browserToolDefinitions;
 }
+
+// ========================================
+// ORGO DESKTOP VM TOOLS
+// ========================================
+
+/**
+ * Orgo-backed tool implementations.
+ * These map the agent's browser-tool interface to Orgo desktop VM operations,
+ * allowing the agent orchestrator to swap BrowserBase for Orgo when
+ * COMPUTE_PROVIDER=orgo is configured.
+ */
+export const orgoTools = {
+  /**
+   * Create a new Orgo desktop VM session.
+   */
+  orgo_create_session: async (params: {
+    userId?: number;
+    executionId?: number;
+    cpu?: number;
+    ramMb?: number;
+    diskGb?: number;
+  }): Promise<{
+    success: boolean;
+    sessionId?: string;
+    computerId?: string;
+    error?: string;
+  }> => {
+    try {
+      const { orgoComputeProvider } = await import('./orgoComputeProvider');
+      const result = await orgoComputeProvider.createSession({
+        userId: params.userId,
+        executionId: params.executionId,
+        specs: {
+          cpu: params.cpu,
+          ramMb: params.ramMb,
+          diskGb: params.diskGb,
+        },
+      });
+      return { success: true, ...result };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create Orgo session',
+      };
+    }
+  },
+
+  /**
+   * Navigate to a URL by launching Chromium inside the desktop VM.
+   */
+  orgo_navigate: async (params: {
+    sessionId: string;
+    url: string;
+  }): Promise<{
+    success: boolean;
+    error?: string;
+  }> => {
+    try {
+      const { orgoComputeProvider } = await import('./orgoComputeProvider');
+      await orgoComputeProvider.navigate(params.sessionId, params.url);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Navigation failed',
+      };
+    }
+  },
+
+  /**
+   * Take a screenshot of the desktop VM and return base64-encoded PNG.
+   */
+  orgo_screenshot: async (params: {
+    sessionId: string;
+  }): Promise<{
+    success: boolean;
+    base64?: string;
+    error?: string;
+  }> => {
+    try {
+      const { orgoComputeProvider } = await import('./orgoComputeProvider');
+      const base64 = await orgoComputeProvider.screenshot(params.sessionId);
+      return { success: true, base64 };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Screenshot failed',
+      };
+    }
+  },
+
+  /**
+   * Click at absolute desktop coordinates.
+   */
+  orgo_click: async (params: {
+    sessionId: string;
+    x: number;
+    y: number;
+  }): Promise<{
+    success: boolean;
+    error?: string;
+  }> => {
+    try {
+      const { orgoComputeProvider } = await import('./orgoComputeProvider');
+      await orgoComputeProvider.click(params.sessionId, params.x, params.y);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Click failed',
+      };
+    }
+  },
+
+  /**
+   * Type text into the currently focused element.
+   */
+  orgo_type: async (params: {
+    sessionId: string;
+    text: string;
+  }): Promise<{
+    success: boolean;
+    error?: string;
+  }> => {
+    try {
+      const { orgoComputeProvider } = await import('./orgoComputeProvider');
+      await orgoComputeProvider.type(params.sessionId, params.text);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Type failed',
+      };
+    }
+  },
+
+  /**
+   * Execute a shell command inside the desktop VM.
+   */
+  orgo_exec: async (params: {
+    sessionId: string;
+    command: string;
+  }): Promise<{
+    success: boolean;
+    exitCode?: number;
+    stdout?: string;
+    stderr?: string;
+    error?: string;
+  }> => {
+    try {
+      const { orgoComputeProvider } = await import('./orgoComputeProvider');
+      // Retrieve computerId from the session registry via provider internal access
+      const status = await orgoComputeProvider.getSessionStatus(params.sessionId);
+      if (!status.computerId) {
+        return { success: false, error: 'Session not found or no computerId' };
+      }
+      const { orgoClient } = await import('../_core/orgoClient');
+      const result = await orgoClient.bash(status.computerId, params.command);
+      return {
+        success: result.exitCode === 0,
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Exec failed',
+      };
+    }
+  },
+
+  /**
+   * Destroy the Orgo desktop VM session and release resources.
+   */
+  orgo_close_session: async (params: {
+    sessionId: string;
+  }): Promise<{
+    success: boolean;
+    error?: string;
+  }> => {
+    try {
+      const { orgoComputeProvider } = await import('./orgoComputeProvider');
+      await orgoComputeProvider.destroySession(params.sessionId);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to close Orgo session',
+      };
+    }
+  },
+};
+
+/**
+ * Anthropic tool definitions for Orgo desktop VM tools.
+ * Register these with the agent orchestrator when COMPUTE_PROVIDER=orgo.
+ */
+export function getOrgoToolDefinitions(): Anthropic.Tool[] {
+  return [
+    {
+      name: 'orgo_create_session',
+      description: 'Create a new Orgo desktop VM session for automation. The VM runs a full Linux desktop (Xvfb + Fluxbox) with a browser. Returns a sessionId for subsequent operations.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          userId: {
+            type: 'number',
+            description: 'Optional user ID to associate with the session',
+          },
+          executionId: {
+            type: 'number',
+            description: 'Optional execution ID to associate with the session',
+          },
+          cpu: {
+            type: 'number',
+            description: 'Number of CPU cores to allocate (default: 2)',
+          },
+          ramMb: {
+            type: 'number',
+            description: 'RAM in megabytes to allocate (default: 2048)',
+          },
+          diskGb: {
+            type: 'number',
+            description: 'Disk size in gigabytes (default: 20)',
+          },
+        },
+        required: [],
+      },
+    },
+    {
+      name: 'orgo_navigate',
+      description: 'Navigate the desktop VM browser to a URL. Launches Chromium in the VM pointing at the target URL.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          sessionId: {
+            type: 'string',
+            description: 'The Orgo session ID',
+          },
+          url: {
+            type: 'string',
+            description: 'The URL to navigate to',
+          },
+        },
+        required: ['sessionId', 'url'],
+      },
+    },
+    {
+      name: 'orgo_screenshot',
+      description: 'Take a screenshot of the current state of the desktop VM. Returns a base64-encoded PNG image showing everything visible on the desktop.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          sessionId: {
+            type: 'string',
+            description: 'The Orgo session ID',
+          },
+        },
+        required: ['sessionId'],
+      },
+    },
+    {
+      name: 'orgo_click',
+      description: 'Click at specific pixel coordinates on the desktop VM screen. Use orgo_screenshot first to determine the correct coordinates.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          sessionId: {
+            type: 'string',
+            description: 'The Orgo session ID',
+          },
+          x: {
+            type: 'number',
+            description: 'X coordinate (pixels from left edge)',
+          },
+          y: {
+            type: 'number',
+            description: 'Y coordinate (pixels from top edge)',
+          },
+        },
+        required: ['sessionId', 'x', 'y'],
+      },
+    },
+    {
+      name: 'orgo_type',
+      description: 'Type text into the currently focused element on the desktop VM. Ensure the target element is focused (via orgo_click) before typing.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          sessionId: {
+            type: 'string',
+            description: 'The Orgo session ID',
+          },
+          text: {
+            type: 'string',
+            description: 'Text to type',
+          },
+        },
+        required: ['sessionId', 'text'],
+      },
+    },
+    {
+      name: 'orgo_exec',
+      description: 'Execute a bash shell command inside the desktop VM. Useful for running scripts, checking state, or automating tasks that are easier via the shell than via the GUI.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          sessionId: {
+            type: 'string',
+            description: 'The Orgo session ID',
+          },
+          command: {
+            type: 'string',
+            description: 'Shell command to execute (runs as bash -c)',
+          },
+        },
+        required: ['sessionId', 'command'],
+      },
+    },
+    {
+      name: 'orgo_close_session',
+      description: 'Destroy the Orgo desktop VM session and release all compute resources. Always call this when the automation task is complete.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          sessionId: {
+            type: 'string',
+            description: 'The Orgo session ID to close',
+          },
+        },
+        required: ['sessionId'],
+      },
+    },
+  ];
+}
+
+/**
+ * Register Orgo tools with the agent orchestrator's tool registry.
+ * Call this instead of registerBrowserTools when COMPUTE_PROVIDER=orgo.
+ */
+export function registerOrgoTools(toolRegistry: Map<string, Function>): void {
+  for (const [name, handler] of Object.entries(orgoTools)) {
+    toolRegistry.set(name, handler);
+  }
+}

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { router, publicProcedure, adminProcedure } from "../../_core/trpc";
 import { circuitBreakerRegistry } from "../../lib/circuitBreaker";
 import { browserbaseSDK } from "../../_core/browserbaseSDK";
+import { orgoClient } from "../../_core/orgoClient";
 
 /**
  * Health Router
@@ -93,6 +94,7 @@ export const healthRouter = router({
           'anthropic',
           'gmail',
           'outlook',
+          'orgo',
         ]),
       })
     )
@@ -136,6 +138,7 @@ export const healthRouter = router({
           'anthropic',
           'gmail',
           'outlook',
+          'orgo',
         ]),
       })
     )
@@ -258,6 +261,56 @@ export const healthRouter = router({
    */
   getBrowserbaseConfig: publicProcedure.query(async () => {
     return browserbaseSDK.getConfigurationStatus();
+  }),
+
+  /**
+   * Check Orgo compute provider health
+   * Verifies configuration and API connectivity
+   *
+   * @example
+   * ```ts
+   * const orgoHealth = await trpc.health.getOrgoHealth.query();
+   * if (!orgoHealth.healthy) {
+   *   console.error('Orgo not configured:', orgoHealth.config);
+   * }
+   * ```
+   */
+  getOrgoHealth: publicProcedure.query(async () => {
+    try {
+      const config = orgoClient.getConfigurationStatus();
+      if (!config.configured) {
+        return {
+          healthy: false,
+          status: 'not_configured',
+          config,
+        };
+      }
+      const health = await orgoClient.healthCheck();
+      return { ...health, config };
+    } catch (error) {
+      return {
+        healthy: false,
+        status: 'error',
+        config: orgoClient.getConfigurationStatus(),
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }),
+
+  /**
+   * Get Orgo configuration status (without testing connectivity)
+   * Fast check for configuration validation
+   *
+   * @example
+   * ```ts
+   * const config = await trpc.health.getOrgoConfig.query();
+   * if (!config.configured) {
+   *   console.log('Orgo not configured — ORGO_API_KEY missing');
+   * }
+   * ```
+   */
+  getOrgoConfig: publicProcedure.query(() => {
+    return orgoClient.getConfigurationStatus();
   }),
 
   /**

@@ -425,4 +425,11 @@ export const circuitBreakers = {
     monitoringWindowMs: 60000, // 1 minute window
     successThreshold: 2,
   }),
+
+  orgo: circuitBreakerRegistry.getOrCreate('orgo', {
+    failureThreshold: 5,
+    resetTimeoutMs: 60000, // 1 minute
+    monitoringWindowMs: 60000, // 1 minute window
+    successThreshold: 2,
+  }),
 };
