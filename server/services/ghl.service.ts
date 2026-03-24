@@ -1034,6 +1034,7 @@ export class GHLService {
     Array<{
       locationId: string;
       companyId: string | null;
+      name: string | null;
       connected: boolean;
       expiresAt: Date | null;
       scopes: string[];
@@ -1056,6 +1057,7 @@ export class GHLService {
         return {
           locationId: r.service.replace("ghl:", ""),
           companyId: metadata.companyId || null,
+          name: metadata.name || null,
           connected: true,
           expiresAt: r.expiresAt,
           scopes: metadata.scope ? metadata.scope.split(" ") : [],

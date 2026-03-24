@@ -418,18 +418,9 @@ export async function seedTemplates(): Promise<{ inserted: number; skipped: numb
 
     await db.insert(automationTemplates).values({
       name: template.name,
-      description: template.description,
+      description: template.description || '',
       category: template.category,
-      platform: template.platform,
-      steps: template.steps,
-      estimatedMinutes: template.estimatedMinutes,
-      estimatedCredits: template.estimatedCredits,
-      requiredSkills: template.requiredSkills,
-      inputs: template.inputs,
-      isSeedTemplate: true,
-      isActive: true,
-      isPublic: false,
-      authorId: null,
+      steps: JSON.stringify(template.steps),
     });
     inserted++;
   }

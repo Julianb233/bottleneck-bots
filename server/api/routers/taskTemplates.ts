@@ -689,6 +689,79 @@ export const taskTemplatesRouter = router({
     }),
 
   /**
+   * Get all templates (convenience endpoint for frontend)
+   */
+  getAll: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.user.id;
+    const db = await requireDb();
+
+    return withTrpcErrorHandling(async () => {
+      const templates = await db
+        .select()
+        .from(taskTemplates)
+        .where(
+          or(
+            eq(taskTemplates.isSystem, true),
+            eq(taskTemplates.userId, userId)
+          )
+        )
+        .orderBy(desc(taskTemplates.isSystem), desc(taskTemplates.usageCount), asc(taskTemplates.name));
+
+      return templates;
+    }, "Failed to fetch all templates");
+  }),
+
+  /**
+   * Run a task from a template (alias for createTask with run semantics)
+   */
+  runFromTemplate: protectedProcedure
+    .input(createFromTemplateSchema)
+    .mutation(async ({ input, ctx }) => {
+      const userId = ctx.user.id;
+      const db = await requireDb();
+
+      return withTrpcErrorHandling(async () => {
+        const [template] = await db
+          .select()
+          .from(taskTemplates)
+          .where(eq(taskTemplates.id, input.templateId))
+          .limit(1);
+
+        if (!template) {
+          throw notFoundError("Template", input.templateId);
+        }
+
+        const [task] = await db
+          .insert(agencyTasks)
+          .values({
+            userId,
+            sourceType: "manual",
+            title: input.title || template.name,
+            description: input.description || template.description,
+            category: template.categorySlug,
+            taskType: template.taskType as any,
+            priority: template.priority as any,
+            urgency: template.urgency as any,
+            status: "pending",
+          })
+          .returning();
+
+        // Increment usage count
+        await db
+          .update(taskTemplates)
+          .set({ usageCount: sql`${taskTemplates.usageCount} + 1` })
+          .where(eq(taskTemplates.id, input.templateId));
+
+        return {
+          message: `Task "${task.title}" created from template`,
+          taskId: task.id,
+          estimatedMinutes: template.estimatedDuration || 5,
+          creditCost: 1,
+        };
+      }, "Failed to run template");
+    }),
+
+  /**
    * Seed system templates (called once or on demand)
    */
   seed: protectedProcedure.mutation(async () => {
