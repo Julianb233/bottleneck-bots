@@ -1,0 +1,127 @@
+## Bottleneck Bots — Production Docker Compose
+## Usage: docker compose -f docker/docker-compose.prod.yml up -d
+##
+## This runs the full stack in Docker. For VPS deployments with PM2,
+## use ecosystem.config.js instead and run PostgreSQL/Redis natively.
+
+services:
+  # ─── API Server ──────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: bottleneck-api:latest
+    container_name: bottleneck-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgres://${POSTGRES_USER:-bottleneck}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-bottleneck_bots}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379
+      API_URL: https://api.bottleneckbots.com
+      JWT_SECRET: ${JWT_SECRET:-changeme}
+      API_KEY_SALT: ${API_KEY_SALT:-changeme}
+      HETZNER_DOCKER_HOST: tcp://${TAILSCALE_HETZNER_IP:-100.x.x.x}:2376
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - bottleneck-net
+    volumes:
+      - api-logs:/var/log/bottleneck
+
+  # ─── Dashboard ──────────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: ../packages/dashboard
+      dockerfile: Dockerfile
+    image: bottleneck-dashboard:latest
+    container_name: bottleneck-dashboard
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    environment:
+      NODE_ENV: production
+      PORT: "4001"
+      NEXT_PUBLIC_API_URL: https://api.bottleneckbots.com
+      NEXT_PUBLIC_WS_URL: wss://api.bottleneckbots.com
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4001"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - bottleneck-net
+
+  # ─── PostgreSQL ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: bottleneck-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bottleneck}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-bottleneck_bots}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bottleneck} -d ${POSTGRES_DB:-bottleneck_bots}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - bottleneck-net
+    shm_size: 256mb
+
+  # ─── Redis ──────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: bottleneck-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-changeme}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bottleneck-net
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  api-logs:
+    driver: local
+
+networks:
+  bottleneck-net:
+    driver: bridge

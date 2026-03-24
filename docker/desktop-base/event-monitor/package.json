@@ -1,0 +1,8 @@
+{
+  "name": "@bottleneck-bots/event-monitor",
+  "version": "1.0.0",
+  "description": "Desktop event monitor daemon for Bottleneck Bots containers",
+  "main": "index.js",
+  "private": true,
+  "license": "MIT"
+}

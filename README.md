@@ -4,6 +4,60 @@
 
 ---
 
+## Monorepo Structure
+
+This repo is a pnpm monorepo using Turborepo:
+
+```
+Bottleneck-Bots/
+  client/                  # Vite/React frontend (existing)
+  server/                  # Express/tRPC server (existing)
+  shared/                  # Shared types (existing)
+  packages/
+    api/                   # Fastify API server (VM/computer management, workspaces, auth)
+    shared/                # Shared types/utilities for packages
+    cli/                   # CLI tool
+  sdk/
+    python/                # Python SDK
+    typescript/            # TypeScript SDK
+  docker/                  # Docker infrastructure (desktop-base, security, templates)
+  docker-compose.yml       # Full stack local development
+```
+
+### packages/api Routes
+
+- `auth` - Authentication (login, register, sessions)
+- `workspaces` - Multi-tenant workspace management
+- `computers` - VM/computer provisioning and management
+- `actions` - Computer action execution
+- `admin` - Admin panel APIs
+- `invites` - Team invites
+- `members` - Workspace members
+- `provider-keys` - Provider API key management
+- `templates` - Workspace templates
+- `v1/chat-completions` - OpenAI-compatible chat completions
+- `v1/models` - Available models list
+- `docs` - API documentation
+- `health` - Health checks
+
+### Development
+
+```bash
+# Install all workspace dependencies
+pnpm install
+
+# Run all packages in dev mode
+pnpm dev
+
+# Build all packages
+pnpm build
+
+# Run tests
+pnpm test
+```
+
+---
+
 ## 📋 Overview
 
 Bottleneck Bot is a white-label SaaS platform that enables agencies to automate GoHighLevel operations through AI-powered browser automation. The system uses natural language commands to execute complex multi-step workflows, eliminating the need for manual GHL configuration.

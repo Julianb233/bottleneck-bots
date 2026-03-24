@@ -1,0 +1,3 @@
+#!/bin/sh
+# Bottleneck Bots Fluxbox Startup — set solid gray wallpaper (saves screenshot bytes)
+fbsetroot -solid '#2d2d2d' &

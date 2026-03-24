@@ -9,6 +9,9 @@ packages:
   - 'packages/*'
   - 'apps/*'
 
+  # SDKs
+  - 'sdk/*'
+
   # Utilities and tooling
   - 'stubs/*'
 

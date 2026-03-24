@@ -1,0 +1,350 @@
+{
+  "defaultAction": "SCMP_ACT_ERRNO",
+  "defaultErrnoRet": 1,
+  "archMap": [
+    {
+      "architecture": "SCMP_ARCH_X86_64",
+      "subArchitectures": [
+        "SCMP_ARCH_X86",
+        "SCMP_ARCH_X32"
+      ]
+    },
+    {
+      "architecture": "SCMP_ARCH_AARCH64",
+      "subArchitectures": [
+        "SCMP_ARCH_ARM"
+      ]
+    }
+  ],
+  "syscalls": [
+    {
+      "comment": "Core process lifecycle — required by all processes",
+      "names": [
+        "exit",
+        "exit_group",
+        "futex",
+        "nanosleep",
+        "clock_nanosleep",
+        "clock_gettime",
+        "clock_getres",
+        "gettimeofday",
+        "getpid",
+        "getppid",
+        "gettid",
+        "getuid",
+        "getgid",
+        "geteuid",
+        "getegid",
+        "getresuid",
+        "getresgid",
+        "getgroups",
+        "set_tid_address",
+        "set_robust_list",
+        "get_robust_list",
+        "arch_prctl",
+        "prctl",
+        "sigaltstack",
+        "rt_sigaction",
+        "rt_sigprocmask",
+        "rt_sigreturn",
+        "rt_sigpending",
+        "rt_sigtimedwait",
+        "rt_sigsuspend",
+        "kill",
+        "tgkill",
+        "tkill",
+        "wait4",
+        "waitid",
+        "clone",
+        "clone3",
+        "fork",
+        "vfork",
+        "execve",
+        "execveat"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "Memory management — required by Xvfb, maim, all processes",
+      "names": [
+        "brk",
+        "mmap",
+        "mmap2",
+        "munmap",
+        "mprotect",
+        "madvise",
+        "mremap",
+        "msync",
+        "mincore",
+        "mlock",
+        "mlock2",
+        "munlock",
+        "mlockall",
+        "munlockall"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "Shared memory — required by Xvfb for MIT-SHM extension",
+      "names": [
+        "shmat",
+        "shmget",
+        "shmctl",
+        "shmdt"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "File operations — required by xdotool, maim, general I/O",
+      "names": [
+        "open",
+        "openat",
+        "openat2",
+        "close",
+        "close_range",
+        "read",
+        "readv",
+        "pread64",
+        "preadv",
+        "preadv2",
+        "write",
+        "writev",
+        "pwrite64",
+        "pwritev",
+        "pwritev2",
+        "lseek",
+        "access",
+        "faccessat",
+        "faccessat2",
+        "stat",
+        "fstat",
+        "lstat",
+        "newfstatat",
+        "statx",
+        "statfs",
+        "fstatfs",
+        "readlink",
+        "readlinkat",
+        "getcwd",
+        "chdir",
+        "fchdir",
+        "rename",
+        "renameat",
+        "renameat2",
+        "unlink",
+        "unlinkat",
+        "mkdir",
+        "mkdirat",
+        "rmdir",
+        "link",
+        "linkat",
+        "symlink",
+        "symlinkat",
+        "chmod",
+        "fchmod",
+        "fchmodat",
+        "chown",
+        "fchown",
+        "fchownat",
+        "lchown",
+        "truncate",
+        "ftruncate",
+        "fallocate",
+        "utimensat",
+        "futimesat",
+        "getdents",
+        "getdents64",
+        "fcntl",
+        "dup",
+        "dup2",
+        "dup3",
+        "pipe",
+        "pipe2",
+        "umask"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "ioctl — required by xdotool for terminal/input control",
+      "names": [
+        "ioctl"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "Networking — required by Xvfb (Unix socket), x11vnc, noVNC",
+      "names": [
+        "socket",
+        "socketpair",
+        "bind",
+        "listen",
+        "accept",
+        "accept4",
+        "connect",
+        "getsockname",
+        "getpeername",
+        "sendto",
+        "sendmsg",
+        "sendmmsg",
+        "recvfrom",
+        "recvmsg",
+        "recvmmsg",
+        "setsockopt",
+        "getsockopt",
+        "shutdown"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "I/O multiplexing — required by Xvfb event loop, x11vnc, noVNC",
+      "names": [
+        "poll",
+        "ppoll",
+        "select",
+        "pselect6",
+        "epoll_create",
+        "epoll_create1",
+        "epoll_ctl",
+        "epoll_wait",
+        "epoll_pwait",
+        "epoll_pwait2",
+        "eventfd",
+        "eventfd2",
+        "signalfd",
+        "signalfd4",
+        "timerfd_create",
+        "timerfd_settime",
+        "timerfd_gettime"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "Misc required syscalls — logging, resource limits, IPC",
+      "names": [
+        "sysinfo",
+        "uname",
+        "getrlimit",
+        "setrlimit",
+        "prlimit64",
+        "getrusage",
+        "sched_getaffinity",
+        "sched_setaffinity",
+        "sched_yield",
+        "sched_getscheduler",
+        "sched_setscheduler",
+        "sched_getparam",
+        "sched_setparam",
+        "sched_get_priority_max",
+        "sched_get_priority_min",
+        "getrandom",
+        "memfd_create",
+        "copy_file_range",
+        "sendfile",
+        "splice",
+        "tee",
+        "inotify_init",
+        "inotify_init1",
+        "inotify_add_watch",
+        "inotify_rm_watch",
+        "setitimer",
+        "getitimer",
+        "alarm",
+        "timer_create",
+        "timer_settime",
+        "timer_gettime",
+        "timer_getoverrun",
+        "timer_delete"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "Locking primitives — semaphores, file locks",
+      "names": [
+        "semget",
+        "semop",
+        "semtimedop",
+        "semctl",
+        "flock"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "Process trace — only effective when SYS_PTRACE capability granted",
+      "names": [
+        "ptrace",
+        "process_vm_readv",
+        "process_vm_writev"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    },
+    {
+      "comment": "BLOCKED — filesystem namespace manipulation",
+      "names": [
+        "mount",
+        "umount",
+        "umount2",
+        "pivot_root",
+        "chroot"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    },
+    {
+      "comment": "BLOCKED — system control / reboot",
+      "names": [
+        "reboot",
+        "sethostname",
+        "setdomainname"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    },
+    {
+      "comment": "BLOCKED — kernel module manipulation",
+      "names": [
+        "init_module",
+        "finit_module",
+        "delete_module"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    },
+    {
+      "comment": "BLOCKED — raw I/O port access",
+      "names": [
+        "ioperm",
+        "iopl"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    },
+    {
+      "comment": "BLOCKED — kexec (load new kernel)",
+      "names": [
+        "kexec_load",
+        "kexec_file_load"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    },
+    {
+      "comment": "BLOCKED — namespace manipulation (prevent container escape)",
+      "names": [
+        "unshare",
+        "setns"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    },
+    {
+      "comment": "BLOCKED — keyring operations",
+      "names": [
+        "keyctl",
+        "add_key",
+        "request_key"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1
+    }
+  ]
+}

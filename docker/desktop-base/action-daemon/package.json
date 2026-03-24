@@ -1,0 +1,14 @@
+{
+  "name": "@bottleneck-bots/action-daemon",
+  "version": "1.0.0",
+  "description": "Desktop action daemon — runs inside each container, executes desktop actions via Unix socket",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {},
+  "private": true
+}

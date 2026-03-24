@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  desktop:
+    build:
+      context: ./desktop-base
+      dockerfile: Dockerfile
+    container_name: bottleneck-desktop-dev
+    ports:
+      - "5900:5900"   # VNC
+      - "6080:6080"   # noVNC (browser)
+    environment:
+      - DISPLAY=:99
+      - RESOLUTION=1280x720x24
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2"
+    volumes:
+      - ./desktop-base/action-daemon:/opt/orgo/action-daemon:cached
+    shm_size: "256m"
+    init: true
+    restart: unless-stopped

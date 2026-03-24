@@ -1,0 +1,13 @@
+# Bottleneck Bots Fluxbox Configuration — minimal for AI agent use
+session.screen0.toolbar.visible: false
+session.screen0.workspaces: 1
+session.screen0.workspaceNames: Bottleneck
+session.styleFile: /usr/share/fluxbox/styles/Makefile.in
+session.screen0.tabs.usePixmap: false
+session.screen0.tabs.maxOver: false
+session.screen0.defaultDeco: NONE
+session.screen0.colPlacementDirection: TopToBottom
+session.screen0.rowPlacementDirection: LeftToRight
+session.screen0.fullMaximization: true
+session.screen0.opaqueMove: true
+session.screen0.focusModel: ClickFocus
