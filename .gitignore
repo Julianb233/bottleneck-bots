@@ -112,3 +112,4 @@ stagehand-nextjs-quickstart/
 .env.backup
 .env.production
 .env.secrets
+.claude/
