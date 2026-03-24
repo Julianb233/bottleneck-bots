@@ -1,3 +1,38 @@
 # Don't ignore dist folder - it's needed for production
 !dist
 
+# Ignore large/local-only directories
+.beads
+.claude
+.claude-flow
+.claude-state.json
+.hive-mind
+.planning
+.github
+test-results
+playwright-report
+docs
+tests
+n8n-workflows
+helm
+gitops
+sandbox
+examples
+stagehand-nextjs-quickstart
+mcp-server-browserbase
+*.md
+*.txt
+*.xlsx
+*.py
+*.sh
+generate_cost_analysis.py
+generate_cost_analysis_v2.py
+GHL-Agency-AI-Cost-Analysis.xlsx
+rebrand.py
+rebrand-script.sh
+Dockerfile
+.dockerignore
+kind-config.yaml
+playwright.config.ts
+vitest.config.ts
+vitest.setup.ts

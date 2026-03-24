@@ -113,3 +113,7 @@ stagehand-nextjs-quickstart/
 .env.production
 .env.secrets
 .claude/
+.beads/
+.claude-flow/
+.hive-mind/
+.claude-state.json
